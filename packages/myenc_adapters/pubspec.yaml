@@ -1,0 +1,19 @@
+name: myenc_adapters
+description: Concrete adapters for myenc_core ports — sodium crypto, dart:io file I/O.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  myenc_core:
+    path: ../myenc_core
+  sodium: ^4.0.0
+  path: ^1.9.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
