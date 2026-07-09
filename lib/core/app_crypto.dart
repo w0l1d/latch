@@ -47,6 +47,7 @@ class AppCrypto {
     bool deleteOriginals = false,
   }) async* {
     final pw = utf8.encode(passphrase);
+    try {
     final svc = EnvelopeService(_crypto);
 
     for (int i = 0; i < files.length; i++) {
@@ -98,6 +99,13 @@ class AppCrypto {
     }
 
     yield 1.0;
+    } finally {
+      // Zero the passphrase bytes as soon as the encryption loop is done.
+      // Note: Dart strings are immutable — the original String from the UI
+      // survives in the text-field widget's memory until GC. This is a known
+      // Dart limitation; prefer SecureKey for derived key material.
+      pw.fillRange(0, pw.length, 0);
+    }
   }
 
   /// Decrypts [filePath].
@@ -108,6 +116,7 @@ class AppCrypto {
   /// Mid-stream failures leave no partial output (atomic temp→rename).
   static Stream<double> decryptFile(String filePath, String passphrase) async* {
     final pw = utf8.encode(passphrase);
+    try {
     final svc = EnvelopeService(_crypto);
 
     final totalBytes = await _io.fileSize(filePath);
@@ -150,5 +159,12 @@ class AppCrypto {
     }
 
     yield 1.0;
+    } finally {
+      // Zero the passphrase bytes.
+      // Note: Dart strings are immutable — the original String from the UI
+      // survives in the text-field widget's memory until GC. This is a known
+      // Dart limitation; prefer SecureKey for derived key material.
+      pw.fillRange(0, pw.length, 0);
+    }
   }
 }

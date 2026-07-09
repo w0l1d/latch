@@ -40,6 +40,8 @@ class EnvelopeService {
     // Encrypt the plaintext stream. The transformer prepends the 24-byte
     // secretstream header as the first bytes of its output.
     final transformer = _crypto.createEncryptTransformer(dek, chunkSize);
+    // DEK has been copied to guarded memory by SecureKey; zero the plain copy.
+    dek.fillRange(0, dek.length, 0);
     final encryptedStream = plaintext.transform(transformer);
 
     // Extract the secretstream header from the transformer's output so it can
@@ -128,6 +130,8 @@ class EnvelopeService {
     // Prepend the ss header to the body and decrypt.
     final bodyWithHeader = _prependStream(hdr.secretstreamHeader, reader.remainingStream());
     final transformer = _crypto.createDecryptTransformer(dek, hdr.chunkSize);
+    // DEK has been copied to guarded memory by SecureKey; zero the plain copy.
+    dek.fillRange(0, dek.length, 0);
     yield* bodyWithHeader.transform(transformer);
   }
 

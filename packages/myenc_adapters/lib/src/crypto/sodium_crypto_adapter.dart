@@ -80,22 +80,35 @@ class SodiumCryptoAdapter implements CryptoPort {
   @override
   int get secretstreamHeaderBytes => _sodium.crypto.secretStream.headerBytes;
 
-  // The SecureKey is created inside fromBind so it lives until the stream is
-  // subscribed. We do not explicitly dispose it; the GC will handle the
-  // native memory via the sodium library's internal cleanup.
+  // Dispose helper to clean up SecureKey on any stream termination.
+  static void _disposeKey(SecureKey key, StreamController<Uint8List> ctrl) {
+    key.dispose();
+    if (!ctrl.isClosed) ctrl.close();
+  }
+
   @override
   StreamTransformer<Uint8List, Uint8List> createEncryptTransformer(
       Uint8List key, int chunkSize) {
     return StreamTransformer.fromBind((stream) {
       final secureKey = SecureKey.fromList(_sodium, key);
+      final controller = StreamController<Uint8List>(
+        onCancel: () => secureKey.dispose(),
+      );
       final xformer = _sodium.crypto.secretStream
           .createPushChunked(key: secureKey, chunkSize: chunkSize);
       // Reify as Stream<List<int>>: sodium's internal ChunkedStreamTransformer
       // is StreamTransformer<List<int>, _> and Dart's runtime variance check
       // rejects transform() on a stream reified as Stream<Uint8List>.
-      return xformer
+      xformer
           .bind(stream.map<List<int>>((c) => c))
-          .map(Uint8List.fromList);
+          .map(Uint8List.fromList)
+          .listen(
+        controller.add,
+        onError: controller.addError,
+        onDone: () => _disposeKey(secureKey, controller),
+        cancelOnError: true,
+      );
+      return controller.stream;
     });
   }
 
@@ -104,12 +117,14 @@ class SodiumCryptoAdapter implements CryptoPort {
       Uint8List key, int chunkSize) {
     return StreamTransformer.fromBind((stream) {
       final secureKey = SecureKey.fromList(_sodium, key);
+      final controller = StreamController<Uint8List>(
+        onCancel: () => secureKey.dispose(),
+      );
       final xformer = _sodium.crypto.secretStream.createPullChunked(
         key: secureKey,
         chunkSize: chunkSize,
         requireFinalized: true,
       );
-      final controller = StreamController<Uint8List>();
       xformer
           .bind(stream.map<List<int>>((c) => c))
           .map(Uint8List.fromList)
@@ -118,7 +133,7 @@ class SodiumCryptoAdapter implements CryptoPort {
         onError: (Object e, StackTrace st) {
           controller.addError(_mapDecryptError(e), st);
         },
-        onDone: controller.close,
+        onDone: () => _disposeKey(secureKey, controller),
         cancelOnError: true,
       );
       return controller.stream;
