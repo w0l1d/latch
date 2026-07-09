@@ -1,0 +1,10 @@
+name: myenc_core
+description: Pure-Dart crypto domain for Latch — ports, envelope logic, .latch codec.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.12.2
+
+dev_dependencies:
+  test: ^1.24.0
