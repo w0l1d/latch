@@ -255,5 +255,17 @@ void main() {
         throwsA(isA<LatchError>()),
       );
     });
+
+    test('encrypt rejects KDF params below the security floor', () async {
+      final weak = KdfParams(opslimit: 1, memlimit: 1024); // 1 MiB
+      expect(
+        () => _collect(svc.encrypt(
+          plaintext: _stream([Uint8List(8)]),
+          passphrase: passphrase,
+          params: weak,
+        )),
+        throwsA(isA<CorruptedFileError>()),
+      );
+    });
   });
 }

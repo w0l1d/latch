@@ -25,7 +25,9 @@ class AppCrypto {
     final prefs = await SharedPreferences.getInstance();
     final ops = prefs.getInt('kdf_opslimit') ?? KdfParams.defaults.opslimit;
     final mem = prefs.getInt('kdf_memlimit') ?? KdfParams.defaults.memlimit;
-    return KdfParams(opslimit: ops, memlimit: mem);
+    final params = KdfParams(opslimit: ops, memlimit: mem);
+    if (!params.meetsFloor()) return KdfParams.defaults;
+    return params;
   }
 
   // Pure heuristic — no real crypto.

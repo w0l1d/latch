@@ -21,6 +21,9 @@ class EnvelopeService {
     int flags = 0,
     int chunkSize = FileHeader.defaultChunkSize,
   }) async* {
+    if (!params.meetsFloor()) {
+      throw CorruptedFileError('KDF params below security floor');
+    }
     final salt = _crypto.randomBytes(16);
     final keyIdHint = _crypto.randomBytes(16);
     final dek = _crypto.randomBytes(DekWrap.dekLength);
