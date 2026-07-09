@@ -104,6 +104,91 @@ void main() {
       expect(full.sublist(consumed), bodyBytes);
     });
 
+    test('throws CorruptedFileError for unsupported KDF id', () {
+      final encoded = MyencCodec.encodeHeader(makeHeader());
+      encoded[7] = 0xFF; // kdfId position
+      expect(
+        () => MyencCodec.decodeHeader(encoded),
+        throwsA(isA<CorruptedFileError>()),
+      );
+    });
+
+    test('throws CorruptedFileError for unsupported cipher id', () {
+      final encoded = MyencCodec.encodeHeader(makeHeader());
+      encoded[34] = 0xFF; // cipherId position
+      expect(
+        () => MyencCodec.decodeHeader(encoded),
+        throwsA(isA<CorruptedFileError>()),
+      );
+    });
+
+    test('throws CorruptedFileError for chunkSize below minimum', () {
+      final encoded = MyencCodec.encodeHeader(makeHeader());
+      // Write chunkSize = 64 (below min 1024)
+      final buf = ByteData.sublistView(encoded);
+      buf.setUint32(35, 64, Endian.big);
+      expect(
+        () => MyencCodec.decodeHeader(encoded),
+        throwsA(isA<CorruptedFileError>()),
+      );
+    });
+
+    test('throws CorruptedFileError for chunkSize above maximum', () {
+      final encoded = MyencCodec.encodeHeader(makeHeader());
+      // Write chunkSize = 64 MiB (above max 16 MiB)
+      final buf = ByteData.sublistView(encoded);
+      buf.setUint32(35, 64 * 1024 * 1024, Endian.big);
+      expect(
+        () => MyencCodec.decodeHeader(encoded),
+        throwsA(isA<CorruptedFileError>()),
+      );
+    });
+
+    test('throws CorruptedFileError for opslimit out of range', () {
+      final encoded = MyencCodec.encodeHeader(makeHeader());
+      // Write opslimit = 256 (above max 64)
+      final buf = ByteData.sublistView(encoded);
+      buf.setUint32(26, 256, Endian.big);
+      expect(
+        () => MyencCodec.decodeHeader(encoded),
+        throwsA(isA<CorruptedFileError>()),
+      );
+    });
+
+    test('throws CorruptedFileError for memlimit out of range', () {
+      final encoded = MyencCodec.encodeHeader(makeHeader());
+      // Write memlimit = 0 (below min 8)
+      final buf = ByteData.sublistView(encoded);
+      buf.setUint32(30, 0, Endian.big);
+      expect(
+        () => MyencCodec.decodeHeader(encoded),
+        throwsA(isA<CorruptedFileError>()),
+      );
+    });
+
+    test('throws CorruptedFileError for unknown flag bits', () {
+      final encoded = MyencCodec.encodeHeader(makeHeader());
+      encoded[6] = 0xFE; // flags: all bits set except bit0
+      expect(
+        () => MyencCodec.decodeHeader(encoded),
+        throwsA(isA<CorruptedFileError>()),
+      );
+    });
+
+    test('throws CorruptedFileError for unknown wrap type', () {
+      final encoded = MyencCodec.encodeHeader(makeHeader());
+      encoded[56] = 0xFF; // first wrap type byte (no wraps → wrap count = 0)
+      // We need a wrap to test unknown type — write wrap count=1
+      encoded[55] = 0x01;
+      // type=0xFF, length=8, 8 zero data bytes
+      final extra = Uint8List.fromList([0xFF, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+      final modified = Uint8List.fromList([...encoded, ...extra]);
+      expect(
+        () => MyencCodec.decodeHeader(modified),
+        throwsA(isA<CorruptedFileError>()),
+      );
+    });
+
     test('filenameEncrypted flag reflects flags bit0', () {
       final h = FileHeader(
         version: FileHeader.supportedVersion,

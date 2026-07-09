@@ -66,7 +66,11 @@ class MyencCodec {
     final version = buf.getUint8(o++);
     if (version > FileHeader.supportedVersion) throw VersionTooNewError(version);
     final flags = buf.getUint8(o++);
+    if (flags & ~FileHeader.knownFlagsMask != 0) {
+      throw CorruptedFileError('unknown flag bits $flags');
+    }
     final kdfId = buf.getUint8(o++);
+    if (kdfId != FileHeader.kdfArgon2id) throw CorruptedFileError('unsupported KDF $kdfId');
 
     final saltLen = buf.getUint16(o, Endian.big); o += 2;
     if (saltLen != _saltLength) throw CorruptedFileError('unexpected salt length $saltLen');
@@ -75,8 +79,21 @@ class MyencCodec {
 
     final opslimit = buf.getUint32(o, Endian.big); o += 4;
     final memlimit = buf.getUint32(o, Endian.big); o += 4;
+    if (opslimit < FileHeader.minOpslimit || opslimit > FileHeader.maxOpslimit) {
+      throw CorruptedFileError('opslimit $opslimit out of range');
+    }
+    if (memlimit < FileHeader.minMemlimitKib || memlimit > FileHeader.maxMemlimitKib) {
+      throw CorruptedFileError('memlimit $memlimit out of range');
+    }
     final cipherId = buf.getUint8(o++);
+    if (cipherId != FileHeader.cipherXchacha20Poly1305) {
+      throw CorruptedFileError('unsupported cipher $cipherId');
+    }
+
     final chunkSize = buf.getUint32(o, Endian.big); o += 4;
+    if (chunkSize < FileHeader.minChunkSize || chunkSize > FileHeader.maxChunkSize) {
+      throw CorruptedFileError('chunk size $chunkSize out of range');
+    }
 
     if (o + _keyIdLength > bytes.length) throw CorruptedFileError('file too short for key-id');
     final keyIdHint = Uint8List.fromList(bytes.sublist(o, o + _keyIdLength)); o += _keyIdLength;
@@ -90,7 +107,10 @@ class MyencCodec {
       if (o + wrapLen > bytes.length) throw CorruptedFileError('truncated wrap data');
       final wrapData = Uint8List.fromList(bytes.sublist(o, o + wrapLen)); o += wrapLen;
       final wrapType = WrapType.fromCode(typeCode);
-      if (wrapType != null) wraps.add(WrapEntry(type: wrapType, bytes: wrapData));
+      if (wrapType == null) {
+        throw CorruptedFileError('unknown wrap type $typeCode');
+      }
+      wraps.add(WrapEntry(type: wrapType, bytes: wrapData));
     }
 
     if (o + FileHeader.secretstreamHeaderLength > bytes.length) {
