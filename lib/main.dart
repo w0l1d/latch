@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:sodium/sodium_sumo.dart';
 import 'core/app_crypto.dart';
 import 'core/router.dart';
 import 'shared/theme/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final sodium = await SodiumSumoInit.init();
-  await AppCrypto.init(sodium);
+  await AppCrypto.init();
   runApp(const LatchApp());
 }
 

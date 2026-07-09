@@ -1,24 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
+import 'dart:isolate';
 import 'package:myenc_core/myenc_core.dart';
-import 'package:myenc_adapters/myenc_adapters.dart';
-import 'package:sodium/sodium_sumo.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'crypto_stub.dart' show PassphraseResult, CryptoStub;
-
-// Set by AppCrypto.init() before any crypto calls.
-late final SodiumSumo sodiumInstance;
+import 'isolate_worker.dart';
 
 class AppCrypto {
-  static late final SodiumCryptoAdapter _crypto;
-  static late final FileIoDart _io;
   static late final KdfParams _kdfParams;
 
-  static Future<void> init(SodiumSumo sodium) async {
-    sodiumInstance = sodium;
-    _crypto = SodiumCryptoAdapter(sodium);
-    _io = FileIoDart();
+  static Future<void> init() async {
     _kdfParams = await _loadKdfParams();
   }
 
@@ -39,71 +30,48 @@ class AppCrypto {
   /// Yields overall progress 0.0–1.0; last value is 1.0.
   /// Throws [LatchError] subtypes on failure.
   ///
-  /// Output is streamed directly to disk — no whole-file buffering.
-  /// Mid-stream failures leave no partial output (atomic temp→rename).
+  /// Runs in a background isolate — Argon2id and streaming I/O
+  /// never block the UI thread.
   static Stream<double> encryptFiles(
     List<String> files,
     String passphrase, {
     bool deleteOriginals = false,
   }) async* {
     final pw = utf8.encode(passphrase);
+    final port = ReceivePort();
+    final isolate = await Isolate.spawn(latchWorker, port.sendPort);
+    bool done = false;
+
     try {
-    final svc = EnvelopeService(_crypto);
-
-    for (int i = 0; i < files.length; i++) {
-      final path = files[i];
-      final totalBytes = await _io.fileSize(path);
-      int readBytes = 0;
-
-      Stream<Uint8List> tracked() async* {
-        await for (final chunk in _io.openRead(path)) {
-          readBytes += chunk.length;
-          yield chunk;
+      // Handshake: get the worker's SendPort.
+      SendPort? workerPort;
+      await for (final msg in port) {
+        if (workerPort == null) {
+          workerPort = msg as SendPort;
+          workerPort.send({
+            'cmd': 'encrypt',
+            'files': files,
+            'passphrase': pw,
+            'opslimit': _kdfParams.opslimit,
+            'memlimit': _kdfParams.memlimit,
+            'deleteOriginals': deleteOriginals,
+          });
+          continue;
+        }
+        final map = msg as Map<String, dynamic>;
+        switch (map['type']) {
+          case 'progress':
+            yield map['pct'] as double;
+          case 'error':
+            _throwTypedError(map['code'] as String, map['message'] as String);
+          case 'done':
+            done = true;
+            return;
         }
       }
-
-      final outPath = _io.resolveNameCollision('$path.latch');
-      // Bridge: each chunk goes to disk immediately, no buffering.
-      final sink = StreamController<Uint8List>();
-      final writeDone = _io.writeChunked(outPath, sink.stream);
-      int lastPct = -1;
-
-      try {
-        await for (final chunk in svc.encrypt(
-          plaintext: tracked(),
-          passphrase: pw,
-          params: _kdfParams,
-        )) {
-          sink.add(chunk);
-          final fileFrac =
-              totalBytes > 0 ? (readBytes / totalBytes).clamp(0.0, 1.0) : 1.0;
-          final overall = (i + fileFrac) / files.length;
-          final pct = (overall * 100).round();
-          if (pct != lastPct) {
-            yield overall;
-            lastPct = pct;
-          }
-        }
-        await sink.close();
-        await writeDone;
-      } catch (e) {
-        // Signal the write path to abort and delete the tmp file.
-        sink.addError(e);
-        await sink.close();
-        rethrow;
-      }
-
-      if (deleteOriginals) await _io.deleteFile(path);
-
-      yield (i + 1.0) / files.length;
-    }
-
-    yield 1.0;
     } finally {
-      // Zero the passphrase bytes as soon as the encryption loop is done.
-      // Note: Dart strings are immutable — the original String from the UI
-      // survives in the text-field widget's memory until GC. This is a known
-      // Dart limitation; prefer SecureKey for derived key material.
+      port.close();
+      if (!done) isolate.kill(priority: Isolate.immediate);
       pw.fillRange(0, pw.length, 0);
     }
   }
@@ -112,59 +80,54 @@ class AppCrypto {
   /// Yields progress 0.0–1.0; last value is 1.0.
   /// Throws [WrongPassphraseError] or [CorruptedFileError] on failure.
   ///
-  /// Output is streamed directly to disk — no whole-file buffering.
-  /// Mid-stream failures leave no partial output (atomic temp→rename).
+  /// Runs in a background isolate — Argon2id never blocks the UI thread.
   static Stream<double> decryptFile(String filePath, String passphrase) async* {
     final pw = utf8.encode(passphrase);
-    try {
-    final svc = EnvelopeService(_crypto);
-
-    final totalBytes = await _io.fileSize(filePath);
-    int readBytes = 0;
-
-    Stream<Uint8List> tracked() async* {
-      await for (final chunk in _io.openRead(filePath)) {
-        readBytes += chunk.length;
-        yield chunk;
-      }
-    }
-
-    final outPath = _io.resolveNameCollision(
-        _io.withoutSuffix(filePath, '.latch'));
-    final sink = StreamController<Uint8List>();
-    final writeDone = _io.writeChunked(outPath, sink.stream);
-    int lastPct = -1;
+    final port = ReceivePort();
+    final isolate = await Isolate.spawn(latchWorker, port.sendPort);
+    bool done = false;
 
     try {
-      await for (final chunk in svc.decrypt(
-        ciphertext: tracked(),
-        passphrase: pw,
-      )) {
-        sink.add(chunk);
-        final progress =
-            totalBytes > 0 ? (readBytes / totalBytes).clamp(0.0, 0.98) : 0.5;
-        final pct = (progress * 100).round();
-        if (pct != lastPct) {
-          yield progress;
-          lastPct = pct;
+      SendPort? workerPort;
+      await for (final msg in port) {
+        if (workerPort == null) {
+          workerPort = msg as SendPort;
+          workerPort.send({
+            'cmd': 'decrypt',
+            'file': filePath,
+            'passphrase': pw,
+          });
+          continue;
+        }
+        final map = msg as Map<String, dynamic>;
+        switch (map['type']) {
+          case 'progress':
+            yield map['pct'] as double;
+          case 'error':
+            _throwTypedError(map['code'] as String, map['message'] as String);
+          case 'done':
+            done = true;
+            return;
         }
       }
-      await sink.close();
-      await writeDone;
-    } catch (e) {
-      // Signal the write path to abort and delete the tmp file.
-      sink.addError(e);
-      await sink.close();
-      rethrow;
-    }
-
-    yield 1.0;
     } finally {
-      // Zero the passphrase bytes.
-      // Note: Dart strings are immutable — the original String from the UI
-      // survives in the text-field widget's memory until GC. This is a known
-      // Dart limitation; prefer SecureKey for derived key material.
+      port.close();
+      if (!done) isolate.kill(priority: Isolate.immediate);
       pw.fillRange(0, pw.length, 0);
+    }
+  }
+
+  /// Reconstructs typed LatchError from the isolate's error report.
+  static Never _throwTypedError(String code, String message) {
+    switch (code) {
+      case 'wrong_passphrase':
+        throw WrongPassphraseError();
+      case 'corrupted':
+        throw CorruptedFileError(message);
+      case 'version':
+        throw VersionTooNewError(0);
+      default:
+        throw Exception('crypto isolate: $code — $message');
     }
   }
 }

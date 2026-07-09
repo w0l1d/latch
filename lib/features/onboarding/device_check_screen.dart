@@ -5,7 +5,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:myenc_core/myenc_core.dart';
 import 'package:sodium/sodium_sumo.dart';
 import '../../shared/theme/app_theme.dart';
-import '../../core/app_crypto.dart';
 
 // Target: find KDF params where one derivation takes >= 150ms.
 // Floor: opslimit >= 2, memlimit >= 64 MiB (KdfParams.minMemlimitKib).
@@ -46,7 +45,8 @@ class _DeviceCheckScreenState extends State<DeviceCheckScreen> {
   }
 
   // Run Argon2id with increasing params until derivation takes >= 150ms.
-  // Uses the sodium adapter that was initialised in main().
+  // Initialized its own sodium instance — the benchmark intentionally runs on
+  // the UI thread to measure real user-perceived cost.
   Future<KdfParams> _calibrate() async {
     const targetMs = 150;
     const testPw = [0x74, 0x65, 0x73, 0x74]; // "test"
@@ -55,8 +55,11 @@ class _DeviceCheckScreenState extends State<DeviceCheckScreen> {
     int ops = KdfParams.minOpslimit;
     int mem = KdfParams.minMemlimitKib; // 64 MiB
 
+    final sodium = await SodiumSumoInit.init();
+    final pwhash = sodium.crypto.pwhash;
+
     // Warm-up pass (JIT / caching effects)
-    sodiumInstance.crypto.pwhash.call(
+    pwhash.call(
       outLen: 32,
       password: Int8List.fromList(testPw),
       salt: testSalt,
@@ -67,7 +70,7 @@ class _DeviceCheckScreenState extends State<DeviceCheckScreen> {
 
     for (int attempt = 0; attempt < 8; attempt++) {
       final sw = Stopwatch()..start();
-      sodiumInstance.crypto.pwhash.call(
+      pwhash.call(
         outLen: 32,
         password: Int8List.fromList(testPw),
         salt: testSalt,
