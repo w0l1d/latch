@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myenc_core/myenc_core.dart';
@@ -32,7 +33,7 @@ void main() {
   group('SodiumCryptoAdapter.argon2idDerive', () {
     test('returns the requested output length', () {
       final result = adapter.argon2idDerive(
-        passphrase: Uint8List.fromList('pw'.codeUnits),
+        passphrase: utf8.encode('pw'),
         salt: Uint8List(16),
         opslimit: 2,
         memlimit: 65536,
@@ -43,7 +44,7 @@ void main() {
 
     test('deterministic: same inputs yield same output', () {
       final params = (
-        passphrase: Uint8List.fromList('pw'.codeUnits),
+        passphrase: utf8.encode('pw'),
         salt: Uint8List(16),
         opslimit: 2,
         memlimit: 65536,
@@ -69,14 +70,14 @@ void main() {
     test('different passphrases yield different outputs', () {
       final salt = Uint8List(16);
       final a = adapter.argon2idDerive(
-        passphrase: Uint8List.fromList('pw1'.codeUnits),
+        passphrase: utf8.encode('pw1'),
         salt: salt,
         opslimit: 2,
         memlimit: 65536,
         outputLength: 32,
       );
       final b = adapter.argon2idDerive(
-        passphrase: Uint8List.fromList('pw2'.codeUnits),
+        passphrase: utf8.encode('pw2'),
         salt: salt,
         opslimit: 2,
         memlimit: 65536,
@@ -89,7 +90,7 @@ void main() {
   group('SodiumCryptoAdapter.secretboxSeal / secretboxOpen', () {
     test('round-trips plaintext', () {
       final key = adapter.randomBytes(32);
-      final plain = Uint8List.fromList('hello sodium'.codeUnits);
+      final plain = utf8.encode('hello sodium');
       final sealed = adapter.secretboxSeal(plain, key);
       final opened = adapter.secretboxOpen(sealed, key);
       expect(opened, equals(plain));
@@ -99,7 +100,7 @@ void main() {
       final key = adapter.randomBytes(32);
       final wrongKey = adapter.randomBytes(32);
       final sealed = adapter.secretboxSeal(
-          Uint8List.fromList('secret'.codeUnits), key);
+          utf8.encode('secret'), key);
       expect(() => adapter.secretboxOpen(sealed, wrongKey),
           throwsA(isA<WrongPassphraseError>()));
     });
@@ -107,7 +108,7 @@ void main() {
     test('throws WrongPassphraseError for tampered ciphertext', () {
       final key = adapter.randomBytes(32);
       final sealed = adapter.secretboxSeal(
-          Uint8List.fromList('secret'.codeUnits), key);
+          utf8.encode('secret'), key);
       final tampered = Uint8List.fromList(sealed);
       tampered[tampered.length - 1] ^= 0xFF;
       expect(() => adapter.secretboxOpen(tampered, key),
@@ -131,7 +132,7 @@ void main() {
     test('round-trips small plaintext', () async {
       final key = adapter.randomBytes(32);
       const chunkSize = 65536;
-      final plain = Uint8List.fromList('Hello sodium adapter!'.codeUnits);
+      final plain = utf8.encode('Hello sodium adapter!');
 
       final encrypted = await collectStream(
           streamOf(plain).transform(
@@ -191,7 +192,7 @@ void main() {
         () async {
       final key = adapter.randomBytes(32);
       const chunkSize = 65536;
-      final plain = Uint8List.fromList('tamper test'.codeUnits);
+      final plain = utf8.encode('tamper test');
 
       final encrypted = await collectStream(
           streamOf(plain).transform(

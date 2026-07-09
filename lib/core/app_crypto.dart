@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:myenc_core/myenc_core.dart';
 import 'package:myenc_adapters/myenc_adapters.dart';
@@ -39,7 +40,7 @@ class AppCrypto {
     String passphrase, {
     bool deleteOriginals = false,
   }) async* {
-    final pw = Uint8List.fromList(passphrase.codeUnits);
+    final pw = utf8.encode(passphrase);
     final svc = EnvelopeService(_crypto);
 
     for (int i = 0; i < files.length; i++) {
@@ -88,7 +89,7 @@ class AppCrypto {
   /// Yields progress 0.0–1.0; last value is 1.0.
   /// Throws [WrongPassphraseError] or [CorruptedFileError] on failure.
   static Stream<double> decryptFile(String filePath, String passphrase) async* {
-    final pw = Uint8List.fromList(passphrase.codeUnits);
+    final pw = utf8.encode(passphrase);
     final svc = EnvelopeService(_crypto);
 
     final totalBytes = await _io.fileSize(filePath);

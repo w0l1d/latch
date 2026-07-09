@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:myenc_core/myenc_core.dart';
@@ -29,14 +30,14 @@ Future<Uint8List> _collect(Stream<Uint8List> stream) async {
 void main() {
   late EnvelopeService svc;
   const params = KdfParams(opslimit: 3, memlimit: 65536);
-  final passphrase = Uint8List.fromList('correct-passphrase'.codeUnits);
-  final wrongPassphrase = Uint8List.fromList('wrong-passphrase'.codeUnits);
+  final passphrase = utf8.encode('correct-passphrase');
+  final wrongPassphrase = utf8.encode('wrong-passphrase');
 
   setUp(() => svc = EnvelopeService(FakeCryptoPort()));
 
   group('EnvelopeService.encrypt / decrypt', () {
     test('round-trips small plaintext', () async {
-      final plain = Uint8List.fromList('Hello, Latch!'.codeUnits);
+      final plain = utf8.encode('Hello, Latch!');
       final ciphertext = await _collect(
         svc.encrypt(
           plaintext: _stream([plain]),
@@ -145,13 +146,48 @@ void main() {
       expect(header.wraps.length, 1);
       expect(header.wraps[0].type, WrapType.passphrase);
     });
+
+    test('non-ASCII passphrase round-trips (regression: UTF-8 encoding)', () async {
+      // café = e-acute — distinct UTF-16 vs UTF-8 byte sequences.
+      // codeUnits would yield [0x63,0x61,0x66,0xE9] (4 bytes);
+      // utf8.encode yields [0x63,0x61,0x66,0xC3,0xA9] (5 bytes).
+      // This test ensures the passphrase encoding is UTF-8 so files
+      // are portable to non-Dart reference implementations.
+      final passphrase = utf8.encode('café');
+      final plain = Uint8List.fromList([1, 2, 3]);
+      final ciphertext = await _collect(
+        svc.encrypt(
+          plaintext: _stream([plain]),
+          passphrase: passphrase,
+          params: params,
+        ),
+      );
+      // Decrypt with the same UTF-8 bytes
+      final recovered = await _collect(
+        svc.decrypt(
+          ciphertext: _stream([ciphertext]),
+          passphrase: passphrase,
+        ),
+      );
+      expect(recovered, plain);
+
+      // Wrong encoding (UTF-16 codeUnits) must fail
+      final wrongEncoding = Uint8List.fromList('café'.codeUnits);
+      expect(
+        () => _collect(svc.decrypt(
+          ciphertext: _stream([ciphertext]),
+          passphrase: wrongEncoding,
+        )),
+        throwsA(isA<WrongPassphraseError>()),
+      );
+    });
   });
 
   group('EnvelopeService error cases', () {
     late Uint8List validCiphertext;
 
     setUp(() async {
-      final plain = Uint8List.fromList('secret data'.codeUnits);
+      final plain = utf8.encode('secret data');
       validCiphertext = await _collect(
         svc.encrypt(
           plaintext: _stream([plain]),
