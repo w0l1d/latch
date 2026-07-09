@@ -78,26 +78,14 @@ class EnvelopeService {
   }) async* {
     final reader = _StreamReader(ciphertext);
 
-    // Parse fixed 56-byte prefix
+    // Read the fixed 56-byte prefix.
     final fixed = await reader.readExact(56);
     if (fixed == null) throw CorruptedFileError('file too short for header');
 
-    final magic = [0x4C, 0x41, 0x54, 0x43, 0x48];
-    for (int i = 0; i < 5; i++) {
-      if (fixed[i] != magic[i]) throw CorruptedFileError('invalid magic bytes');
-    }
-
-    final version = fixed[5];
-    if (version > FileHeader.supportedVersion) throw VersionTooNewError(version);
-    final saltLen = (fixed[8] << 8) | fixed[9];
-    if (saltLen != 16) throw CorruptedFileError('unexpected salt length $saltLen');
-    final salt = fixed.sublist(10, 26);
-    final opslimit = _u32(fixed, 26);
-    final memlimit = _u32(fixed, 30);
-    final chunkSize = _u32(fixed, 35);
     final wrapCount = fixed[55];
+    final wrapChunks = <Uint8List>[fixed];
 
-    final wraps = <WrapEntry>[];
+    // Read the variable-length wrap list.
     for (int i = 0; i < wrapCount; i++) {
       final typeB = await reader.readExact(1);
       final lenB = await reader.readExact(2);
@@ -105,28 +93,41 @@ class EnvelopeService {
       final wrapLen = (lenB[0] << 8) | lenB[1];
       final wrapData = await reader.readExact(wrapLen);
       if (wrapData == null) throw CorruptedFileError('truncated wrap data');
-      final wrapType = WrapType.fromCode(typeB[0]);
-      if (wrapType != null) wraps.add(WrapEntry(type: wrapType, bytes: wrapData));
+      wrapChunks.add(typeB);
+      wrapChunks.add(lenB);
+      wrapChunks.add(wrapData);
     }
 
+    // Read the secretstream header.
     final ssHeader =
         await reader.readExact(FileHeader.secretstreamHeaderLength);
     if (ssHeader == null) throw CorruptedFileError('truncated secretstream header');
+    wrapChunks.add(ssHeader);
 
-    final pw = wraps.where((w) => w.type == WrapType.passphrase).firstOrNull;
+    // Assemble the full header buffer and decode via MyencCodec (single parser).
+    final totalLen = wrapChunks.fold<int>(0, (s, c) => s + c.length);
+    final headerBuf = Uint8List(totalLen);
+    int off = 0;
+    for (final c in wrapChunks) {
+      headerBuf.setRange(off, off + c.length, c);
+      off += c.length;
+    }
+    final (hdr, _) = MyencCodec.decodeHeader(headerBuf);
+
+    final pw = hdr.wraps.where((w) => w.type == WrapType.passphrase).firstOrNull;
     if (pw == null) throw CorruptedFileError('no passphrase wrap found');
     final dek = DekWrap.unwrapPassphrase(
       crypto: _crypto,
       entry: pw,
       passphrase: passphrase,
-      salt: salt,
-      opslimit: opslimit,
-      memlimit: memlimit,
+      salt: hdr.salt,
+      opslimit: hdr.opslimit,
+      memlimit: hdr.memlimit,
     );
 
-    // Prepend ssHeader to the body and decrypt.
-    final bodyWithHeader = _prependStream(ssHeader, reader.remainingStream());
-    final transformer = _crypto.createDecryptTransformer(dek, chunkSize);
+    // Prepend the ss header to the body and decrypt.
+    final bodyWithHeader = _prependStream(hdr.secretstreamHeader, reader.remainingStream());
+    final transformer = _crypto.createDecryptTransformer(dek, hdr.chunkSize);
     yield* bodyWithHeader.transform(transformer);
   }
 
@@ -135,9 +136,6 @@ class EnvelopeService {
     yield prefix;
     yield* rest;
   }
-
-  static int _u32(Uint8List b, int o) =>
-      (b[o] << 24) | (b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3];
 }
 
 // Reads exact byte counts from a chunked stream, then allows resuming as a stream.

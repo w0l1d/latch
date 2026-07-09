@@ -124,9 +124,9 @@ void main() {
 
     test('throws CorruptedFileError for chunkSize below minimum', () {
       final encoded = MyencCodec.encodeHeader(makeHeader());
-      // Write chunkSize = 64 (below min 1024)
+      // Write chunkSize = 32 (below min 64)
       final buf = ByteData.sublistView(encoded);
-      buf.setUint32(35, 64, Endian.big);
+      buf.setUint32(35, 32, Endian.big);
       expect(
         () => MyencCodec.decodeHeader(encoded),
         throwsA(isA<CorruptedFileError>()),

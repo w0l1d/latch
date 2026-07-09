@@ -98,7 +98,7 @@ void main() {
           plaintext: _streamBytes(plain, 1),
           passphrase: passphrase,
           params: params,
-          chunkSize: 32,
+          chunkSize: 64,
         ),
       );
       // Feed ciphertext in 1-byte chunks to test reader buffering
