@@ -1,0 +1,29 @@
+name: latch
+description: "Stateless offline file encryption app."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  myenc_core:
+    path: packages/myenc_core
+  myenc_adapters:
+    path: packages/myenc_adapters
+  sodium: ^4.0.0
+  go_router: ^17.3.0
+  file_picker: ^10.3.3
+  shared_preferences: ^2.5.5
+  path: ^1.9.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
