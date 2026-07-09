@@ -36,6 +36,9 @@ class FileHeader {
   final Uint8List keyIdHint;
   final List<WrapEntry> wraps;
   final Uint8List secretstreamHeader;
+  /// Present only when [filenameEncrypted] is true (flags bit0 = 1).
+  /// Encrypted with the DEK via secretbox.
+  final Uint8List? encryptedFilename;
 
   const FileHeader({
     required this.version,
@@ -49,6 +52,7 @@ class FileHeader {
     required this.keyIdHint,
     required this.wraps,
     required this.secretstreamHeader,
+    this.encryptedFilename,
   });
 
   bool get filenameEncrypted => (flags & 0x01) != 0;

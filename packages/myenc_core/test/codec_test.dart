@@ -189,7 +189,8 @@ void main() {
       );
     });
 
-    test('filenameEncrypted flag reflects flags bit0', () {
+    test('round-trips encrypted filename field', () {
+      final encName = Uint8List.fromList([0xAA, 0xBB, 0xCC, 0xDD]);
       final h = FileHeader(
         version: FileHeader.supportedVersion,
         flags: 0x01,
@@ -202,9 +203,80 @@ void main() {
         keyIdHint: Uint8List(16),
         wraps: const [],
         secretstreamHeader: Uint8List(24),
+        encryptedFilename: encName,
       );
       final (decoded, _) = MyencCodec.decodeHeader(MyencCodec.encodeHeader(h));
       expect(decoded.filenameEncrypted, isTrue);
+      expect(decoded.encryptedFilename, equals(encName));
+    });
+
+    test('flags=0 but no encryptedFilename → decodes with null', () {
+      final h = FileHeader(
+        version: FileHeader.supportedVersion,
+        flags: 0x00,
+        kdfId: FileHeader.kdfArgon2id,
+        salt: Uint8List(16),
+        opslimit: 3,
+        memlimit: 65536,
+        cipherId: FileHeader.cipherXchacha20Poly1305,
+        chunkSize: FileHeader.defaultChunkSize,
+        keyIdHint: Uint8List(16),
+        wraps: const [],
+        secretstreamHeader: Uint8List(24),
+      );
+      final (decoded, _) = MyencCodec.decodeHeader(MyencCodec.encodeHeader(h));
+      expect(decoded.filenameEncrypted, isFalse);
+      expect(decoded.encryptedFilename, isNull);
+    });
+
+    test('throws CorruptedFileError for truncated enc-filename length', () {
+      final encName = Uint8List(8);
+      final h = FileHeader(
+        version: FileHeader.supportedVersion,
+        flags: 0x01,
+        kdfId: FileHeader.kdfArgon2id,
+        salt: Uint8List(16),
+        opslimit: 3,
+        memlimit: 65536,
+        cipherId: FileHeader.cipherXchacha20Poly1305,
+        chunkSize: FileHeader.defaultChunkSize,
+        keyIdHint: Uint8List(16),
+        wraps: const [],
+        secretstreamHeader: Uint8List(24),
+        encryptedFilename: encName,
+      );
+      final encoded = MyencCodec.encodeHeader(h);
+      // Cut after wraps, mid-filename-length field
+      final truncated = encoded.sublist(0, encoded.length - (24 + 8 + 2) + 1);
+      expect(
+        () => MyencCodec.decodeHeader(truncated),
+        throwsA(isA<CorruptedFileError>()),
+      );
+    });
+
+    test('throws CorruptedFileError for truncated enc-filename data', () {
+      final encName = Uint8List(8);
+      final h = FileHeader(
+        version: FileHeader.supportedVersion,
+        flags: 0x01,
+        kdfId: FileHeader.kdfArgon2id,
+        salt: Uint8List(16),
+        opslimit: 3,
+        memlimit: 65536,
+        cipherId: FileHeader.cipherXchacha20Poly1305,
+        chunkSize: FileHeader.defaultChunkSize,
+        keyIdHint: Uint8List(16),
+        wraps: const [],
+        secretstreamHeader: Uint8List(24),
+        encryptedFilename: encName,
+      );
+      final encoded = MyencCodec.encodeHeader(h);
+      // Cut mid-filename data
+      final truncated = encoded.sublist(0, encoded.length - (24 + 4));
+      expect(
+        () => MyencCodec.decodeHeader(truncated),
+        throwsA(isA<CorruptedFileError>()),
+      );
     });
   });
 }

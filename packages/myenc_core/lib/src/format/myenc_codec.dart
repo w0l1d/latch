@@ -14,7 +14,12 @@ class MyencCodec {
     for (final w in h.wraps) {
       wrapBytes += 3 + w.bytes.length; // type(1) + len(2) + data
     }
-    final totalSize = 56 + wrapBytes + FileHeader.secretstreamHeaderLength;
+    int filenameBytes = 0;
+    if (h.filenameEncrypted && h.encryptedFilename != null) {
+      filenameBytes = 2 + h.encryptedFilename!.length; // len(2) + data
+    }
+    final totalSize =
+        56 + wrapBytes + filenameBytes + FileHeader.secretstreamHeaderLength;
     final buf = ByteData(totalSize);
     int o = 0;
 
@@ -41,6 +46,15 @@ class MyencCodec {
       buf.setUint8(o++, w.type.code);
       buf.setUint16(o, w.bytes.length, Endian.big); o += 2;
       for (final b in w.bytes) {
+        buf.setUint8(o++, b);
+      }
+    }
+
+    // Encrypted filename (only when flags bit0 = 1).
+    if (h.filenameEncrypted && h.encryptedFilename != null) {
+      final ef = h.encryptedFilename!;
+      buf.setUint16(o, ef.length, Endian.big); o += 2;
+      for (final b in ef) {
         buf.setUint8(o++, b);
       }
     }
@@ -113,6 +127,20 @@ class MyencCodec {
       wraps.add(WrapEntry(type: wrapType, bytes: wrapData));
     }
 
+    // Encrypted filename (only when flags bit0 = 1).
+    Uint8List? encFilename;
+    if ((flags & 0x01) != 0) {
+      if (o + 2 > bytes.length) {
+        throw CorruptedFileError('truncated enc-filename length');
+      }
+      final encFilenameLen = buf.getUint16(o, Endian.big); o += 2;
+      if (o + encFilenameLen > bytes.length) {
+        throw CorruptedFileError('truncated enc-filename data');
+      }
+      encFilename = Uint8List.fromList(bytes.sublist(o, o + encFilenameLen));
+      o += encFilenameLen;
+    }
+
     if (o + FileHeader.secretstreamHeaderLength > bytes.length) {
       throw CorruptedFileError('truncated secretstream header');
     }
@@ -134,6 +162,7 @@ class MyencCodec {
         keyIdHint: keyIdHint,
         wraps: wraps,
         secretstreamHeader: ssHeader,
+        encryptedFilename: encFilename,
       ),
       o,
     );

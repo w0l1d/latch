@@ -14,12 +14,16 @@ class EnvelopeService {
   EnvelopeService(this._crypto);
 
   /// Encrypts [plaintext] and yields: encoded FileHeader + encrypted body chunks.
+  ///
+  /// If [filename] is set and &flags includes bit0, the filename is encrypted
+  /// with the DEK and stored in the header (spec §6, §7.15, and §8).
   Stream<Uint8List> encrypt({
     required Stream<Uint8List> plaintext,
     required Uint8List passphrase,
     required KdfParams params,
     int flags = 0,
     int chunkSize = FileHeader.defaultChunkSize,
+    String? filename,
   }) async* {
     if (!params.meetsFloor()) {
       throw CorruptedFileError('KDF params below security floor');
@@ -36,6 +40,15 @@ class EnvelopeService {
       opslimit: params.opslimit,
       memlimit: params.memlimit,
     );
+
+    // Encrypt the filename with the DEK before zeroizing.
+    Uint8List? encFilename;
+    if ((flags & 0x01) != 0 && filename != null && filename.isNotEmpty) {
+      encFilename = _crypto.secretboxSeal(
+        Uint8List.fromList(filename.codeUnits),
+        dek,
+      );
+    }
 
     // Encrypt the plaintext stream. The transformer prepends the 24-byte
     // secretstream header as the first bytes of its output.
@@ -63,6 +76,7 @@ class EnvelopeService {
       keyIdHint: keyIdHint,
       wraps: [passphraseWrap],
       secretstreamHeader: ssHeader,
+      encryptedFilename: encFilename,
     );
 
     yield MyencCodec.encodeHeader(header);
@@ -85,6 +99,7 @@ class EnvelopeService {
     if (fixed == null) throw CorruptedFileError('file too short for header');
 
     final wrapCount = fixed[55];
+    final flags = fixed[6];
     final wrapChunks = <Uint8List>[fixed];
 
     // Read the variable-length wrap list.
@@ -98,6 +113,17 @@ class EnvelopeService {
       wrapChunks.add(typeB);
       wrapChunks.add(lenB);
       wrapChunks.add(wrapData);
+    }
+
+    // Encrypted filename (only when flags bit0 = 1).
+    if ((flags & 0x01) != 0) {
+      final encLenB = await reader.readExact(2);
+      if (encLenB == null) throw CorruptedFileError('truncated enc-filename length');
+      final encFilenameLen = (encLenB[0] << 8) | encLenB[1];
+      final encFilename = await reader.readExact(encFilenameLen);
+      if (encFilename == null) throw CorruptedFileError('truncated enc-filename data');
+      wrapChunks.add(encLenB);
+      wrapChunks.add(encFilename);
     }
 
     // Read the secretstream header.
@@ -133,6 +159,17 @@ class EnvelopeService {
     // DEK has been copied to guarded memory by SecureKey; zero the plain copy.
     dek.fillRange(0, dek.length, 0);
     yield* bodyWithHeader.transform(transformer);
+  }
+
+  /// Decrypts the encrypted filename from [header] using the given [dek].
+  /// Returns null if the header has no encrypted filename.
+  static Uint8List? decryptFilename({
+    required CryptoPort crypto,
+    required FileHeader header,
+    required Uint8List dek,
+  }) {
+    if (header.encryptedFilename == null) return null;
+    return crypto.secretboxOpen(header.encryptedFilename!, dek);
   }
 
   static Stream<Uint8List> _prependStream(
