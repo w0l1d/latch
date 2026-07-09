@@ -4,9 +4,9 @@ import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/latch_button.dart';
 
 class DecryptSuccessScreen extends StatelessWidget {
-  final String file;
+  final List<String> files;
 
-  const DecryptSuccessScreen({super.key, required this.file});
+  const DecryptSuccessScreen({super.key, required this.files});
 
   @override
   Widget build(BuildContext context) {
@@ -32,14 +32,15 @@ class DecryptSuccessScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 20),
                 Text(
-                  'File restored.',
+                  files.length > 1 ? '${files.length} files restored.' : 'File restored.',
                   style: Theme.of(context).textTheme.displayMedium,
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 24),
-                Container(
+                ...files.map((f) => Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(14),
+                  margin: const EdgeInsets.only(bottom: 8),
                   decoration: BoxDecoration(
                     color: LatchColors.safeLight,
                     border: Border.all(color: LatchColors.safeBorder, width: 1.5),
@@ -54,7 +55,7 @@ class DecryptSuccessScreen extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              file,
+                              f,
                               style: const TextStyle(fontSize: 14, color: Color(0xFF2A6F57)),
                             ),
                             const Text(
@@ -66,7 +67,7 @@ class DecryptSuccessScreen extends StatelessWidget {
                       ),
                     ],
                   ),
-                ),
+                )),
                 const Spacer(),
                 Row(
                   children: [

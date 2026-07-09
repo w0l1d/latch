@@ -5,18 +5,10 @@ import 'package:myenc_core/myenc_core.dart';
 import 'package:myenc_adapters/myenc_adapters.dart';
 import 'package:sodium/sodium_sumo.dart';
 
-// Messages are Map<String, dynamic> for safe cross-isolate serialization.
-// Worker receives: {'cmd': 'encrypt'|'decrypt', ...}
-// Main receives:  {'type': 'progress', 'pct': 0.5}
-//                 {'type': 'done'}
-//                 {'type': 'error', 'message': '...'}
-
 /// Top-level entry point for Isolate.spawn.
-/// Receives the main isolate's SendPort, initializes sodium,
-/// processes a single task, and sends progress/done/error back.
 void latchWorker(SendPort mainPort) async {
   final myPort = ReceivePort();
-  mainPort.send(myPort.sendPort); // tell main how to reach us
+  mainPort.send(myPort.sendPort);
 
   final raw = await myPort.first;
   myPort.close();
@@ -29,9 +21,9 @@ void latchWorker(SendPort mainPort) async {
 
     switch (task['cmd']) {
       case 'encrypt':
-        await _encrypt(crypto, io, task, mainPort);
+        await _encryptBatch(crypto, io, task, mainPort);
       case 'decrypt':
-        await _decrypt(crypto, io, task, mainPort);
+        await _decryptBatch(crypto, io, task, mainPort);
     }
 
     mainPort.send({'type': 'done'});
@@ -47,7 +39,7 @@ void latchWorker(SendPort mainPort) async {
   }
 }
 
-Future<void> _encrypt(
+Future<void> _encryptBatch(
   SodiumCryptoAdapter crypto,
   FileIoDart io,
   Map<String, dynamic> task,
@@ -68,75 +60,131 @@ Future<void> _encrypt(
 
   for (int i = 0; i < files.length; i++) {
     final path = files[i];
-    final totalBytes = await io.fileSize(path);
-    int readBytes = 0;
-
-    Stream<Uint8List> tracked() async* {
-      await for (final chunk in io.openRead(path)) {
-        readBytes += chunk.length;
-        yield chunk;
-      }
-    }
-
-    final outPath = io.resolveNameCollision('$path.latch');
-    final sink = StreamController<Uint8List>();
-    final writeDone = io.writeChunked(outPath, sink.stream);
-    int lastPct = -1;
 
     try {
-      await for (final chunk in svc.encrypt(
-        plaintext: tracked(),
-        passphrase: passphrase,
-        params: params,
-      )) {
-        sink.add(chunk);
-        final fileFrac =
-            totalBytes > 0 ? (readBytes / totalBytes).clamp(0.0, 1.0) : 1.0;
-        final overall = (i + fileFrac) / files.length;
-        final pct = (overall * 100).round();
-        if (pct != lastPct) {
-          mainPort.send({'type': 'progress', 'pct': overall});
-          lastPct = pct;
-        }
-      }
-      await sink.close();
-      await writeDone;
+      await _encryptOne(crypto, io, svc, path, passphrase, params,
+          deleteOriginals, i, files.length, mainPort);
+      mainPort.send({'type': 'file_done', 'path': path, 'ok': true, 'error': null});
     } catch (e) {
-      sink.addError(e);
-      await sink.close();
-      rethrow;
+      mainPort.send({
+        'type': 'file_done',
+        'path': path,
+        'ok': false,
+        'error': '$e',
+      });
     }
-
-    if (deleteOriginals) await io.deleteFile(path);
-
-    mainPort.send({'type': 'progress', 'pct': (i + 1.0) / files.length});
   }
 
   mainPort.send({'type': 'progress', 'pct': 1.0});
 }
 
-Future<void> _decrypt(
+Future<void> _encryptOne(
+  SodiumCryptoAdapter crypto,
+  FileIoDart io,
+  EnvelopeService svc,
+  String path,
+  Uint8List passphrase,
+  KdfParams params,
+  bool deleteOriginals,
+  int index,
+  int total,
+  SendPort mainPort,
+) async {
+  final totalBytes = await io.fileSize(path);
+  int readBytes = 0;
+
+  Stream<Uint8List> tracked() async* {
+    await for (final chunk in io.openRead(path)) {
+      readBytes += chunk.length;
+      yield chunk;
+    }
+  }
+
+  final outPath = io.resolveNameCollision('$path.latch');
+  final sink = StreamController<Uint8List>();
+  final writeDone = io.writeChunked(outPath, sink.stream);
+  int lastPct = -1;
+
+  try {
+    await for (final chunk in svc.encrypt(
+      plaintext: tracked(),
+      passphrase: passphrase,
+      params: params,
+    )) {
+      sink.add(chunk);
+      final fileFrac =
+          totalBytes > 0 ? (readBytes / totalBytes).clamp(0.0, 1.0) : 1.0;
+      final overall = (index + fileFrac) / total;
+      final pct = (overall * 100).round();
+      if (pct != lastPct) {
+        mainPort.send({'type': 'progress', 'pct': overall});
+        lastPct = pct;
+      }
+    }
+    await sink.close();
+    await writeDone;
+  } catch (e) {
+    sink.addError(e);
+    await sink.close();
+    rethrow;
+  }
+
+  if (deleteOriginals) await io.deleteFile(path);
+
+  mainPort.send({'type': 'progress', 'pct': (index + 1.0) / total});
+}
+
+Future<void> _decryptBatch(
   SodiumCryptoAdapter crypto,
   FileIoDart io,
   Map<String, dynamic> task,
   SendPort mainPort,
 ) async {
-  final filePath = task['file'] as String;
+  final files = (task['files'] as List).cast<String>();
   final passphrase = task['passphrase'] as Uint8List;
   final svc = EnvelopeService(crypto);
 
-  final totalBytes = await io.fileSize(filePath);
+  for (int i = 0; i < files.length; i++) {
+    final path = files[i];
+
+    try {
+      await _decryptOne(crypto, io, svc, path, passphrase, i, files.length, mainPort);
+      mainPort.send({'type': 'file_done', 'path': path, 'ok': true, 'error': null});
+    } catch (e) {
+      mainPort.send({
+        'type': 'file_done',
+        'path': path,
+        'ok': false,
+        'error': '$e',
+      });
+    }
+  }
+
+  mainPort.send({'type': 'progress', 'pct': 1.0});
+}
+
+Future<void> _decryptOne(
+  SodiumCryptoAdapter crypto,
+  FileIoDart io,
+  EnvelopeService svc,
+  String path,
+  Uint8List passphrase,
+  int index,
+  int total,
+  SendPort mainPort,
+) async {
+  final totalBytes = await io.fileSize(path);
   int readBytes = 0;
 
   Stream<Uint8List> tracked() async* {
-    await for (final chunk in io.openRead(filePath)) {
+    await for (final chunk in io.openRead(path)) {
       readBytes += chunk.length;
       yield chunk;
     }
   }
 
   final outPath =
-      io.resolveNameCollision(io.withoutSuffix(filePath, '.latch'));
+      io.resolveNameCollision(io.withoutSuffix(path, '.latch'));
   final sink = StreamController<Uint8List>();
   final writeDone = io.writeChunked(outPath, sink.stream);
   int lastPct = -1;
@@ -149,9 +197,10 @@ Future<void> _decrypt(
       sink.add(chunk);
       final progress =
           totalBytes > 0 ? (readBytes / totalBytes).clamp(0.0, 0.98) : 0.5;
-      final pct = (progress * 100).round();
+      final overall = (index + progress) / total;
+      final pct = (overall * 100).round();
       if (pct != lastPct) {
-        mainPort.send({'type': 'progress', 'pct': progress});
+        mainPort.send({'type': 'progress', 'pct': overall});
         lastPct = pct;
       }
     }
@@ -163,5 +212,5 @@ Future<void> _decrypt(
     rethrow;
   }
 
-  mainPort.send({'type': 'progress', 'pct': 1.0});
+  mainPort.send({'type': 'progress', 'pct': (index + 1.0) / total});
 }

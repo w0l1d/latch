@@ -6,6 +6,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'crypto_stub.dart' show PassphraseResult, CryptoStub;
 import 'isolate_worker.dart';
 
+/// Per-file outcome from a batch encrypt or decrypt operation.
+class BatchResult {
+  final String path;
+  final bool ok;
+  final String? errorMessage;
+  const BatchResult({required this.path, required this.ok, this.errorMessage});
+}
+
 class AppCrypto {
   static late final KdfParams _kdfParams;
 
@@ -28,22 +36,24 @@ class AppCrypto {
 
   /// Encrypts each file in [files] (full paths).
   /// Yields overall progress 0.0–1.0; last value is 1.0.
-  /// Throws [LatchError] subtypes on failure.
   ///
-  /// Runs in a background isolate — Argon2id and streaming I/O
-  /// never block the UI thread.
+  /// One file failing does not abort the rest (spec UC-3).
+  /// If [onFileResult] is provided it is called per-file with the outcome.
+  ///
+  /// Runs in a background isolate.
   static Stream<double> encryptFiles(
     List<String> files,
     String passphrase, {
     bool deleteOriginals = false,
+    void Function(String path, bool ok, String? error)? onFileResult,
   }) async* {
+    if (files.isEmpty) return;
     final pw = utf8.encode(passphrase);
     final port = ReceivePort();
     final isolate = await Isolate.spawn(latchWorker, port.sendPort);
     bool done = false;
 
     try {
-      // Handshake: get the worker's SendPort.
       SendPort? workerPort;
       await for (final msg in port) {
         if (workerPort == null) {
@@ -62,6 +72,12 @@ class AppCrypto {
         switch (map['type']) {
           case 'progress':
             yield map['pct'] as double;
+          case 'file_done':
+            onFileResult?.call(
+              map['path'] as String,
+              map['ok'] as bool,
+              map['error'] as String?,
+            );
           case 'error':
             _throwTypedError(map['code'] as String, map['message'] as String);
           case 'done':
@@ -76,12 +92,19 @@ class AppCrypto {
     }
   }
 
-  /// Decrypts [filePath].
-  /// Yields progress 0.0–1.0; last value is 1.0.
-  /// Throws [WrongPassphraseError] or [CorruptedFileError] on failure.
+  /// Decrypts each file in [files] (full paths to .latch files).
+  /// Yields overall progress 0.0–1.0; last value is 1.0.
   ///
-  /// Runs in a background isolate — Argon2id never blocks the UI thread.
-  static Stream<double> decryptFile(String filePath, String passphrase) async* {
+  /// One file failing does not abort the rest (spec UC-3).
+  /// If [onFileResult] is provided it is called per-file with the outcome.
+  ///
+  /// Runs in a background isolate.
+  static Stream<double> decryptFiles(
+    List<String> files,
+    String passphrase, {
+    void Function(String path, bool ok, String? error)? onFileResult,
+  }) async* {
+    if (files.isEmpty) return;
     final pw = utf8.encode(passphrase);
     final port = ReceivePort();
     final isolate = await Isolate.spawn(latchWorker, port.sendPort);
@@ -94,7 +117,7 @@ class AppCrypto {
           workerPort = msg as SendPort;
           workerPort.send({
             'cmd': 'decrypt',
-            'file': filePath,
+            'files': files,
             'passphrase': pw,
           });
           continue;
@@ -103,6 +126,12 @@ class AppCrypto {
         switch (map['type']) {
           case 'progress':
             yield map['pct'] as double;
+          case 'file_done':
+            onFileResult?.call(
+              map['path'] as String,
+              map['ok'] as bool,
+              map['error'] as String?,
+            );
           case 'error':
             _throwTypedError(map['code'] as String, map['message'] as String);
           case 'done':
@@ -114,6 +143,21 @@ class AppCrypto {
       port.close();
       if (!done) isolate.kill(priority: Isolate.immediate);
       pw.fillRange(0, pw.length, 0);
+    }
+  }
+
+  /// Convenience: single-file decrypt with the batch API.
+  /// Throws on failure (unlike [decryptFiles] which reports via callback).
+  static Stream<double> decryptFile(String filePath, String passphrase) async* {
+    String? error;
+    yield* decryptFiles([filePath], passphrase, onFileResult: (path, ok, err) {
+      error = err;
+    });
+    if (error != null) {
+      if (error!.contains('WrongPassphraseError')) throw WrongPassphraseError();
+      if (error!.contains('CorruptedFileError')) throw CorruptedFileError(error!);
+      if (error!.contains('VersionTooNewError')) throw VersionTooNewError(0);
+      throw Exception(error);
     }
   }
 

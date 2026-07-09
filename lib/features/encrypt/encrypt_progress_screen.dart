@@ -25,9 +25,10 @@ class EncryptProgressScreen extends StatefulWidget {
 
 class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
   double _progress = 0;
-  int _currentIndex = 0;
   StreamSubscription<double>? _sub;
   bool _cancelled = false;
+  final _results = <BatchResult>[];
+  int _doneCount = 0;
 
   @override
   void initState() {
@@ -36,35 +37,90 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
   }
 
   void _start() {
-    final outFiles = widget.files.map((f) => '$f.latch').toList();
-
     _sub = AppCrypto.encryptFiles(
       widget.files,
       widget.passphrase,
       deleteOriginals: widget.deleteOriginals,
+      onFileResult: (path, ok, error) {
+        _results.add(BatchResult(path: path, ok: ok, errorMessage: error));
+        _doneCount++;
+      },
     ).listen(
       (prog) {
         if (!mounted || _cancelled) return;
-        setState(() {
-          _progress = prog;
-          _currentIndex =
-              (prog * widget.files.length).clamp(0, widget.files.length - 1).toInt();
-        });
-        if (prog >= 1.0) {
-          context.pushReplacement('/encrypt/success', extra: outFiles);
-        }
+        setState(() => _progress = prog);
+        if (prog >= 1.0) _onDone();
       },
       onError: (Object e) {
         if (!mounted || _cancelled) return;
-        _showError(e);
+        _showFatalError(e);
       },
     );
   }
 
-  void _showError(Object e) {
+  void _onDone() {
+    final ok = _results.where((r) => r.ok).length;
+    final bad = _results.where((r) => !r.ok).length;
+    if (ok > 0) {
+      final outFiles =
+          _results.where((r) => r.ok).map((r) => '${r.path}.latch').toList();
+      if (bad > 0) {
+        _showPartialSuccess(ok, bad);
+        return;
+      }
+      if (mounted) context.pushReplacement('/encrypt/success', extra: outFiles);
+    } else {
+      // All failed — show the first error.
+      final first = _results.firstWhere((r) => !r.ok);
+      _showError('Encryption failed', first.errorMessage ?? 'Unknown error');
+    }
+  }
+
+  void _showPartialSuccess(int ok, int bad) {
+    final listed = _results.where((r) => !r.ok).take(3).map((r) {
+      return '${p.basename(r.path)}: ${r.errorMessage ?? "error"}';
+    }).join('\n');
+    final more = bad > 3 ? '\n… and ${bad - 3} more' : '';
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        backgroundColor: LatchColors.cautionLight,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: const BorderSide(color: LatchColors.caution, width: 2),
+        ),
+        icon: const Icon(Icons.check_circle_outline, color: LatchColors.caution, size: 32),
+        title: Text('$ok file${ok > 1 ? "s" : ""} locked, $bad failed',
+            style: const TextStyle(fontWeight: FontWeight.w700)),
+        content: Text('$listed$more',
+            style: const TextStyle(color: Color(0xFF5C3D1A))),
+        actions: [
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                final outFiles =
+                    _results.where((r) => r.ok).map((r) => '${r.path}.latch').toList();
+                context.pushReplacement('/encrypt/success', extra: outFiles);
+              },
+              child: const Text('Continue'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showFatalError(Object e) {
     final msg = e is StorageFullError
         ? 'Not enough storage space to write the encrypted file.'
         : 'Encryption failed: $e';
+    _showError('Encryption failed', msg);
+  }
+
+  void _showError(String title, String message) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -75,10 +131,10 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
           side: const BorderSide(color: LatchColors.danger, width: 2),
         ),
         icon: const Icon(Icons.error_outline, color: LatchColors.danger, size: 32),
-        title: const Text('Encryption failed',
-            style: TextStyle(
+        title: Text(title,
+            style: const TextStyle(
                 color: LatchColors.danger, fontWeight: FontWeight.w700)),
-        content: Text(msg,
+        content: Text(message,
             style: const TextStyle(color: Color(0xFF7A3128))),
         actions: [
           SizedBox(
@@ -107,8 +163,10 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final fileCount = widget.files.length;
+    final currentIndex = _doneCount.clamp(0, fileCount);
     final currentName = widget.files.isNotEmpty
-        ? p.basename(widget.files[_currentIndex])
+        ? p.basename(widget.files[currentIndex.clamp(0, fileCount - 1)])
         : '';
     return PopScope(
       canPop: false,
@@ -131,7 +189,7 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
                 ),
                 const SizedBox(height: 28),
                 Text(
-                  'Locking your files…',
+                  fileCount > 1 ? 'Locking $fileCount files…' : 'Locking your file…',
                   style: Theme.of(context).textTheme.displayMedium,
                   textAlign: TextAlign.center,
                 ),
@@ -147,7 +205,9 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  '${_currentIndex + 1} of ${widget.files.length} · $currentName',
+                  fileCount > 1
+                      ? '${_doneCount + 1} of $fileCount · $currentName'
+                      : currentName,
                   style: Theme.of(context).textTheme.bodySmall,
                   textAlign: TextAlign.center,
                 ),

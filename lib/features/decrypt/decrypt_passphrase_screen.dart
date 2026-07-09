@@ -4,8 +4,8 @@ import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/latch_button.dart';
 
 class DecryptPassphraseScreen extends StatefulWidget {
-  final String file;
-  const DecryptPassphraseScreen({super.key, required this.file});
+  final List<String> files;
+  const DecryptPassphraseScreen({super.key, required this.files});
 
   @override
   State<DecryptPassphraseScreen> createState() => _DecryptPassphraseScreenState();
@@ -25,7 +25,7 @@ class _DecryptPassphraseScreenState extends State<DecryptPassphraseScreen> {
     context.push(
       '/decrypt/progress',
       extra: {
-        'file': widget.file,
+        'files': widget.files,
         'passphrase': _controller.text,
       },
     );
@@ -36,7 +36,7 @@ class _DecryptPassphraseScreenState extends State<DecryptPassphraseScreen> {
     return Scaffold(
       appBar: AppBar(
         leading: BackButton(onPressed: () => context.pop()),
-        title: const Text('Open this file'),
+        title: Text(widget.files.length > 1 ? 'Open ${widget.files.length} files' : 'Open this file'),
       ),
       body: SafeArea(
         child: Padding(
@@ -55,9 +55,14 @@ class _DecryptPassphraseScreenState extends State<DecryptPassphraseScreen> {
                     const Icon(Icons.insert_drive_file_outlined, color: LatchColors.ink),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: Text(widget.file, style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: LatchColors.ink,
-                      )),
+                      child: Text(
+                        widget.files.length == 1
+                            ? widget.files.first
+                            : '${widget.files.length} files selected',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: LatchColors.ink,
+                        ),
+                      ),
                     ),
                   ],
                 ),

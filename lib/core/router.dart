@@ -78,8 +78,8 @@ final router = GoRouter(
     GoRoute(
       path: '/decrypt/passphrase',
       builder: (ctx, state) {
-        final file = state.extra as String? ?? '';
-        return DecryptPassphraseScreen(file: file);
+        final files = state.extra as List<String>? ?? [];
+        return DecryptPassphraseScreen(files: files);
       },
     ),
     GoRoute(
@@ -87,7 +87,7 @@ final router = GoRouter(
       builder: (ctx, state) {
         final extra = state.extra as Map<String, dynamic>? ?? {};
         return DecryptProgressScreen(
-          file: extra['file'] as String? ?? '',
+          files: extra['files'] as List<String>? ?? [],
           passphrase: extra['passphrase'] as String? ?? '',
         );
       },
@@ -95,8 +95,8 @@ final router = GoRouter(
     GoRoute(
       path: '/decrypt/success',
       builder: (ctx, state) {
-        final file = state.extra as String? ?? '';
-        return DecryptSuccessScreen(file: file);
+        final files = state.extra as List<String>? ?? [];
+        return DecryptSuccessScreen(files: files);
       },
     ),
     GoRoute(path: '/settings', builder: (ctx, st) => const SettingsScreen()),
