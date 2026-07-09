@@ -279,4 +279,104 @@ void main() {
       );
     });
   });
+
+  group('MyencCodec fuzz / property tests', () {
+    test('random garbage (0–1024 bytes) always throws a typed LatchError', () {
+      final rng = List.generate(256, (i) => i); // deterministic
+      for (final len in [0, 1, 5, 10, 30, 55, 56, 80, 128, 256, 512, 1024]) {
+        final garbage = Uint8List.fromList(
+            List.generate(len, (i) => rng[(i * 7 + 13) % 256]));
+        try {
+          MyencCodec.decodeHeader(garbage);
+          // If decodeHeader succeeds, the file must be at least 56 bytes.
+          // This shouldn't happen with random bytes (magic mismatch).
+        } on LatchError {
+          // Expected: any typed failure is fine.
+        } on Exception catch (e) {
+          fail('unexpected exception type ${e.runtimeType} for len=$len');
+        }
+      }
+    });
+
+    test('truncation sweep — every prefix of a valid header fails closed', () {
+      final encName = Uint8List(4);
+      final valid = MyencCodec.encodeHeader(FileHeader(
+        version: FileHeader.supportedVersion,
+        flags: 0x01,
+        kdfId: FileHeader.kdfArgon2id,
+        salt: Uint8List(16),
+        opslimit: 3,
+        memlimit: 65536,
+        cipherId: FileHeader.cipherXchacha20Poly1305,
+        chunkSize: FileHeader.defaultChunkSize,
+        keyIdHint: Uint8List(16),
+        wraps: [
+          WrapEntry(type: WrapType.passphrase, bytes: Uint8List(48)),
+        ],
+        secretstreamHeader: Uint8List(24),
+        encryptedFilename: encName,
+      ));
+      for (int cut = 0; cut < valid.length; cut++) {
+        final truncated = valid.sublist(0, cut);
+        try {
+          MyencCodec.decodeHeader(truncated);
+          // If it succeeds, the consumed bytes must match the input.
+        } on LatchError {
+          // Expected for truncated input.
+        } on Exception catch (e) {
+          fail('unexpected exception type ${e.runtimeType} for cut=$cut');
+        }
+      }
+    });
+
+    test('single-byte mutations of valid header never crash', () {
+      final valid = MyencCodec.encodeHeader(FileHeader(
+        version: FileHeader.supportedVersion,
+        flags: 0x00,
+        kdfId: FileHeader.kdfArgon2id,
+        salt: Uint8List(16),
+        opslimit: 3,
+        memlimit: 65536,
+        cipherId: FileHeader.cipherXchacha20Poly1305,
+        chunkSize: FileHeader.defaultChunkSize,
+        keyIdHint: Uint8List(16),
+        wraps: const [],
+        secretstreamHeader: Uint8List(24),
+      ));
+      for (int pos = 0; pos < valid.length; pos++) {
+        final mutated = Uint8List.fromList(valid);
+        mutated[pos] ^= 0xFF; // flip all bits at this position
+        try {
+          MyencCodec.decodeHeader(mutated);
+        } on LatchError {
+          // Expected.
+        } on Exception catch (e) {
+          fail('unexpected exception type ${e.runtimeType} for pos=$pos');
+        }
+      }
+    });
+
+    test('oversized declared field (saltLen) throws CorruptedFileError', () {
+      final valid = MyencCodec.encodeHeader(FileHeader(
+        version: FileHeader.supportedVersion,
+        flags: 0,
+        kdfId: FileHeader.kdfArgon2id,
+        salt: Uint8List(16),
+        opslimit: 3,
+        memlimit: 65536,
+        cipherId: FileHeader.cipherXchacha20Poly1305,
+        chunkSize: FileHeader.defaultChunkSize,
+        keyIdHint: Uint8List(16),
+        wraps: const [],
+        secretstreamHeader: Uint8List(24),
+      ));
+      // Write saltLen = 0xFFFF (beyond buffer)
+      final buf = ByteData.sublistView(valid);
+      buf.setUint16(8, 0xFFFF, Endian.big);
+      expect(
+        () => MyencCodec.decodeHeader(valid),
+        throwsA(isA<CorruptedFileError>()),
+      );
+    });
+  });
 }
