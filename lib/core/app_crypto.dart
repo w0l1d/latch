@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:myenc_core/myenc_core.dart';
@@ -37,6 +38,9 @@ class AppCrypto {
   /// Encrypts each file in [files] (full paths).
   /// Yields overall progress 0.0–1.0; last value is 1.0.
   /// Throws [LatchError] subtypes on failure.
+  ///
+  /// Output is streamed directly to disk — no whole-file buffering.
+  /// Mid-stream failures leave no partial output (atomic temp→rename).
   static Stream<double> encryptFiles(
     List<String> files,
     String passphrase, {
@@ -57,27 +61,36 @@ class AppCrypto {
         }
       }
 
-      // Collect all encrypted chunks (bounded by file size + overhead).
-      final cipherChunks = <Uint8List>[];
-      int lastPct = -1;
-      await for (final chunk in svc.encrypt(
-        plaintext: tracked(),
-        passphrase: pw,
-        params: _kdfParams,
-      )) {
-        cipherChunks.add(chunk);
-        final fileFrac =
-            totalBytes > 0 ? (readBytes / totalBytes).clamp(0.0, 1.0) : 1.0;
-        final overall = (i + fileFrac) / files.length;
-        final pct = (overall * 100).round();
-        if (pct != lastPct) {
-          yield overall;
-          lastPct = pct;
-        }
-      }
-
       final outPath = _io.resolveNameCollision('$path.latch');
-      await _io.writeChunked(outPath, Stream.fromIterable(cipherChunks));
+      // Bridge: each chunk goes to disk immediately, no buffering.
+      final sink = StreamController<Uint8List>();
+      final writeDone = _io.writeChunked(outPath, sink.stream);
+      int lastPct = -1;
+
+      try {
+        await for (final chunk in svc.encrypt(
+          plaintext: tracked(),
+          passphrase: pw,
+          params: _kdfParams,
+        )) {
+          sink.add(chunk);
+          final fileFrac =
+              totalBytes > 0 ? (readBytes / totalBytes).clamp(0.0, 1.0) : 1.0;
+          final overall = (i + fileFrac) / files.length;
+          final pct = (overall * 100).round();
+          if (pct != lastPct) {
+            yield overall;
+            lastPct = pct;
+          }
+        }
+        await sink.close();
+        await writeDone;
+      } catch (e) {
+        // Signal the write path to abort and delete the tmp file.
+        sink.addError(e);
+        await sink.close();
+        rethrow;
+      }
 
       if (deleteOriginals) await _io.deleteFile(path);
 
@@ -90,6 +103,9 @@ class AppCrypto {
   /// Decrypts [filePath].
   /// Yields progress 0.0–1.0; last value is 1.0.
   /// Throws [WrongPassphraseError] or [CorruptedFileError] on failure.
+  ///
+  /// Output is streamed directly to disk — no whole-file buffering.
+  /// Mid-stream failures leave no partial output (atomic temp→rename).
   static Stream<double> decryptFile(String filePath, String passphrase) async* {
     final pw = utf8.encode(passphrase);
     final svc = EnvelopeService(_crypto);
@@ -104,25 +120,34 @@ class AppCrypto {
       }
     }
 
-    final plainChunks = <Uint8List>[];
-    int lastPct = -1;
-    await for (final chunk in svc.decrypt(
-      ciphertext: tracked(),
-      passphrase: pw,
-    )) {
-      plainChunks.add(chunk);
-      final progress =
-          totalBytes > 0 ? (readBytes / totalBytes).clamp(0.0, 0.98) : 0.5;
-      final pct = (progress * 100).round();
-      if (pct != lastPct) {
-        yield progress;
-        lastPct = pct;
-      }
-    }
-
     final outPath = _io.resolveNameCollision(
         _io.withoutSuffix(filePath, '.latch'));
-    await _io.writeChunked(outPath, Stream.fromIterable(plainChunks));
+    final sink = StreamController<Uint8List>();
+    final writeDone = _io.writeChunked(outPath, sink.stream);
+    int lastPct = -1;
+
+    try {
+      await for (final chunk in svc.decrypt(
+        ciphertext: tracked(),
+        passphrase: pw,
+      )) {
+        sink.add(chunk);
+        final progress =
+            totalBytes > 0 ? (readBytes / totalBytes).clamp(0.0, 0.98) : 0.5;
+        final pct = (progress * 100).round();
+        if (pct != lastPct) {
+          yield progress;
+          lastPct = pct;
+        }
+      }
+      await sink.close();
+      await writeDone;
+    } catch (e) {
+      // Signal the write path to abort and delete the tmp file.
+      sink.addError(e);
+      await sink.close();
+      rethrow;
+    }
 
     yield 1.0;
   }
