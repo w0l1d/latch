@@ -1,0 +1,23 @@
+[
+  {
+    "passphrase_hex": "636f727265637420686f727365206261747465727920737461706c65",
+    "salt_hex": "000102030405060708090a0b0c0d0e0f",
+    "opslimit": 3,
+    "memlimit_kib": 65536,
+    "kek_hex": "0d1a3c6523c8f06e4e0af9c515aa5b5448cfebd6838f2d52c3d8b6ef8ddc3c2e"
+  },
+  {
+    "passphrase_hex": "",
+    "salt_hex": "abababababababababababababababab",
+    "opslimit": 2,
+    "memlimit_kib": 65536,
+    "kek_hex": "37724726069e7e2f0b6277650f8523316cce0cab485c72e93449aa3078c4facf"
+  },
+  {
+    "passphrase_hex": "f09f9492206c61746368",
+    "salt_hex": "00070e151c232a31383f464d545b6269",
+    "opslimit": 4,
+    "memlimit_kib": 131072,
+    "kek_hex": "c02f909fb6d5e3ce51619a0eebff704ddcd9937ad832f1ec8d23d12a40e9c51d"
+  }
+]

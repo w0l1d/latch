@@ -89,8 +89,12 @@ class SodiumCryptoAdapter implements CryptoPort {
   @override
   StreamTransformer<Uint8List, Uint8List> createEncryptTransformer(
       Uint8List key, int chunkSize) {
+    // Copy the key into guarded memory NOW, before returning. The caller
+    // (EnvelopeService) zeroizes its plaintext DEK immediately after this
+    // returns; if the copy happened lazily inside fromBind() it would read
+    // the already-zeroed array and encrypt the body under an all-zero key.
+    final secureKey = SecureKey.fromList(_sodium, key);
     return StreamTransformer.fromBind((stream) {
-      final secureKey = SecureKey.fromList(_sodium, key);
       final controller = StreamController<Uint8List>(
         onCancel: () => secureKey.dispose(),
       );
@@ -115,8 +119,10 @@ class SodiumCryptoAdapter implements CryptoPort {
   @override
   StreamTransformer<Uint8List, Uint8List> createDecryptTransformer(
       Uint8List key, int chunkSize) {
+    // Copy the key eagerly — see createEncryptTransformer. Decrypting with a
+    // lazily-read (zeroed) key would fail authentication on the first chunk.
+    final secureKey = SecureKey.fromList(_sodium, key);
     return StreamTransformer.fromBind((stream) {
-      final secureKey = SecureKey.fromList(_sodium, key);
       final controller = StreamController<Uint8List>(
         onCancel: () => secureKey.dispose(),
       );

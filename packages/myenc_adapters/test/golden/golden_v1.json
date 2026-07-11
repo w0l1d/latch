@@ -1,0 +1,13 @@
+{
+  "note": "Produced independently by tool/gen_golden_vectors.py (argon2-cffi + libsodium ctypes). Do not edit by hand.",
+  "passphrase": "correct horse battery staple",
+  "wrong_passphrase": "not the passphrase",
+  "salt_hex": "000102030405060708090a0b0c0d0e0f",
+  "key_id_hint_hex": "101112131415161718191a1b1c1d1e1f",
+  "opslimit": 3,
+  "memlimit_kib": 65536,
+  "chunk_size": 64,
+  "flags": 1,
+  "filename": "quarterly-report.pdf",
+  "plaintext_hex": "4c6174636820676f6c64656e20766563746f722076312e205468697320706c61696e746578742064656c696265726174656c79207370616e732074776f2036342d627974652073656372657473747265616d206368756e6b732e"
+}

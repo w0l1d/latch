@@ -171,6 +171,37 @@ void main() {
       expect(decrypted, equals(plain));
     });
 
+    // Regression guard for the zero-key body bug: EnvelopeService zeroizes its
+    // plaintext DEK immediately after creating the transformer, so the
+    // transformer MUST copy the key eagerly. If it copies lazily (at bind time)
+    // it reads the zeroed array and encrypts under an all-zero key — the body
+    // would then be readable without the passphrase.
+    test('zeroizing the key after creating the transformer does not weaken it',
+        () async {
+      final key = adapter.randomBytes(32);
+      final realKey = Uint8List.fromList(key);
+      const chunkSize = 64;
+      final plain = Uint8List.fromList(List.generate(90, (i) => i & 0xFF));
+
+      final enc = adapter.createEncryptTransformer(key, chunkSize);
+      key.fillRange(0, key.length, 0); // caller zeroizes right away
+      final encrypted =
+          await collectStream(streamOf(plain).transform(enc));
+
+      // The real key must decrypt it…
+      final decrypted = await collectStream(streamOf(encrypted)
+          .transform(adapter.createDecryptTransformer(
+              Uint8List.fromList(realKey), chunkSize)));
+      expect(decrypted, equals(plain));
+
+      // …and an all-zero key must NOT (proves the body isn't zero-keyed).
+      await expectLater(
+        collectStream(streamOf(encrypted)
+            .transform(adapter.createDecryptTransformer(Uint8List(32), chunkSize))),
+        throwsA(isA<CorruptedFileError>()),
+      );
+    });
+
     test('secretstreamHeaderBytes is 24', () {
       expect(adapter.secretstreamHeaderBytes, 24);
     });
