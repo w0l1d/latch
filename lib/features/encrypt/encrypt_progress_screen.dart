@@ -12,12 +12,14 @@ class EncryptProgressScreen extends StatefulWidget {
   final List<String> files;
   final String passphrase;
   final bool deleteOriginals;
+  final String? outputDir;
 
   const EncryptProgressScreen({
     super.key,
     required this.files,
     required this.passphrase,
     required this.deleteOriginals,
+    this.outputDir,
   });
 
   @override
@@ -43,6 +45,7 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
       widget.files,
       widget.passphrase,
       deleteOriginals: widget.deleteOriginals,
+      outputDir: widget.outputDir,
       onFileResult: (path, ok, error) {
         _results.add(BatchResult(path: path, ok: ok, errorMessage: error));
         _doneCount++;

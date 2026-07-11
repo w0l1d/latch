@@ -9,4 +9,9 @@ abstract interface class FileIoPort {
   String withSuffix(String path, String suffix);
   String withoutSuffix(String path, String suffix);
   String resolveNameCollision(String path);
+
+  /// Redirects [defaultPath] into [outputDir] when the user chose a folder,
+  /// keeping the file's basename. Returns [defaultPath] unchanged when
+  /// [outputDir] is null (write alongside the source, the default behaviour).
+  String resolveOutputPath(String defaultPath, String? outputDir);
 }

@@ -51,6 +51,7 @@ Future<void> _encryptBatch(
   final opslimit = task['opslimit'] as int;
   final memlimit = task['memlimit'] as int;
   final deleteOriginals = task['deleteOriginals'] as bool;
+  final outputDir = task['outputDir'] as String?;
   final params = KdfParams(opslimit: opslimit, memlimit: memlimit);
 
   if (!params.meetsFloor()) {
@@ -64,7 +65,7 @@ Future<void> _encryptBatch(
 
     try {
       await _encryptOne(crypto, io, svc, path, passphrase, params,
-          deleteOriginals, i, files.length, mainPort);
+          deleteOriginals, outputDir, i, files.length, mainPort);
       mainPort.send({'type': 'file_done', 'path': path, 'ok': true, 'error': null});
     } catch (e) {
       mainPort.send({
@@ -87,6 +88,7 @@ Future<void> _encryptOne(
   Uint8List passphrase,
   KdfParams params,
   bool deleteOriginals,
+  String? outputDir,
   int index,
   int total,
   SendPort mainPort,
@@ -101,7 +103,8 @@ Future<void> _encryptOne(
     }
   }
 
-  final outPath = io.resolveNameCollision('$path.latch');
+  final outPath = io.resolveNameCollision(
+      io.resolveOutputPath('$path.latch', outputDir));
   final sink = StreamController<Uint8List>();
   final writeDone = io.writeChunked(outPath, sink.stream);
   int lastPct = -1;
@@ -143,13 +146,15 @@ Future<void> _decryptBatch(
 ) async {
   final files = (task['files'] as List).cast<String>();
   final passphrase = task['passphrase'] as Uint8List;
+  final outputDir = task['outputDir'] as String?;
   final svc = EnvelopeService(crypto);
 
   for (int i = 0; i < files.length; i++) {
     final path = files[i];
 
     try {
-      await _decryptOne(crypto, io, svc, path, passphrase, i, files.length, mainPort);
+      await _decryptOne(
+          crypto, io, svc, path, passphrase, outputDir, i, files.length, mainPort);
       mainPort.send({'type': 'file_done', 'path': path, 'ok': true, 'error': null});
     } catch (e) {
       mainPort.send({
@@ -170,6 +175,7 @@ Future<void> _decryptOne(
   EnvelopeService svc,
   String path,
   Uint8List passphrase,
+  String? outputDir,
   int index,
   int total,
   SendPort mainPort,
@@ -184,8 +190,8 @@ Future<void> _decryptOne(
     }
   }
 
-  final outPath =
-      io.resolveNameCollision(io.withoutSuffix(path, '.latch'));
+  final outPath = io.resolveNameCollision(
+      io.resolveOutputPath(io.withoutSuffix(path, '.latch'), outputDir));
   final sink = StreamController<Uint8List>();
   final writeDone = io.writeChunked(outPath, sink.stream);
   int lastPct = -1;

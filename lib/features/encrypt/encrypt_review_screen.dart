@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:path/path.dart' as p;
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/latch_button.dart';
 
@@ -7,12 +8,14 @@ class EncryptReviewScreen extends StatelessWidget {
   final List<String> files;
   final String passphrase;
   final bool deleteOriginals;
+  final String? outputDir;
 
   const EncryptReviewScreen({
     super.key,
     required this.files,
     required this.passphrase,
     required this.deleteOriginals,
+    this.outputDir,
   });
 
   @override
@@ -40,7 +43,12 @@ class EncryptReviewScreen extends StatelessWidget {
                 value: deleteOriginals ? 'Deleted after' : 'Kept',
               ),
               _Divider(),
-              _ReviewRow(label: 'Output', value: '.enc beside each'),
+              _ReviewRow(
+                label: 'Output',
+                value: outputDir == null
+                    ? '.latch beside each'
+                    : 'Folder · ${p.basename(outputDir!)}',
+              ),
               const SizedBox(height: 20),
               Container(
                 padding: const EdgeInsets.all(12),
@@ -62,6 +70,7 @@ class EncryptReviewScreen extends StatelessWidget {
                     'files': files,
                     'passphrase': passphrase,
                     'deleteOriginals': deleteOriginals,
+                    'outputDir': outputDir,
                   },
                 ),
               ),

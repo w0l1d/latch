@@ -56,6 +56,12 @@ class FileIoDart implements FileIoPort {
       path.endsWith(suffix) ? path.substring(0, path.length - suffix.length) : path;
 
   @override
+  String resolveOutputPath(String defaultPath, String? outputDir) {
+    if (outputDir == null) return defaultPath;
+    return p.join(outputDir, p.basename(defaultPath));
+  }
+
+  @override
   String resolveNameCollision(String path) {
     if (!File(path).existsSync()) return path;
     final ext = p.extension(path);

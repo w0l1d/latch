@@ -53,6 +53,7 @@ final router = GoRouter(
           files: extra['files'] as List<String>? ?? [],
           passphrase: extra['passphrase'] as String? ?? '',
           deleteOriginals: extra['deleteOriginals'] as bool? ?? false,
+          outputDir: extra['outputDir'] as String?,
         );
       },
     ),
@@ -64,6 +65,7 @@ final router = GoRouter(
           files: extra['files'] as List<String>? ?? [],
           passphrase: extra['passphrase'] as String? ?? '',
           deleteOriginals: extra['deleteOriginals'] as bool? ?? false,
+          outputDir: extra['outputDir'] as String?,
         );
       },
     ),

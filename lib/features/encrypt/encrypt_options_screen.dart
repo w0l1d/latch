@@ -1,5 +1,7 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:path/path.dart' as p;
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/latch_button.dart';
 
@@ -15,6 +17,14 @@ class EncryptOptionsScreen extends StatefulWidget {
 
 class _EncryptOptionsScreenState extends State<EncryptOptionsScreen> {
   bool _deleteOriginals = false;
+  String? _outputDir; // null = beside each original
+
+  Future<void> _pickFolder() async {
+    final dir = await FilePicker.platform.getDirectoryPath(
+      dialogTitle: 'Choose where to save locked files',
+    );
+    if (dir != null && mounted) setState(() => _outputDir = dir);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -40,6 +50,18 @@ class _EncryptOptionsScreenState extends State<EncryptOptionsScreen> {
                 subtitle: 'Remove the unlocked copies once locking succeeds.',
                 selected: _deleteOriginals,
                 onTap: () => setState(() => _deleteOriginals = true),
+              ),
+              const SizedBox(height: 20),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Where to save',
+                    style: Theme.of(context).textTheme.bodyMedium),
+              ),
+              const SizedBox(height: 8),
+              _OutputFolderRow(
+                outputDir: _outputDir,
+                onChoose: _pickFolder,
+                onClear: () => setState(() => _outputDir = null),
               ),
               const SizedBox(height: 16),
               Container(
@@ -74,12 +96,67 @@ class _EncryptOptionsScreenState extends State<EncryptOptionsScreen> {
                     'files': widget.files,
                     'passphrase': widget.passphrase,
                     'deleteOriginals': _deleteOriginals,
+                    'outputDir': _outputDir,
                   },
                 ),
               ),
               const SizedBox(height: 8),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _OutputFolderRow extends StatelessWidget {
+  final String? outputDir;
+  final VoidCallback onChoose;
+  final VoidCallback onClear;
+
+  const _OutputFolderRow({
+    required this.outputDir,
+    required this.onChoose,
+    required this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final beside = outputDir == null;
+    return GestureDetector(
+      onTap: onChoose,
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          border: Border.all(color: LatchColors.border, width: 1.5),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          children: [
+            Icon(beside ? Icons.folder_outlined : Icons.folder_special_outlined,
+                color: LatchColors.ink),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(beside ? 'Beside each original' : p.basename(outputDir!),
+                      style: Theme.of(context).textTheme.bodyLarge),
+                  const SizedBox(height: 2),
+                  Text(beside ? 'Tap to choose a folder' : outputDir!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall),
+                ],
+              ),
+            ),
+            if (!beside)
+              IconButton(
+                icon: const Icon(Icons.close, size: 18, color: LatchColors.muted),
+                tooltip: 'Save beside each original instead',
+                onPressed: onClear,
+              ),
+          ],
         ),
       ),
     );

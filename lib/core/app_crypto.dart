@@ -45,6 +45,7 @@ class AppCrypto {
     List<String> files,
     String passphrase, {
     bool deleteOriginals = false,
+    String? outputDir,
     void Function(String path, bool ok, String? error)? onFileResult,
   }) async* {
     if (files.isEmpty) return;
@@ -65,6 +66,7 @@ class AppCrypto {
             'opslimit': _kdfParams.opslimit,
             'memlimit': _kdfParams.memlimit,
             'deleteOriginals': deleteOriginals,
+            'outputDir': outputDir,
           });
           continue;
         }
@@ -102,6 +104,7 @@ class AppCrypto {
   static Stream<double> decryptFiles(
     List<String> files,
     String passphrase, {
+    String? outputDir,
     void Function(String path, bool ok, String? error)? onFileResult,
   }) async* {
     if (files.isEmpty) return;
@@ -119,6 +122,7 @@ class AppCrypto {
             'cmd': 'decrypt',
             'files': files,
             'passphrase': pw,
+            'outputDir': outputDir,
           });
           continue;
         }
