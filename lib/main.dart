@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'core/app_crypto.dart';
+import 'core/incoming_file_service.dart';
 import 'core/router.dart';
 import 'shared/theme/app_theme.dart';
 
@@ -9,8 +10,31 @@ Future<void> main() async {
   runApp(const LatchApp());
 }
 
-class LatchApp extends StatelessWidget {
+class LatchApp extends StatefulWidget {
   const LatchApp({super.key});
+
+  @override
+  State<LatchApp> createState() => _LatchAppState();
+}
+
+class _LatchAppState extends State<LatchApp> {
+  late final IncomingFileService _incomingFileService;
+
+  @override
+  void initState() {
+    super.initState();
+    _incomingFileService = IncomingFileService(router: router);
+    // Cold-start: a .latch file that launched the app before the Dart engine ran.
+    _incomingFileService.handleInitialMedia();
+    // Warm-start: subsequent opens while the app is already running.
+    _incomingFileService.startListening();
+  }
+
+  @override
+  void dispose() {
+    _incomingFileService.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
