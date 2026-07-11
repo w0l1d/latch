@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:myenc_core/myenc_core.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/latch_button.dart';
+import '../../shared/widgets/latch_alert.dart';
 import '../../core/app_crypto.dart';
 
 class EncryptProgressScreen extends StatefulWidget {
@@ -29,6 +30,7 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
   bool _cancelled = false;
   final _results = <BatchResult>[];
   int _doneCount = 0;
+  bool _reported = false;
 
   @override
   void initState() {
@@ -49,7 +51,10 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
       (prog) {
         if (!mounted || _cancelled) return;
         setState(() => _progress = prog);
-        if (prog >= 1.0) _onDone();
+        if (prog >= 1.0 && !_reported) {
+          _reported = true;
+          _onDone();
+        }
       },
       onError: (Object e) {
         if (!mounted || _cancelled) return;
@@ -81,35 +86,19 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
       return '${p.basename(r.path)}: ${r.errorMessage ?? "error"}';
     }).join('\n');
     final more = bad > 3 ? '\n… and ${bad - 3} more' : '';
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        backgroundColor: LatchColors.cautionLight,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-          side: const BorderSide(color: LatchColors.caution, width: 2),
-        ),
-        icon: const Icon(Icons.check_circle_outline, color: LatchColors.caution, size: 32),
-        title: Text('$ok file${ok > 1 ? "s" : ""} locked, $bad failed',
-            style: const TextStyle(fontWeight: FontWeight.w700)),
-        content: Text('$listed$more',
-            style: const TextStyle(color: Color(0xFF5C3D1A))),
-        actions: [
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                final outFiles =
-                    _results.where((r) => r.ok).map((r) => '${r.path}.latch').toList();
-                context.pushReplacement('/encrypt/success', extra: outFiles);
-              },
-              child: const Text('Continue'),
-            ),
-          ),
-        ],
-      ),
+    showLatchAlert(
+      context,
+      tone: LatchAlertTone.caution,
+      icon: Icons.check_circle_outline,
+      title: '$ok file${ok > 1 ? "s" : ""} locked, $bad failed',
+      message: '$listed$more',
+      buttonLabel: 'Continue',
+      onPressed: () {
+        Navigator.pop(context);
+        final outFiles =
+            _results.where((r) => r.ok).map((r) => '${r.path}.latch').toList();
+        context.pushReplacement('/encrypt/success', extra: outFiles);
+      },
     );
   }
 
@@ -121,37 +110,17 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
   }
 
   void _showError(String title, String message) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        backgroundColor: LatchColors.dangerLight,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-          side: const BorderSide(color: LatchColors.danger, width: 2),
-        ),
-        icon: const Icon(Icons.error_outline, color: LatchColors.danger, size: 32),
-        title: Text(title,
-            style: const TextStyle(
-                color: LatchColors.danger, fontWeight: FontWeight.w700)),
-        content: Text(message,
-            style: const TextStyle(color: Color(0xFF7A3128))),
-        actions: [
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                context.pop();
-              },
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: LatchColors.danger,
-                  foregroundColor: Colors.white),
-              child: const Text('Go back'),
-            ),
-          ),
-        ],
-      ),
+    showLatchAlert(
+      context,
+      tone: LatchAlertTone.danger,
+      icon: Icons.error_outline,
+      title: title,
+      message: message,
+      buttonLabel: 'Go back',
+      onPressed: () {
+        Navigator.pop(context);
+        context.pop();
+      },
     );
   }
 

@@ -235,7 +235,7 @@ void main() {
       );
     });
 
-    test('throws CorruptedFileError for invalid magic', () async {
+    test('throws NotALatchFileError for invalid magic', () async {
       final corrupted = Uint8List.fromList(validCiphertext);
       corrupted[0] = 0xFF;
       expect(
@@ -243,7 +243,7 @@ void main() {
           ciphertext: _stream([corrupted]),
           passphrase: passphrase,
         )),
-        throwsA(isA<CorruptedFileError>()),
+        throwsA(isA<NotALatchFileError>()),
       );
     });
 

@@ -155,6 +155,7 @@ class AppCrypto {
     });
     if (error != null) {
       if (error!.contains('WrongPassphraseError')) throw WrongPassphraseError();
+      if (error!.contains('NotALatchFileError')) throw NotALatchFileError();
       if (error!.contains('CorruptedFileError')) throw CorruptedFileError(error!);
       if (error!.contains('VersionTooNewError')) throw VersionTooNewError(0);
       throw Exception(error);
@@ -166,10 +167,14 @@ class AppCrypto {
     switch (code) {
       case 'wrong_passphrase':
         throw WrongPassphraseError();
+      case 'not_latch':
+        throw NotALatchFileError();
       case 'corrupted':
         throw CorruptedFileError(message);
       case 'version':
         throw VersionTooNewError(0);
+      case 'storage_full':
+        throw StorageFullError();
       default:
         throw Exception('crypto isolate: $code — $message');
     }

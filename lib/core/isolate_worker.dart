@@ -30,6 +30,7 @@ void latchWorker(SendPort mainPort) async {
   } catch (e) {
     final code = switch (e) {
       WrongPassphraseError() => 'wrong_passphrase',
+      NotALatchFileError() => 'not_latch',
       CorruptedFileError() => 'corrupted',
       VersionTooNewError() => 'version',
       StorageFullError() => 'storage_full',

@@ -21,8 +21,12 @@ class FileIoDart implements FileIoPort {
       }
       await sink.flush();
     } catch (e) {
-      await sink.close();
+      await sink.close().catchError((_) {});
       await File(tmp).delete().catchError((_) => File(tmp));
+      // errno 28 == ENOSPC (out of disk space) on POSIX platforms.
+      if (e is FileSystemException && e.osError?.errorCode == 28) {
+        throw StorageFullError();
+      }
       rethrow;
     }
     await sink.close();

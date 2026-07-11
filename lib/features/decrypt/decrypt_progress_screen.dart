@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as p;
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/latch_button.dart';
+import '../../shared/widgets/latch_alert.dart';
 import '../../core/app_crypto.dart';
 
 class DecryptProgressScreen extends StatefulWidget {
@@ -81,11 +82,17 @@ class _DecryptProgressScreenState extends State<DecryptProgressScreen> {
       if (msg.contains('WrongPassphraseError')) {
         _showError('Wrong passphrase',
             "That passphrase didn't open these files. Give it another try.");
+      } else if (msg.contains('NotALatchFileError')) {
+        _showError('Not a Latch file',
+            "This doesn't look like a file Latch created. Choose a file ending in .latch.");
       } else if (msg.contains('CorruptedFileError')) {
         _showTampered();
       } else if (msg.contains('VersionTooNewError')) {
         _showError('File too new',
             'A file was made with a newer version of Latch. Please update the app.');
+      } else if (msg.contains('StorageFullError')) {
+        _showError('Not enough space',
+            'There is not enough free storage to write the decrypted file.');
       } else {
         _showError('Decryption failed', msg);
       }
@@ -97,111 +104,52 @@ class _DecryptProgressScreenState extends State<DecryptProgressScreen> {
       return '${p.basename(r.path)}: ${r.errorMessage ?? "error"}';
     }).join('\n');
     final more = bad > 3 ? '\n… and ${bad - 3} more' : '';
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        backgroundColor: LatchColors.cautionLight,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-          side: const BorderSide(color: LatchColors.caution, width: 2),
-        ),
-        icon: const Icon(Icons.check_circle_outline,
-            color: LatchColors.caution, size: 32),
-        title: Text('$ok file${ok > 1 ? "s" : ""} opened, $bad failed',
-            style: const TextStyle(fontWeight: FontWeight.w700)),
-        content: Text('$listed$more',
-            style: const TextStyle(color: Color(0xFF5C3D1A))),
-        actions: [
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                final outFiles = _results
-                    .where((r) => r.ok)
-                    .map((r) => p.withoutExtension(r.path))
-                    .toList();
-                context.pushReplacement('/decrypt/success', extra: outFiles);
-              },
-              child: const Text('Continue'),
-            ),
-          ),
-        ],
-      ),
+    showLatchAlert(
+      context,
+      tone: LatchAlertTone.caution,
+      icon: Icons.check_circle_outline,
+      title: '$ok file${ok > 1 ? "s" : ""} opened, $bad failed',
+      message: '$listed$more',
+      buttonLabel: 'Continue',
+      onPressed: () {
+        Navigator.pop(context);
+        final outFiles = _results
+            .where((r) => r.ok)
+            .map((r) => p.withoutExtension(r.path))
+            .toList();
+        context.pushReplacement('/decrypt/success', extra: outFiles);
+      },
     );
   }
 
   void _showError(String title, String message) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        backgroundColor: LatchColors.dangerLight,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-          side: const BorderSide(color: LatchColors.danger, width: 2),
-        ),
-        icon: const Icon(Icons.lock_outline, color: LatchColors.danger, size: 32),
-        title: Text(title,
-            style: const TextStyle(
-                color: LatchColors.danger, fontWeight: FontWeight.w700)),
-        content: Text(message,
-            style: const TextStyle(color: Color(0xFF7A3128))),
-        actions: [
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                context.pop();
-              },
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: LatchColors.danger,
-                  foregroundColor: Colors.white),
-              child: const Text('Try again'),
-            ),
-          ),
-        ],
-      ),
+    showLatchAlert(
+      context,
+      tone: LatchAlertTone.danger,
+      icon: Icons.lock_outline,
+      title: title,
+      message: message,
+      buttonLabel: 'Try again',
+      onPressed: () {
+        Navigator.pop(context);
+        context.pop();
+      },
     );
   }
 
   void _showTampered() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        backgroundColor: LatchColors.dangerLight,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-          side: const BorderSide(color: LatchColors.danger, width: 2),
-        ),
-        icon: const Icon(Icons.warning_amber_rounded,
-            color: LatchColors.danger, size: 32),
-        title: const Text("This file can't be trusted.",
-            style: TextStyle(
-                color: LatchColors.danger, fontWeight: FontWeight.w700)),
-        content: const Text(
+    showLatchAlert(
+      context,
+      tone: LatchAlertTone.danger,
+      icon: Icons.warning_amber_rounded,
+      title: "This file can't be trusted.",
+      message:
           'The file has been modified or is incomplete. It may have been tampered with or corrupted in transit. Do not rely on its contents.',
-          style: TextStyle(color: Color(0xFF7A3128)),
-        ),
-        actions: [
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                context.go('/home');
-              },
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: LatchColors.danger,
-                  foregroundColor: Colors.white),
-              child: const Text('Back to home'),
-            ),
-          ),
-        ],
-      ),
+      buttonLabel: 'Back to home',
+      onPressed: () {
+        Navigator.pop(context);
+        context.go('/home');
+      },
     );
   }
 

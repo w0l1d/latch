@@ -68,12 +68,12 @@ void main() {
       expect(encoded.sublist(0, 5), [0x4C, 0x41, 0x54, 0x43, 0x48]);
     });
 
-    test('throws CorruptedFileError for wrong magic', () {
+    test('throws NotALatchFileError for wrong magic', () {
       final encoded = MyencCodec.encodeHeader(makeHeader());
       encoded[0] = 0xFF; // corrupt first magic byte
       expect(
         () => MyencCodec.decodeHeader(encoded),
-        throwsA(isA<CorruptedFileError>()),
+        throwsA(isA<NotALatchFileError>()),
       );
     });
 

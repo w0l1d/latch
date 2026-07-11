@@ -114,10 +114,6 @@ class _DecryptPassphraseScreenState extends State<DecryptPassphraseScreen> {
                   ],
                 ),
               ),
-              Text(
-                'Tip: type "wrong" to demo a wrong passphrase error.',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: LatchColors.subtle),
-              ),
               const Spacer(),
               LatchPrimaryButton(
                 label: 'Unlock',

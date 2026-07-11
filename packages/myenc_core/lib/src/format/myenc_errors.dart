@@ -12,6 +12,14 @@ final class CorruptedFileError extends LatchError {
   String toString() => 'CorruptedFileError: $reason';
 }
 
+/// The input is not a Latch file at all (wrong magic bytes) — distinct from a
+/// genuine Latch file that has been damaged ([CorruptedFileError]). Lets the UI
+/// say "this isn't a Latch file" rather than the alarming "tampered" message.
+final class NotALatchFileError extends LatchError {
+  @override
+  String toString() => 'NotALatchFileError: not a Latch (.latch) file';
+}
+
 final class VersionTooNewError extends LatchError {
   final int version;
   VersionTooNewError(this.version);

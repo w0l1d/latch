@@ -74,7 +74,7 @@ class MyencCodec {
     int o = 0;
 
     for (int i = 0; i < 5; i++) {
-      if (buf.getUint8(o++) != _magic[i]) throw CorruptedFileError('invalid magic bytes');
+      if (buf.getUint8(o++) != _magic[i]) throw NotALatchFileError();
     }
 
     final version = buf.getUint8(o++);
