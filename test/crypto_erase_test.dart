@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
@@ -51,9 +50,10 @@ void main() {
       final first = after.sublist(0, header.length);
       expect(first, isNot(equals(header)));
 
-      // Magic "LATCH" must be gone
-      final magic = utf8.decode(after.sublist(0, 5));
-      expect(magic, isNot('LATCH'));
+      // Magic "LATCH" (0x4C 0x41 0x54 0x43 0x48) must be gone
+      final magicBytes = after.sublist(0, 5);
+      const latchMagic = [0x4C, 0x41, 0x54, 0x43, 0x48];
+      expect(magicBytes, isNot(equals(latchMagic)));
 
       // Body beyond the header should be intact
       final afterBody = after.sublist(header.length);

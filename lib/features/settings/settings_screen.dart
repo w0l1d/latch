@@ -1,6 +1,28 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../core/app_crypto.dart';
 import '../../shared/theme/app_theme.dart';
+
+/// Presets for the KDF cost selector.
+/// These map to the opslimit/memlimit values read by AppCrypto._loadKdfParams
+/// and applied to every encryption.
+class _KdfPreset {
+  final String label;
+  final int opslimit;
+  final int memlimit; // KiB
+
+  const _KdfPreset(this.label, this.opslimit, this.memlimit);
+
+  bool matches(int ops, int mem) => opslimit == ops && memlimit == mem;
+}
+
+const _kdfPresets = [
+  _KdfPreset('Auto', 3, 65536),
+  _KdfPreset('Low', 2, 65536),
+  _KdfPreset('Medium', 3, 131072),
+  _KdfPreset('High', 4, 262144),
+];
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -15,6 +37,51 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _quickUnlock = false;
   String _cipher = 'Auto';
   String _kdfCost = 'Auto';
+  int _storedCount = 0;
+
+  bool _loaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final ops = prefs.getInt('kdf_opslimit') ?? 3;
+    final mem = prefs.getInt('kdf_memlimit') ?? 65536;
+    final label = _kdfPresets
+        .firstWhere((p) => p.matches(ops, mem), orElse: () => _kdfPresets[0])
+        .label;
+
+    final svc = AppCrypto.passphraseStorage;
+    int count = 0;
+    if (svc != null) {
+      count = (await svc.list()).length;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _deleteOriginals = prefs.getBool('delete_originals') ?? false;
+      _encryptFilename = prefs.getBool('encrypt_filename') ?? true;
+      _quickUnlock = prefs.getBool('quick_unlock') ?? false;
+      _kdfCost = label;
+      _storedCount = count;
+      _loaded = true;
+    });
+  }
+
+  Future<void> _set(String key, dynamic value) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (value is bool) {
+      await prefs.setBool(key, value);
+    } else if (value is int) {
+      await prefs.setInt(key, value);
+    } else if (value is String) {
+      await prefs.setString(key, value);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -28,8 +95,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _SectionHeader('Passphrase'),
           _NavTile(
             title: 'Passphrase storage',
-            subtitle: 'None — type every time',
-            onTap: () => context.push('/settings/passphrase-storage'),
+            subtitle: _storedCount == 0
+                ? 'None — type every time'
+                : '$_storedCount stored',
+            onTap: () async {
+              await context.push('/settings/passphrase-storage');
+              // Refresh the count when returning.
+              _load();
+            },
           ),
           _NavTile(
             title: 'Change passphrase',
@@ -45,33 +118,57 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: 'Quick unlock',
             subtitle: 'Biometric / device PIN gate',
             value: _quickUnlock,
-            onChanged: (v) => setState(() => _quickUnlock = v),
+            onChanged: _loaded
+                ? (v) {
+                    setState(() => _quickUnlock = v);
+                    _set('quick_unlock', v);
+                  }
+                : null,
           ),
           _SectionHeader('Encryption'),
           _SelectTile(
             title: 'Cipher',
             value: _cipher,
             options: const ['Auto', 'ChaCha20-Poly1305', 'AES-256-GCM'],
-            onChanged: (v) => setState(() => _cipher = v),
+            onChanged: _loaded
+                ? (v) => setState(() => _cipher = v)
+                : null,
           ),
           _SelectTile(
             title: 'KDF cost',
             value: _kdfCost,
-            options: const ['Auto', 'Low', 'Medium', 'High'],
-            onChanged: (v) => setState(() => _kdfCost = v),
+            options: _kdfPresets.map((p) => p.label).toList(),
+            onChanged: _loaded
+                ? (v) {
+                    final preset = _kdfPresets.firstWhere((p) => p.label == v);
+                    setState(() => _kdfCost = v);
+                    _set('kdf_opslimit', preset.opslimit);
+                    _set('kdf_memlimit', preset.memlimit);
+                  }
+                : null,
           ),
           _SwitchTile(
             title: 'Encrypt filename',
             subtitle: 'Stores real name inside the locked file',
             value: _encryptFilename,
-            onChanged: (v) => setState(() => _encryptFilename = v),
+            onChanged: _loaded
+                ? (v) {
+                    setState(() => _encryptFilename = v);
+                    _set('encrypt_filename', v);
+                  }
+                : null,
           ),
           _SectionHeader('Files'),
           _SwitchTile(
             title: 'Delete originals after encrypt',
             subtitle: 'Off by default — applies globally',
             value: _deleteOriginals,
-            onChanged: (v) => setState(() => _deleteOriginals = v),
+            onChanged: _loaded
+                ? (v) {
+                    setState(() => _deleteOriginals = v);
+                    _set('delete_originals', v);
+                  }
+                : null,
           ),
           _InfoTile(
             title: 'Output location',
@@ -113,7 +210,7 @@ class _SwitchTile extends StatelessWidget {
   final String title;
   final String subtitle;
   final bool value;
-  final ValueChanged<bool> onChanged;
+  final ValueChanged<bool>? onChanged;
 
   const _SwitchTile({required this.title, required this.subtitle, required this.value, required this.onChanged});
 
@@ -169,7 +266,7 @@ class _SelectTile extends StatelessWidget {
   final String title;
   final String value;
   final List<String> options;
-  final ValueChanged<String> onChanged;
+  final ValueChanged<String>? onChanged;
 
   const _SelectTile({required this.title, required this.value, required this.options, required this.onChanged});
 
@@ -182,7 +279,7 @@ class _SelectTile extends StatelessWidget {
         underline: const SizedBox(),
         style: Theme.of(context).textTheme.bodyMedium,
         items: options.map((o) => DropdownMenuItem(value: o, child: Text(o))).toList(),
-        onChanged: (v) { if (v != null) onChanged(v); },
+        onChanged: onChanged != null ? (v) { if (v != null) onChanged!(v); } : null,
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 20),
     );

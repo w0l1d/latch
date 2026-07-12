@@ -2,6 +2,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as p;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/latch_button.dart';
 
@@ -20,6 +21,20 @@ class EncryptOptionsScreen extends StatefulWidget {
 class _EncryptOptionsScreenState extends State<EncryptOptionsScreen> {
   bool _deleteOriginals = false;
   String? _outputDir; // null = beside each original
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDefaults();
+  }
+
+  Future<void> _loadDefaults() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _deleteOriginals = prefs.getBool('delete_originals') ?? false;
+    });
+  }
 
   Future<void> _pickFolder() async {
     final dir = await FilePicker.platform.getDirectoryPath(

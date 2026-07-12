@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/latch_button.dart';
 import '../../core/app_crypto.dart';
@@ -26,6 +27,9 @@ class _DecryptPassphraseScreenState extends State<DecryptPassphraseScreen> {
   }
 
   Future<void> _checkStored() async {
+    final prefs = await SharedPreferences.getInstance();
+    final quickUnlockOn = prefs.getBool('quick_unlock') ?? false;
+    if (!quickUnlockOn) return;
     final svc = AppCrypto.passphraseStorage;
     if (svc == null) return;
     final has = await svc.hasStored();
