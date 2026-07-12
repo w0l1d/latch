@@ -159,6 +159,39 @@ void main() {
       expect(recovered, plain);
     });
 
+    test('non-ASCII filename is UTF-8 on the wire (format v1 §5)', () async {
+      // é (U+00E9) is 1 UTF-16 code unit (0xE9) but 2 UTF-8 bytes (0xC3 0xA9);
+      // 秘 (U+79D8) doesn't fit a byte at all — codeUnits would corrupt both.
+      const filename = 'café-秘密.pdf';
+      final ciphertext = await _collect(
+        svc.encrypt(
+          plaintext: _stream([utf8.encode('x')]),
+          passphrase: passphrase,
+          params: params,
+          flags: 0x01,
+          filename: filename,
+        ),
+      );
+      final (header, _) = MyencCodec.decodeHeader(ciphertext);
+
+      // Recover the DEK the same way decrypt does, then open the filename box.
+      final dek = DekWrap.unwrapPassphrase(
+        crypto: FakeCryptoPort(),
+        entry: header.wraps.single,
+        passphrase: passphrase,
+        salt: header.salt,
+        opslimit: header.opslimit,
+        memlimit: header.memlimit,
+      );
+      final nameBytes = EnvelopeService.decryptFilename(
+        crypto: FakeCryptoPort(),
+        header: header,
+        dek: dek,
+      );
+      expect(nameBytes, isNotNull);
+      expect(utf8.decode(nameBytes!), filename);
+    });
+
     test('ciphertext header is parseable by MyencCodec', () async {
       final plain = Uint8List.fromList([1, 2, 3]);
       final ciphertext = await _collect(

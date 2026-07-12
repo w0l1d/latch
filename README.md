@@ -28,7 +28,7 @@ packages/
 lib/                # Flutter app: onboarding, encrypt/decrypt flows, settings
 ```
 
-The core has no Flutter or dart:io dependency — it is the independently testable, auditable heart of the app. See `project_spec.md` for the full design specification, threat model, and `.latch` v1 file format.
+The core has no Flutter or dart:io dependency — it is the independently testable, auditable heart of the app. See `project_spec.md` for the full design specification and threat model, and [`docs/FORMAT.md`](docs/FORMAT.md) for the normative, frozen `.latch` v1 file format (byte layout, validation rules, versioning policy).
 
 ## Development
 

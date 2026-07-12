@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 import '../ports/crypto_port.dart';
 import '../format/file_header.dart';
@@ -60,13 +61,11 @@ class EnvelopeService {
           crypto: _crypto, dek: dek, deviceKey: deviceKey));
     }
 
-    // Encrypt the filename with the DEK before zeroizing.
+    // Encrypt the filename with the DEK before zeroizing. Filenames are
+    // UTF-8 on the wire (format v1) — codeUnits would corrupt non-ASCII names.
     Uint8List? encFilename;
     if ((flags & 0x01) != 0 && filename != null && filename.isNotEmpty) {
-      encFilename = _crypto.secretboxSeal(
-        Uint8List.fromList(filename.codeUnits),
-        dek,
-      );
+      encFilename = _crypto.secretboxSeal(utf8.encode(filename), dek);
     }
 
     // Encrypt the plaintext stream. The transformer prepends the 24-byte
