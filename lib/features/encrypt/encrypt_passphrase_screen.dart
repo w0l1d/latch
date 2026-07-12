@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/latch_button.dart';
+import '../../core/app_crypto.dart';
 import '../../core/crypto_stub.dart';
 
 class EncryptPassphraseScreen extends StatefulWidget {
@@ -15,6 +16,8 @@ class EncryptPassphraseScreen extends StatefulWidget {
 class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
   final _controller = TextEditingController();
   bool _obscure = true;
+  bool _saveForQuickUnlock = false;
+  bool _canSave = false;
   PassphraseResult? _strength;
 
   @override
@@ -25,6 +28,33 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
         _strength = _controller.text.isEmpty ? null : CryptoStub.evaluate(_controller.text);
       });
     });
+    _checkAuth();
+  }
+
+  Future<void> _checkAuth() async {
+    final svc = AppCrypto.passphraseStorage;
+    if (svc == null) return;
+    final ok = await svc.canAuthenticate;
+    if (mounted) setState(() => _canSave = ok);
+  }
+
+  Future<void> _storeAndContinue() async {
+    final svc = AppCrypto.passphraseStorage;
+    if (_saveForQuickUnlock && svc != null && _canSave) {
+      final label = widget.files.length == 1
+          ? widget.files.first
+          : '${widget.files.length} files';
+      await svc.store(label, _controller.text);
+    }
+    if (mounted) {
+      context.push(
+        '/encrypt/options',
+        extra: {
+          'files': widget.files,
+          'passphrase': _controller.text,
+        },
+      );
+    }
   }
 
   @override
@@ -82,6 +112,46 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
                 ),
               ],
               const SizedBox(height: 10),
+              if (_canSave)
+                GestureDetector(
+                  onTap: () =>
+                      setState(() => _saveForQuickUnlock = !_saveForQuickUnlock),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: _saveForQuickUnlock ? LatchColors.ink : LatchColors.border,
+                        width: _saveForQuickUnlock ? 2.5 : 1.5,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          _saveForQuickUnlock
+                              ? Icons.fingerprint
+                              : Icons.fingerprint_outlined,
+                          color: _saveForQuickUnlock
+                              ? LatchColors.ink
+                              : LatchColors.muted,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Save for quick unlock',
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: _saveForQuickUnlock
+                                  ? LatchColors.ink
+                                  : LatchColors.muted,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              if (_canSave) const SizedBox(height: 10),
               Text(
                 'A few random words beats hard-to-type symbols. Longer is stronger.',
                 style: Theme.of(context).textTheme.bodySmall,
@@ -89,15 +159,7 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
               const Spacer(),
               LatchPrimaryButton(
                 label: 'Continue',
-                onPressed: _controller.text.isNotEmpty
-                    ? () => context.push(
-                          '/encrypt/options',
-                          extra: {
-                            'files': widget.files,
-                            'passphrase': _controller.text,
-                          },
-                        )
-                    : null,
+                onPressed: _controller.text.isNotEmpty ? _storeAndContinue : null,
               ),
               const SizedBox(height: 8),
             ],

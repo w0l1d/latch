@@ -5,6 +5,7 @@ import 'package:myenc_core/myenc_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'crypto_stub.dart' show PassphraseResult, CryptoStub;
 import 'isolate_worker.dart';
+import 'passphrase_storage_service.dart';
 
 /// Per-file outcome from a batch encrypt or decrypt operation.
 class BatchResult {
@@ -16,6 +17,10 @@ class BatchResult {
 
 class AppCrypto {
   static late final KdfParams _kdfParams;
+
+  /// Lazy-initialized singleton — set by main() after the widget tree mounts
+  /// so platform channels are available.
+  static PassphraseStorageService? passphraseStorage;
 
   static Future<void> init() async {
     _kdfParams = await _loadKdfParams();

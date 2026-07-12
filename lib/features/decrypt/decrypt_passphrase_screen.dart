@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/latch_button.dart';
+import '../../core/app_crypto.dart';
 
 class DecryptPassphraseScreen extends StatefulWidget {
   final List<String> files;
@@ -14,6 +15,40 @@ class DecryptPassphraseScreen extends StatefulWidget {
 class _DecryptPassphraseScreenState extends State<DecryptPassphraseScreen> {
   final _controller = TextEditingController();
   bool _obscure = true;
+  bool _hasStored = false;
+  bool _quickUnlocking = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkStored();
+  }
+
+  Future<void> _checkStored() async {
+    final svc = AppCrypto.passphraseStorage;
+    if (svc == null) return;
+    final has = await svc.hasStored();
+    if (mounted) setState(() => _hasStored = has);
+  }
+
+  Future<void> _quickUnlock() async {
+    final svc = AppCrypto.passphraseStorage;
+    if (svc == null || !_hasStored) return;
+    setState(() => _quickUnlocking = true);
+    try {
+      final stored = await svc.list();
+      if (stored.isEmpty) return;
+      // Use the first stored passphrase. When #15 (key-id resolution) lands
+      // the matched key-id hint from the .latch header can auto-select.
+      final passphrase = await svc.loadWithAuth(stored.first.label);
+      if (passphrase != null && mounted) {
+        _controller.text = passphrase;
+        _submit();
+      }
+    } finally {
+      if (mounted) setState(() => _quickUnlocking = false);
+    }
+  }
 
   @override
   void dispose() {
@@ -76,7 +111,7 @@ class _DecryptPassphraseScreenState extends State<DecryptPassphraseScreen> {
               TextField(
                 controller: _controller,
                 obscureText: _obscure,
-                autofocus: true,
+                autofocus: !_hasStored,
                 onChanged: (_) => setState(() {}),
                 decoration: InputDecoration(
                   hintText: 'Passphrase',
@@ -89,31 +124,39 @@ class _DecryptPassphraseScreenState extends State<DecryptPassphraseScreen> {
                 style: const TextStyle(fontSize: 17, letterSpacing: 1.5),
               ),
               const SizedBox(height: 14),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  border: Border.all(color: LatchColors.border, width: 1.5, style: BorderStyle.solid),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 24,
-                      height: 24,
-                      decoration: BoxDecoration(
-                        border: Border.all(color: LatchColors.muted, width: 1.5),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Icon(Icons.fingerprint, size: 14, color: LatchColors.muted),
+              if (_hasStored)
+                GestureDetector(
+                  onTap: _quickUnlocking ? null : _quickUnlock,
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: LatchColors.border, width: 1.5),
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    const SizedBox(width: 10),
-                    Text(
-                      'Use quick unlock instead',
-                      style: Theme.of(context).textTheme.bodyMedium,
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 24,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            border: Border.all(color: LatchColors.muted, width: 1.5),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Icon(
+                            _quickUnlocking ? Icons.lock_outline : Icons.fingerprint,
+                            size: 14,
+                            color: LatchColors.muted,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          _quickUnlocking ? 'Unlocking…' : 'Use quick unlock instead',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
-              ),
               const Spacer(),
               LatchPrimaryButton(
                 label: 'Unlock',
