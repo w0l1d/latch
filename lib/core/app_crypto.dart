@@ -8,6 +8,7 @@ import 'crypto_stub.dart' show PassphraseResult, CryptoStub;
 import 'isolate_worker.dart';
 import 'passphrase_storage_service.dart';
 import 'device_key_service.dart';
+import 'recipient_key_service.dart';
 
 /// Per-file outcome from a batch encrypt or decrypt operation.
 class BatchResult {
@@ -27,6 +28,10 @@ class AppCrypto {
   /// Device-bound key service — set by main() after the widget tree mounts.
   /// Used to add/check hardware-key wraps for device-bound recovery.
   static DeviceKeyService? deviceKeyService;
+
+  /// Sharing keypair + recipient address book — set by main() after the
+  /// widget tree mounts. Used for X25519 recipient wraps (spec §3, UC-6).
+  static RecipientKeyService? recipientKeys;
 
   static Future<void> init() async {
     _kdfParams = await _loadKdfParams();
@@ -119,7 +124,9 @@ class AppCrypto {
   /// If [onFileResult] is provided it is called per-file with the outcome.
   ///
   /// If [deviceKey] is provided, hardware-key wraps are tried as a fallback
-  /// when the passphrase is wrong (device-bound recovery).
+  /// when the passphrase is wrong (device-bound recovery). If a recipient
+  /// keypair is provided, recipient wraps are tried after that — files shared
+  /// TO this install open even without the passphrase.
   ///
   /// Runs in a background isolate.
   static Stream<double> decryptFiles(
@@ -127,6 +134,8 @@ class AppCrypto {
     String passphrase, {
     String? outputDir,
     Uint8List? deviceKey,
+    Uint8List? recipientPublicKey,
+    Uint8List? recipientSecretKey,
     void Function(String path, bool ok, String? error)? onFileResult,
   }) async* {
     if (files.isEmpty) return;
@@ -146,6 +155,8 @@ class AppCrypto {
             'passphrase': pw,
             'outputDir': outputDir,
             'deviceKey': deviceKey,
+            'recipientPublicKey': recipientPublicKey,
+            'recipientSecretKey': recipientSecretKey,
           });
           continue;
         }
@@ -232,6 +243,104 @@ class AppCrypto {
       if (!done) isolate.kill(priority: Isolate.immediate);
       oldPw.fillRange(0, oldPw.length, 0);
       newPw.fillRange(0, newPw.length, 0);
+    }
+  }
+
+  /// Adds an X25519 recipient wrap to each .latch file in [files], replacing
+  /// each file in place (atomic tmp+rename). The body is never re-encrypted —
+  /// only a sealed-box wrap for [recipientPublicKey] is appended to the
+  /// header's wrap list (spec §3, UC-6). The passphrase and any existing
+  /// wraps keep working.
+  ///
+  /// Yields overall progress 0.0–1.0. One file failing does not abort the
+  /// rest; per-file outcomes arrive via [onFileResult].
+  static Stream<double> addRecipientFiles(
+    List<String> files,
+    String passphrase, {
+    required Uint8List recipientPublicKey,
+    void Function(String path, bool ok, String? error)? onFileResult,
+  }) async* {
+    if (files.isEmpty) return;
+    final pw = utf8.encode(passphrase);
+    final port = ReceivePort();
+    final isolate = await Isolate.spawn(latchWorker, port.sendPort);
+    bool done = false;
+
+    try {
+      SendPort? workerPort;
+      await for (final msg in port) {
+        if (workerPort == null) {
+          workerPort = msg as SendPort;
+          workerPort.send({
+            'cmd': 'add_recipient',
+            'files': files,
+            'passphrase': pw,
+            'recipientPublicKey': recipientPublicKey,
+          });
+          continue;
+        }
+        final map = msg as Map<String, dynamic>;
+        switch (map['type']) {
+          case 'progress':
+            yield map['pct'] as double;
+          case 'file_done':
+            onFileResult?.call(
+              map['path'] as String,
+              map['ok'] as bool,
+              map['error'] as String?,
+            );
+          case 'error':
+            _throwTypedError(map['code'] as String, map['message'] as String);
+          case 'done':
+            done = true;
+            return;
+        }
+      }
+    } finally {
+      port.close();
+      if (!done) isolate.kill(priority: Isolate.immediate);
+      pw.fillRange(0, pw.length, 0);
+    }
+  }
+
+  /// Generates a fresh X25519 sharing keypair in a worker isolate (sodium is
+  /// only initialized there). Used as RecipientKeyService's generator.
+  static Future<ShareKeypair> generateShareKeypair() async {
+    final port = ReceivePort();
+    final isolate = await Isolate.spawn(latchWorker, port.sendPort);
+    bool done = false;
+    ShareKeypair? result;
+
+    try {
+      SendPort? workerPort;
+      await for (final msg in port) {
+        if (workerPort == null) {
+          workerPort = msg as SendPort;
+          workerPort.send({'cmd': 'keygen'});
+          continue;
+        }
+        final map = msg as Map<String, dynamic>;
+        switch (map['type']) {
+          case 'keypair':
+            result = (
+              publicKey: map['publicKey'] as Uint8List,
+              secretKey: map['secretKey'] as Uint8List,
+            );
+          case 'error':
+            _throwTypedError(map['code'] as String, map['message'] as String);
+          case 'done':
+            done = true;
+            final kp = result;
+            if (kp == null) {
+              throw StateError('keygen worker finished without a keypair');
+            }
+            return kp;
+        }
+      }
+      throw StateError('keygen worker exited unexpectedly');
+    } finally {
+      port.close();
+      if (!done) isolate.kill(priority: Isolate.immediate);
     }
   }
 

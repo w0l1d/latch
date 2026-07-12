@@ -19,6 +19,8 @@ import '../features/settings/settings_screen.dart';
 import '../features/settings/passphrase_storage_screen.dart';
 import '../features/settings/change_passphrase_screen.dart';
 import '../features/settings/secure_delete_screen.dart';
+import '../features/settings/sharing_keys_screen.dart';
+import '../features/settings/add_recipient_screen.dart';
 
 final router = GoRouter(
   initialLocation: '/onboarding/welcome',
@@ -110,5 +112,7 @@ final router = GoRouter(
     GoRoute(path: '/settings/passphrase-storage', builder: (ctx, st) => const PassphraseStorageScreen()),
     GoRoute(path: '/settings/change-passphrase', builder: (ctx, st) => const ChangePassphraseScreen()),
     GoRoute(path: '/settings/secure-delete', builder: (ctx, st) => const SecureDeleteScreen()),
+    GoRoute(path: '/settings/sharing-keys', builder: (ctx, st) => const SharingKeysScreen()),
+    GoRoute(path: '/settings/add-recipient', builder: (ctx, st) => const AddRecipientScreen()),
   ],
 );

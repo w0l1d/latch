@@ -116,6 +116,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
             subtitle: 'Crypto-erase .latch file headers — permanent',
             onTap: () => context.push('/settings/secure-delete'),
           ),
+          _NavTile(
+            title: 'Sharing',
+            subtitle: 'Your public key and saved recipients',
+            onTap: () => context.push('/settings/sharing-keys'),
+          ),
+          _NavTile(
+            title: 'Share with recipient',
+            subtitle: 'Add a recipient lock to .latch files',
+            onTap: () => context.push('/settings/add-recipient'),
+          ),
           _SwitchTile(
             title: 'Quick unlock',
             subtitle: 'Biometric / device PIN gate',

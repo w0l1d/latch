@@ -3,6 +3,7 @@ import 'core/app_crypto.dart';
 import 'core/device_key_service.dart';
 import 'core/incoming_file_service.dart';
 import 'core/passphrase_storage_service.dart';
+import 'core/recipient_key_service.dart';
 import 'core/router.dart';
 import 'shared/theme/app_theme.dart';
 
@@ -11,6 +12,8 @@ Future<void> main() async {
   await AppCrypto.init();
   AppCrypto.passphraseStorage = PassphraseStorageService();
   AppCrypto.deviceKeyService = DeviceKeyService();
+  AppCrypto.recipientKeys =
+      RecipientKeyService(keygen: AppCrypto.generateShareKeypair);
   runApp(const LatchApp());
 }
 

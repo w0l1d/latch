@@ -47,11 +47,23 @@ class _DecryptProgressScreenState extends State<DecryptProgressScreen> {
     if (prefs.getBool('device_bound_recovery') ?? false) {
       deviceKey = await AppCrypto.deviceKeyService?.getOrCreateKey();
     }
+    // Files shared TO this install: if a sharing keypair exists, pass it so
+    // recipient wraps are tried when the passphrase wrap fails.
+    Uint8List? recipientPk;
+    Uint8List? recipientSk;
+    final recipientSvc = AppCrypto.recipientKeys;
+    if (recipientSvc != null && await recipientSvc.hasKeyPair()) {
+      final kp = await recipientSvc.getOrCreateKeyPair();
+      recipientPk = kp.publicKey;
+      recipientSk = kp.secretKey;
+    }
     if (!mounted) return;
     _sub = AppCrypto.decryptFiles(
       widget.files,
       widget.passphrase,
       deviceKey: deviceKey,
+      recipientPublicKey: recipientPk,
+      recipientSecretKey: recipientSk,
       onFileResult: (path, ok, error) {
         _results.add(BatchResult(path: path, ok: ok, errorMessage: error));
         _doneCount++;
