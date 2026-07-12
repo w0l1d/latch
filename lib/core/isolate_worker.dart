@@ -24,6 +24,8 @@ void latchWorker(SendPort mainPort) async {
         await _encryptBatch(crypto, io, task, mainPort);
       case 'decrypt':
         await _decryptBatch(crypto, io, task, mainPort);
+      case 'rewrap':
+        await _rewrapBatch(crypto, io, task, mainPort);
     }
 
     mainPort.send({'type': 'done'});
@@ -139,6 +141,49 @@ Future<void> _encryptOne(
   if (deleteOriginals) await io.deleteFile(path);
 
   mainPort.send({'type': 'progress', 'pct': (index + 1.0) / total});
+}
+
+Future<void> _rewrapBatch(
+  SodiumCryptoAdapter crypto,
+  FileIoDart io,
+  Map<String, dynamic> task,
+  SendPort mainPort,
+) async {
+  final files = (task['files'] as List).cast<String>();
+  final oldPassphrase = task['oldPassphrase'] as Uint8List;
+  final newPassphrase = task['newPassphrase'] as Uint8List;
+  final opslimit = task['opslimit'] as int;
+  final memlimit = task['memlimit'] as int;
+  final keyIdHint = task['keyIdHint'] as Uint8List?;
+  final params = KdfParams(opslimit: opslimit, memlimit: memlimit);
+  final svc = EnvelopeService(crypto);
+
+  for (int i = 0; i < files.length; i++) {
+    final path = files[i];
+    try {
+      // writeChunked writes to <path>.tmp and renames — the original is
+      // replaced atomically only after the full rewrapped file is on disk.
+      await io.writeChunked(
+        path,
+        svc.changePassphrase(
+          ciphertext: io.openRead(path),
+          oldPassphrase: oldPassphrase,
+          newPassphrase: newPassphrase,
+          params: params,
+          keyIdHint: keyIdHint,
+        ),
+      );
+      mainPort.send({'type': 'file_done', 'path': path, 'ok': true, 'error': null});
+    } catch (e) {
+      mainPort.send({
+        'type': 'file_done',
+        'path': path,
+        'ok': false,
+        'error': '$e',
+      });
+    }
+    mainPort.send({'type': 'progress', 'pct': (i + 1.0) / files.length});
+  }
 }
 
 Future<void> _decryptBatch(

@@ -251,6 +251,111 @@ void main() {
     });
   });
 
+  group('EnvelopeService.changePassphrase', () {
+    final newPassphrase = utf8.encode('brand-new-passphrase');
+
+    Future<Uint8List> encryptSample({Uint8List? keyIdHint}) => _collect(
+          svc.encrypt(
+            plaintext: _stream([utf8.encode('rewrap me')]),
+            passphrase: passphrase,
+            params: params,
+            flags: 0x01,
+            filename: 'secret.pdf',
+            keyIdHint: keyIdHint,
+          ),
+        );
+
+    test('new passphrase opens, old passphrase is rejected', () async {
+      final original = await encryptSample();
+      final rewrapped = await _collect(svc.changePassphrase(
+        ciphertext: _stream([original]),
+        oldPassphrase: passphrase,
+        newPassphrase: newPassphrase,
+        params: params,
+      ));
+
+      final recovered = await _collect(svc.decrypt(
+        ciphertext: _stream([rewrapped]),
+        passphrase: newPassphrase,
+      ));
+      expect(recovered, utf8.encode('rewrap me'));
+
+      expect(
+        () => _collect(svc.decrypt(
+          ciphertext: _stream([rewrapped]),
+          passphrase: passphrase,
+        )),
+        throwsA(isA<WrongPassphraseError>()),
+      );
+    });
+
+    test('body bytes and DEK-encrypted fields are carried over verbatim', () async {
+      final hint = Uint8List.fromList(List.generate(16, (i) => 0xC0 + i));
+      final original = await encryptSample(keyIdHint: hint);
+      final rewrapped = await _collect(svc.changePassphrase(
+        ciphertext: _stream([original]),
+        oldPassphrase: passphrase,
+        newPassphrase: newPassphrase,
+        params: params,
+      ));
+
+      final (oldHdr, oldBodyStart) = MyencCodec.decodeHeader(original);
+      final (newHdr, newBodyStart) = MyencCodec.decodeHeader(rewrapped);
+
+      // Body is passthrough: identical ciphertext after the header.
+      expect(rewrapped.sublist(newBodyStart), original.sublist(oldBodyStart));
+      // DEK unchanged → same ss header and same encrypted filename.
+      expect(newHdr.secretstreamHeader, oldHdr.secretstreamHeader);
+      expect(newHdr.encryptedFilename, oldHdr.encryptedFilename);
+      // Identity fields preserved.
+      expect(newHdr.keyIdHint, hint);
+      expect(newHdr.flags, oldHdr.flags);
+      expect(newHdr.chunkSize, oldHdr.chunkSize);
+      // Fresh salt → fresh KEK.
+      expect(newHdr.salt, isNot(oldHdr.salt));
+    });
+
+    test('optionally replaces the key-id hint', () async {
+      final original = await encryptSample();
+      final newHint = Uint8List.fromList(List.generate(16, (i) => 0xD0 + i));
+      final rewrapped = await _collect(svc.changePassphrase(
+        ciphertext: _stream([original]),
+        oldPassphrase: passphrase,
+        newPassphrase: newPassphrase,
+        params: params,
+        keyIdHint: newHint,
+      ));
+      final (hdr, _) = MyencCodec.decodeHeader(rewrapped);
+      expect(hdr.keyIdHint, newHint);
+    });
+
+    test('wrong old passphrase throws WrongPassphraseError', () async {
+      final original = await encryptSample();
+      expect(
+        () => _collect(svc.changePassphrase(
+          ciphertext: _stream([original]),
+          oldPassphrase: wrongPassphrase,
+          newPassphrase: newPassphrase,
+          params: params,
+        )),
+        throwsA(isA<WrongPassphraseError>()),
+      );
+    });
+
+    test('rejects KDF params below the floor', () async {
+      final original = await encryptSample();
+      expect(
+        () => _collect(svc.changePassphrase(
+          ciphertext: _stream([original]),
+          oldPassphrase: passphrase,
+          newPassphrase: newPassphrase,
+          params: const KdfParams(opslimit: 1, memlimit: 8),
+        )),
+        throwsA(isA<CorruptedFileError>()),
+      );
+    });
+  });
+
   group('EnvelopeService error cases', () {
     late Uint8List validCiphertext;
 

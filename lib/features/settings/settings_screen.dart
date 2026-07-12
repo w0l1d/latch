@@ -31,6 +31,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
             subtitle: 'None — type every time',
             onTap: () => context.push('/settings/passphrase-storage'),
           ),
+          _NavTile(
+            title: 'Change passphrase',
+            subtitle: 'Re-lock .latch files under a new passphrase',
+            onTap: () => context.push('/settings/change-passphrase'),
+          ),
           _SwitchTile(
             title: 'Quick unlock',
             subtitle: 'Biometric / device PIN gate',

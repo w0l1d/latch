@@ -125,6 +125,47 @@ void main() {
       );
     });
 
+    test('changePassphrase re-wraps the golden fixture (real sodium)', () async {
+      final rewrapped = Uint8List.fromList(
+        await _collect(EnvelopeService(adapter).changePassphrase(
+          ciphertext: Stream.value(latch),
+          oldPassphrase: utf8.encode(meta['passphrase'] as String),
+          newPassphrase: utf8.encode('a completely new passphrase'),
+          params: const KdfParams(opslimit: 2, memlimit: 65536),
+        )),
+      );
+
+      // New passphrase decrypts to the original plaintext…
+      final plain = await _collect(EnvelopeService(adapter).decrypt(
+        ciphertext: Stream.value(rewrapped),
+        passphrase: utf8.encode('a completely new passphrase'),
+      ));
+      expect(_bytesHex(Uint8List.fromList(plain)), meta['plaintext_hex']);
+
+      // …the old passphrase no longer opens it…
+      expect(
+        () => _collect(EnvelopeService(adapter).decrypt(
+          ciphertext: Stream.value(rewrapped),
+          passphrase: utf8.encode(meta['passphrase'] as String),
+        )),
+        throwsA(isA<WrongPassphraseError>()),
+      );
+
+      // …and the encrypted filename (DEK-encrypted, untouched) still recovers.
+      final (hdr, _) = MyencCodec.decodeHeader(rewrapped);
+      final dek = DekWrap.unwrapPassphrase(
+        crypto: adapter,
+        entry: hdr.wraps.single,
+        passphrase: utf8.encode('a completely new passphrase'),
+        salt: hdr.salt,
+        opslimit: hdr.opslimit,
+        memlimit: hdr.memlimit,
+      );
+      final name = EnvelopeService.decryptFilename(
+          crypto: adapter, header: hdr, dek: dek);
+      expect(utf8.decode(name!), meta['filename']);
+    });
+
     test('a single flipped body byte fails closed', () {
       final tampered = Uint8List.fromList(latch);
       tampered[tampered.length - 1] ^= 0x01; // last byte of the FINAL tag/MAC

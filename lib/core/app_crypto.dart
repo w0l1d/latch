@@ -158,6 +158,68 @@ class AppCrypto {
     }
   }
 
+  /// Re-wraps each .latch file in [files] under a new passphrase, replacing
+  /// each file in place (atomic tmp+rename). The body is never re-encrypted —
+  /// only the DEK wrap and KDF salt in the header change (spec UC: change
+  /// passphrase = re-wrap DEK only).
+  ///
+  /// Yields overall progress 0.0–1.0. One file failing does not abort the
+  /// rest; per-file outcomes arrive via [onFileResult].
+  static Stream<double> changePassphraseFiles(
+    List<String> files,
+    String oldPassphrase,
+    String newPassphrase, {
+    String? keyIdHex,
+    void Function(String path, bool ok, String? error)? onFileResult,
+  }) async* {
+    if (files.isEmpty) return;
+    final oldPw = utf8.encode(oldPassphrase);
+    final newPw = utf8.encode(newPassphrase);
+    final port = ReceivePort();
+    final isolate = await Isolate.spawn(latchWorker, port.sendPort);
+    bool done = false;
+
+    try {
+      SendPort? workerPort;
+      await for (final msg in port) {
+        if (workerPort == null) {
+          workerPort = msg as SendPort;
+          workerPort.send({
+            'cmd': 'rewrap',
+            'files': files,
+            'oldPassphrase': oldPw,
+            'newPassphrase': newPw,
+            'opslimit': _kdfParams.opslimit,
+            'memlimit': _kdfParams.memlimit,
+            'keyIdHint': _hexToBytes(keyIdHex),
+          });
+          continue;
+        }
+        final map = msg as Map<String, dynamic>;
+        switch (map['type']) {
+          case 'progress':
+            yield map['pct'] as double;
+          case 'file_done':
+            onFileResult?.call(
+              map['path'] as String,
+              map['ok'] as bool,
+              map['error'] as String?,
+            );
+          case 'error':
+            _throwTypedError(map['code'] as String, map['message'] as String);
+          case 'done':
+            done = true;
+            return;
+        }
+      }
+    } finally {
+      port.close();
+      if (!done) isolate.kill(priority: Isolate.immediate);
+      oldPw.fillRange(0, oldPw.length, 0);
+      newPw.fillRange(0, newPw.length, 0);
+    }
+  }
+
   /// Convenience: single-file decrypt with the batch API.
   /// Throws on failure (unlike [decryptFiles] which reports via callback).
   static Stream<double> decryptFile(String filePath, String passphrase) async* {

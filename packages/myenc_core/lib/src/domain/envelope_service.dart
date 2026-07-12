@@ -97,7 +97,89 @@ class EnvelopeService {
     required Uint8List passphrase,
   }) async* {
     final reader = _StreamReader(ciphertext);
+    final hdr = await _readHeader(reader);
+    final dek = _unwrapDek(hdr, passphrase);
 
+    // Prepend the ss header to the body and decrypt.
+    final bodyWithHeader = _prependStream(hdr.secretstreamHeader, reader.remainingStream());
+    final transformer = _crypto.createDecryptTransformer(dek, hdr.chunkSize);
+    // DEK has been copied to guarded memory by SecureKey; zero the plain copy.
+    dek.fillRange(0, dek.length, 0);
+    yield* bodyWithHeader.transform(transformer);
+  }
+
+  /// Changes the passphrase of an encrypted stream WITHOUT re-encrypting the
+  /// body (spec: "change passphrase = re-wrap DEK only"). Unwraps the DEK with
+  /// [oldPassphrase], re-wraps it under a fresh Argon2id KEK derived from
+  /// [newPassphrase] with a new random salt and [params], then emits the
+  /// rewritten header followed by the body bytes verbatim. The DEK — and
+  /// therefore the body ciphertext and encrypted filename — never changes.
+  ///
+  /// [keyIdHint] optionally replaces the header's key-id (16 bytes) so the
+  /// file can point at a different stored-passphrase entry; null keeps the
+  /// existing one.
+  ///
+  /// Throws [WrongPassphraseError] if [oldPassphrase] is wrong.
+  Stream<Uint8List> changePassphrase({
+    required Stream<Uint8List> ciphertext,
+    required Uint8List oldPassphrase,
+    required Uint8List newPassphrase,
+    required KdfParams params,
+    Uint8List? keyIdHint,
+  }) async* {
+    if (!params.meetsFloor()) {
+      throw CorruptedFileError('KDF params below security floor');
+    }
+    if (keyIdHint != null && keyIdHint.length != 16) {
+      throw CorruptedFileError('key-id hint must be 16 bytes');
+    }
+    final reader = _StreamReader(ciphertext);
+    final hdr = await _readHeader(reader);
+    final dek = _unwrapDek(hdr, oldPassphrase);
+
+    try {
+      final newSalt = _crypto.randomBytes(16);
+      final newWrap = DekWrap.wrapPassphrase(
+        crypto: _crypto,
+        dek: dek,
+        passphrase: newPassphrase,
+        salt: newSalt,
+        opslimit: params.opslimit,
+        memlimit: params.memlimit,
+      );
+
+      // Replace the passphrase wrap; every other wrap (hardware, recipient)
+      // still wraps the same DEK and is carried over untouched.
+      final newWraps = [
+        for (final w in hdr.wraps)
+          if (w.type == WrapType.passphrase) newWrap else w,
+      ];
+
+      yield MyencCodec.encodeHeader(FileHeader(
+        version: hdr.version,
+        flags: hdr.flags,
+        kdfId: hdr.kdfId,
+        salt: newSalt,
+        opslimit: params.opslimit,
+        memlimit: params.memlimit,
+        cipherId: hdr.cipherId,
+        chunkSize: hdr.chunkSize,
+        keyIdHint: keyIdHint ?? hdr.keyIdHint,
+        wraps: newWraps,
+        secretstreamHeader: hdr.secretstreamHeader,
+        encryptedFilename: hdr.encryptedFilename,
+      ));
+    } finally {
+      dek.fillRange(0, dek.length, 0);
+    }
+
+    // Body passthrough — ciphertext unchanged under the unchanged DEK.
+    yield* reader.remainingStream();
+  }
+
+  /// Reads and decodes the full header from [reader], leaving the reader
+  /// positioned at the first body byte.
+  Future<FileHeader> _readHeader(_StreamReader reader) async {
     // Read the fixed 56-byte prefix.
     final fixed = await reader.readExact(56);
     if (fixed == null) throw CorruptedFileError('file too short for header');
@@ -145,10 +227,15 @@ class EnvelopeService {
       off += c.length;
     }
     final (hdr, _) = MyencCodec.decodeHeader(headerBuf);
+    return hdr;
+  }
 
+  /// Unwraps the DEK from [hdr]'s passphrase wrap. The caller owns the
+  /// returned bytes and must zeroize them.
+  Uint8List _unwrapDek(FileHeader hdr, Uint8List passphrase) {
     final pw = hdr.wraps.where((w) => w.type == WrapType.passphrase).firstOrNull;
     if (pw == null) throw CorruptedFileError('no passphrase wrap found');
-    final dek = DekWrap.unwrapPassphrase(
+    return DekWrap.unwrapPassphrase(
       crypto: _crypto,
       entry: pw,
       passphrase: passphrase,
@@ -156,13 +243,6 @@ class EnvelopeService {
       opslimit: hdr.opslimit,
       memlimit: hdr.memlimit,
     );
-
-    // Prepend the ss header to the body and decrypt.
-    final bodyWithHeader = _prependStream(hdr.secretstreamHeader, reader.remainingStream());
-    final transformer = _crypto.createDecryptTransformer(dek, hdr.chunkSize);
-    // DEK has been copied to guarded memory by SecureKey; zero the plain copy.
-    dek.fillRange(0, dek.length, 0);
-    yield* bodyWithHeader.transform(transformer);
   }
 
   /// Decrypts the encrypted filename from [header] using the given [dek].
