@@ -9,7 +9,18 @@ import 'shared/theme/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await AppCrypto.init();
+  try {
+    await AppCrypto.init();
+  } catch (_) {
+    runApp(const MaterialApp(
+      home: Scaffold(
+        body: Center(
+          child: Text('The encryption engine failed to start.'),
+        ),
+      ),
+    ));
+    return;
+  }
   AppCrypto.passphraseStorage = PassphraseStorageService();
   AppCrypto.deviceKeyService = DeviceKeyService();
   AppCrypto.recipientKeys =

@@ -28,7 +28,12 @@ class _DeviceCheckScreenState extends State<DeviceCheckScreen> {
     if (!mounted) return;
     setState(() => _progress = 0.1);
 
-    final calibrated = await _calibrate();
+    KdfParams calibrated;
+    try {
+      calibrated = await _calibrate();
+    } catch (_) {
+      calibrated = const KdfParams(opslimit: 3, memlimit: 65536);
+    }
 
     if (!mounted) return;
     setState(() => _progress = 0.9);
@@ -115,6 +120,7 @@ class _DeviceCheckScreenState extends State<DeviceCheckScreen> {
                   backgroundColor: LatchColors.border,
                   color: LatchColors.ink,
                   minHeight: 10,
+                  semanticsLabel: 'Benchmarking device performance',
                 ),
               ),
               const SizedBox(height: 20),

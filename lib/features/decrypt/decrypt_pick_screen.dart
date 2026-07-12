@@ -43,9 +43,12 @@ class _DecryptPickScreenState extends State<DecryptPickScreen> {
           child: Column(
             children: [
               Expanded(
-                child: GestureDetector(
-                  onTap: _picking ? null : _pick,
-                  child: Container(
+                child: Semantics(
+                  button: true,
+                  label: 'Choose locked files',
+                  child: GestureDetector(
+                    onTap: _picking ? null : _pick,
+                    child: Container(
                     decoration: BoxDecoration(
                       border: Border.all(color: LatchColors.border, width: 2),
                       borderRadius: BorderRadius.circular(18),
@@ -103,6 +106,7 @@ class _DecryptPickScreenState extends State<DecryptPickScreen> {
                                 ),
                               ),
                   ),
+                ),
                 ),
               ),
               const SizedBox(height: 16),

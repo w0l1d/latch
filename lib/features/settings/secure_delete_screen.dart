@@ -7,6 +7,7 @@ import '../../core/app_crypto.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/latch_alert.dart';
 import '../../shared/widgets/latch_button.dart';
+import '../../shared/error_messages.dart';
 
 /// Crypto-erase .latch files (spec UC-10). Overwrites the header in place
 /// with random bytes — destroying the salt, DEK wraps, key-id, encrypted
@@ -142,7 +143,9 @@ class _SecureDeleteScreenState extends State<SecureDeleteScreen> {
             '$ok file${ok == 1 ? '' : 's'} crypto-erased and deleted.',
         buttonLabel: 'Done',
         onPressed: () {
-          Navigator.pop(context);
+          if (Navigator.of(context).canPop()) {
+            Navigator.pop(context);
+          }
           context.pop();
         },
       );
@@ -170,7 +173,7 @@ class _SecureDeleteScreenState extends State<SecureDeleteScreen> {
       tone: LatchAlertTone.danger,
       icon: Icons.error_outline,
       title: 'Shred failed',
-      message: message,
+      message: userMessageForError(message),
       buttonLabel: 'OK',
       onPressed: () => Navigator.pop(context),
     );
@@ -189,15 +192,18 @@ class _SecureDeleteScreenState extends State<SecureDeleteScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              GestureDetector(
-                onTap: _busy ? null : _pickFiles,
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: LatchColors.border, width: 1.5),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
+              Semantics(
+                button: true,
+                label: 'Choose .latch files to shred',
+                child: GestureDetector(
+                  onTap: _busy ? null : _pickFiles,
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: LatchColors.border, width: 1.5),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
                     children: [
                       const Icon(Icons.insert_drive_file_outlined,
                           color: LatchColors.ink),
@@ -216,6 +222,7 @@ class _SecureDeleteScreenState extends State<SecureDeleteScreen> {
                       ),
                     ],
                   ),
+                ),
                 ),
               ),
               const SizedBox(height: 20),

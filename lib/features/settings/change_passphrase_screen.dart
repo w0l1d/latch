@@ -7,6 +7,7 @@ import '../../core/app_crypto.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/latch_alert.dart';
 import '../../shared/widgets/latch_button.dart';
+import '../../shared/error_messages.dart';
 
 /// Change the passphrase of existing .latch files by re-wrapping the DEK —
 /// the file body is never re-encrypted, so this is fast even for huge files.
@@ -87,7 +88,9 @@ class _ChangePassphraseScreenState extends State<ChangePassphraseScreen> {
             '$ok file${ok == 1 ? '' : 's'} now open${ok == 1 ? 's' : ''} with the new passphrase.',
         buttonLabel: 'Done',
         onPressed: () {
-          Navigator.pop(context);
+          if (Navigator.of(context).canPop()) {
+            Navigator.pop(context);
+          }
           context.pop();
         },
       );
@@ -118,7 +121,7 @@ class _ChangePassphraseScreenState extends State<ChangePassphraseScreen> {
       tone: LatchAlertTone.danger,
       icon: Icons.error_outline,
       title: 'Change failed',
-      message: message,
+      message: userMessageForError(message),
       buttonLabel: 'OK',
       onPressed: () => Navigator.pop(context),
     );
@@ -137,15 +140,18 @@ class _ChangePassphraseScreenState extends State<ChangePassphraseScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              GestureDetector(
-                onTap: _busy ? null : _pickFiles,
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: LatchColors.border, width: 1.5),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
+              Semantics(
+                button: true,
+                label: 'Choose .latch files',
+                child: GestureDetector(
+                  onTap: _busy ? null : _pickFiles,
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: LatchColors.border, width: 1.5),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
                     children: [
                       const Icon(Icons.insert_drive_file_outlined,
                           color: LatchColors.ink),
@@ -164,6 +170,7 @@ class _ChangePassphraseScreenState extends State<ChangePassphraseScreen> {
                       ),
                     ],
                   ),
+                ),
                 ),
               ),
               const SizedBox(height: 20),

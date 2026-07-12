@@ -4,12 +4,12 @@ class LatchColors {
   static const background = Color(0xFFF5F3EF);
   static const ink = Color(0xFF2A2723);
   static const muted = Color(0xFF6B665D);
-  static const subtle = Color(0xFF9A948A);
+  static const subtle = Color(0xFF6F6A61);
   static const border = Color(0xFFD8D2C6);
-  static const safe = Color(0xFF3A8A6D);
+  static const safe = Color(0xFF2D6B54);
   static const safeLight = Color(0xFFEAF5F0);
   static const safeBorder = Color(0xFFBFE0D2);
-  static const caution = Color(0xFFC98A2E);
+  static const caution = Color(0xFF8B5A0E);
   static const cautionLight = Color(0xFFFBF3E4);
   static const danger = Color(0xFFC13B2F);
   static const dangerLight = Color(0xFFFBEEEC);

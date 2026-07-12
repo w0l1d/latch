@@ -12,6 +12,9 @@ class DecryptSuccessScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return PopScope(
       canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) context.go('/home');
+      },
       child: Scaffold(
         backgroundColor: LatchColors.safeLight,
         body: SafeArea(

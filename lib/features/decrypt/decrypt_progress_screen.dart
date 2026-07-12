@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/latch_button.dart';
 import '../../shared/widgets/latch_alert.dart';
+import '../../shared/error_messages.dart';
 import '../../core/app_crypto.dart';
 
 class DecryptProgressScreen extends StatefulWidget {
@@ -80,7 +81,7 @@ class _DecryptProgressScreenState extends State<DecryptProgressScreen> {
       onError: (Object e) {
         if (!mounted || _cancelled) return;
         // Fatal error (isolate crash, init failure) — not per-file.
-        _showError('Decryption failed', e.toString());
+        _showError('Decryption failed', userMessageForError(e));
       },
     );
   }
@@ -119,14 +120,15 @@ class _DecryptProgressScreenState extends State<DecryptProgressScreen> {
         _showError('Not enough space',
             'There is not enough free storage to write the decrypted file.');
       } else {
-        _showError('Decryption failed', msg);
+        _showError('Decryption failed', userMessageForError(msg));
       }
     }
   }
 
   void _showPartialSuccess(int ok, int bad) {
     final listed = _results.where((r) => !r.ok).take(3).map((r) {
-      return '${p.basename(r.path)}: ${r.errorMessage ?? "error"}';
+      final msg = userMessageForError(r.errorMessage ?? '');
+      return '${p.basename(r.path)}: $msg';
     }).join('\n');
     final more = bad > 3 ? '\n… and ${bad - 3} more' : '';
     showLatchAlert(
@@ -189,6 +191,13 @@ class _DecryptProgressScreenState extends State<DecryptProgressScreen> {
     final fileCount = widget.files.length;
     return PopScope(
       canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) {
+          _cancelled = true;
+          _sub?.cancel();
+          context.pop();
+        }
+      },
       child: Scaffold(
         body: SafeArea(
           child: Padding(

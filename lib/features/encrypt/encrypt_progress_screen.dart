@@ -4,10 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:myenc_core/myenc_core.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/latch_button.dart';
 import '../../shared/widgets/latch_alert.dart';
+import '../../shared/error_messages.dart';
 import '../../core/app_crypto.dart';
 
 class EncryptProgressScreen extends StatefulWidget {
@@ -122,10 +122,7 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
   }
 
   void _showFatalError(Object e) {
-    final msg = e is StorageFullError
-        ? 'Not enough storage space to write the encrypted file.'
-        : 'Encryption failed: $e';
-    _showError('Encryption failed', msg);
+    _showError('Encryption failed', userMessageForError(e));
   }
 
   void _showError(String title, String message) {
@@ -158,6 +155,13 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
         : '';
     return PopScope(
       canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) {
+          _cancelled = true;
+          _sub?.cancel();
+          context.pop();
+        }
+      },
       child: Scaffold(
         body: SafeArea(
           child: Padding(

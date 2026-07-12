@@ -141,9 +141,12 @@ class _OutputFolderRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final beside = outputDir == null;
-    return GestureDetector(
-      onTap: onChoose,
-      child: Container(
+    return Semantics(
+      button: true,
+      label: 'Choose output folder',
+      child: GestureDetector(
+        onTap: onChoose,
+        child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           border: Border.all(color: LatchColors.border, width: 1.5),
@@ -177,6 +180,7 @@ class _OutputFolderRow extends StatelessWidget {
           ],
         ),
       ),
+    ),
     );
   }
 }
@@ -196,18 +200,21 @@ class _OptionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          border: Border.all(
-            color: selected ? LatchColors.ink : LatchColors.border,
-            width: selected ? 2.5 : 1.5,
+    return Semantics(
+      button: true,
+      label: title,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: selected ? LatchColors.ink : LatchColors.border,
+              width: selected ? 2.5 : 1.5,
+            ),
+            borderRadius: BorderRadius.circular(14),
           ),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Row(
+          child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
@@ -243,6 +250,7 @@ class _OptionCard extends StatelessWidget {
           ],
         ),
       ),
+    ),
     );
   }
 }

@@ -115,9 +115,12 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
               ],
               const SizedBox(height: 10),
               if (_canSave)
-                GestureDetector(
-                  onTap: () =>
-                      setState(() => _saveForQuickUnlock = !_saveForQuickUnlock),
+                Semantics(
+                  button: true,
+                  label: 'Save for quick unlock',
+                  child: GestureDetector(
+                    onTap: () =>
+                        setState(() => _saveForQuickUnlock = !_saveForQuickUnlock),
                   child: Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
@@ -153,6 +156,7 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
                     ),
                   ),
                 ),
+                ),
               if (_canSave) const SizedBox(height: 10),
               Text(
                 'A few random words beats hard-to-type symbols. Longer is stronger.',
@@ -187,10 +191,13 @@ class _SourceChipsState extends State<_SourceChips> {
       spacing: 8,
       children: List.generate(_labels.length, (i) {
         final active = i == _selected;
-        return GestureDetector(
-          onTap: () => setState(() => _selected = i),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        return Semantics(
+          button: true,
+          label: _labels[i],
+          child: GestureDetector(
+            onTap: () => setState(() => _selected = i),
+            child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
             decoration: BoxDecoration(
               color: active ? LatchColors.ink : Colors.transparent,
               border: Border.all(
@@ -208,6 +215,7 @@ class _SourceChipsState extends State<_SourceChips> {
               ),
             ),
           ),
+        ),
         );
       }),
     );

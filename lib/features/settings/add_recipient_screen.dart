@@ -8,6 +8,7 @@ import '../../core/recipient_key_service.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/latch_alert.dart';
 import '../../shared/widgets/latch_button.dart';
+import '../../shared/error_messages.dart';
 
 /// Share existing .latch files with a saved recipient (spec §3, UC-6) by
 /// appending an X25519 sealed-box wrap to each file's header — the body is
@@ -71,7 +72,11 @@ class _AddRecipientScreenState extends State<AddRecipientScreen> {
 
   void _run() {
     final recipient =
-        _recipients.firstWhere((r) => r.label == _selectedLabel);
+        _recipients.where((r) => r.label == _selectedLabel).firstOrNull;
+    if (recipient == null) {
+      setState(() => _selectedLabel = null);
+      return;
+    }
     setState(() => _busy = true);
     final results = <BatchResult>[];
     _sub = AppCrypto.addRecipientFiles(
@@ -110,7 +115,9 @@ class _AddRecipientScreenState extends State<AddRecipientScreen> {
             'Your passphrase still works too.',
         buttonLabel: 'Done',
         onPressed: () {
-          Navigator.pop(context);
+          if (Navigator.of(context).canPop()) {
+            Navigator.pop(context);
+          }
           context.pop();
         },
       );
@@ -138,7 +145,7 @@ class _AddRecipientScreenState extends State<AddRecipientScreen> {
       tone: LatchAlertTone.danger,
       icon: Icons.error_outline,
       title: 'Sharing failed',
-      message: message,
+      message: userMessageForError(message),
       buttonLabel: 'OK',
       onPressed: () => Navigator.pop(context),
     );
@@ -157,15 +164,18 @@ class _AddRecipientScreenState extends State<AddRecipientScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              GestureDetector(
-                onTap: _busy ? null : _pickFiles,
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: LatchColors.border, width: 1.5),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
+              Semantics(
+                button: true,
+                label: 'Choose .latch files',
+                child: GestureDetector(
+                  onTap: _busy ? null : _pickFiles,
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: LatchColors.border, width: 1.5),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
                     children: [
                       const Icon(Icons.insert_drive_file_outlined,
                           color: LatchColors.ink),
@@ -185,6 +195,7 @@ class _AddRecipientScreenState extends State<AddRecipientScreen> {
                       ),
                     ],
                   ),
+                ),
                 ),
               ),
               const SizedBox(height: 20),

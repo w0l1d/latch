@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/latch_button.dart';
 
@@ -14,6 +15,31 @@ class PassphraseStorageScreen extends StatefulWidget {
 
 class _PassphraseStorageScreenState extends State<PassphraseStorageScreen> {
   _StorageMode _mode = _StorageMode.none;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getString('passphrase_storage_mode');
+    if (!mounted) return;
+    setState(() {
+      _mode = _StorageMode.values.firstWhere(
+        (m) => m.name == stored,
+        orElse: () => _StorageMode.none,
+      );
+    });
+  }
+
+  Future<void> _save() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('passphrase_storage_mode', _mode.name);
+    if (!mounted) return;
+    context.pop();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -50,7 +76,7 @@ class _PassphraseStorageScreenState extends State<PassphraseStorageScreen> {
               const Spacer(),
               LatchPrimaryButton(
                 label: 'Save choice',
-                onPressed: () => context.pop(),
+                onPressed: _save,
               ),
               const SizedBox(height: 8),
             ],
@@ -71,9 +97,12 @@ class _ModeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
+    return Semantics(
+      button: true,
+      label: title,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -115,6 +144,7 @@ class _ModeCard extends StatelessWidget {
           ],
         ),
       ),
+    ),
     );
   }
 }

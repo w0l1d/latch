@@ -35,51 +35,56 @@ final router = GoRouter(
     GoRoute(
       path: '/encrypt/passphrase',
       builder: (ctx, state) {
-        final files = state.extra as List<String>? ?? [];
+        final extra = state.extra;
+        final files = extra is List<String> ? extra : <String>[];
         return EncryptPassphraseScreen(files: files);
       },
     ),
     GoRoute(
       path: '/encrypt/options',
       builder: (ctx, state) {
-        final extra = state.extra as Map<String, dynamic>? ?? {};
+        final extra = state.extra;
+        final map = extra is Map<String, dynamic> ? extra : <String, dynamic>{};
         return EncryptOptionsScreen(
-          files: extra['files'] as List<String>? ?? [],
-          passphrase: extra['passphrase'] as String? ?? '',
-          keyIdHex: extra['keyIdHex'] as String?,
+          files: map['files'] is List<String> ? map['files'] as List<String> : [],
+          passphrase: map['passphrase'] is String ? map['passphrase'] as String : '',
+          keyIdHex: map['keyIdHex'] is String ? map['keyIdHex'] as String? : null,
         );
       },
     ),
     GoRoute(
       path: '/encrypt/review',
       builder: (ctx, state) {
-        final extra = state.extra as Map<String, dynamic>? ?? {};
+        final extra = state.extra;
+        final map = extra is Map<String, dynamic> ? extra : <String, dynamic>{};
         return EncryptReviewScreen(
-          files: extra['files'] as List<String>? ?? [],
-          passphrase: extra['passphrase'] as String? ?? '',
-          deleteOriginals: extra['deleteOriginals'] as bool? ?? false,
-          outputDir: extra['outputDir'] as String?,
-          keyIdHex: extra['keyIdHex'] as String?,
+          files: map['files'] is List<String> ? map['files'] as List<String> : [],
+          passphrase: map['passphrase'] is String ? map['passphrase'] as String : '',
+          deleteOriginals: map['deleteOriginals'] is bool ? map['deleteOriginals'] as bool : false,
+          outputDir: map['outputDir'] is String ? map['outputDir'] as String? : null,
+          keyIdHex: map['keyIdHex'] is String ? map['keyIdHex'] as String? : null,
         );
       },
     ),
     GoRoute(
       path: '/encrypt/progress',
       builder: (ctx, state) {
-        final extra = state.extra as Map<String, dynamic>? ?? {};
+        final extra = state.extra;
+        final map = extra is Map<String, dynamic> ? extra : <String, dynamic>{};
         return EncryptProgressScreen(
-          files: extra['files'] as List<String>? ?? [],
-          passphrase: extra['passphrase'] as String? ?? '',
-          deleteOriginals: extra['deleteOriginals'] as bool? ?? false,
-          outputDir: extra['outputDir'] as String?,
-          keyIdHex: extra['keyIdHex'] as String?,
+          files: map['files'] is List<String> ? map['files'] as List<String> : [],
+          passphrase: map['passphrase'] is String ? map['passphrase'] as String : '',
+          deleteOriginals: map['deleteOriginals'] is bool ? map['deleteOriginals'] as bool : false,
+          outputDir: map['outputDir'] is String ? map['outputDir'] as String? : null,
+          keyIdHex: map['keyIdHex'] is String ? map['keyIdHex'] as String? : null,
         );
       },
     ),
     GoRoute(
       path: '/encrypt/success',
       builder: (ctx, state) {
-        final files = state.extra as List<String>? ?? [];
+        final extra = state.extra;
+        final files = extra is List<String> ? extra : <String>[];
         return EncryptSuccessScreen(files: files);
       },
     ),
@@ -87,24 +92,27 @@ final router = GoRouter(
     GoRoute(
       path: '/decrypt/passphrase',
       builder: (ctx, state) {
-        final files = state.extra as List<String>? ?? [];
+        final extra = state.extra;
+        final files = extra is List<String> ? extra : <String>[];
         return DecryptPassphraseScreen(files: files);
       },
     ),
     GoRoute(
       path: '/decrypt/progress',
       builder: (ctx, state) {
-        final extra = state.extra as Map<String, dynamic>? ?? {};
+        final extra = state.extra;
+        final map = extra is Map<String, dynamic> ? extra : <String, dynamic>{};
         return DecryptProgressScreen(
-          files: extra['files'] as List<String>? ?? [],
-          passphrase: extra['passphrase'] as String? ?? '',
+          files: map['files'] is List<String> ? map['files'] as List<String> : [],
+          passphrase: map['passphrase'] is String ? map['passphrase'] as String : '',
         );
       },
     ),
     GoRoute(
       path: '/decrypt/success',
       builder: (ctx, state) {
-        final files = state.extra as List<String>? ?? [];
+        final extra = state.extra;
+        final files = extra is List<String> ? extra : <String>[];
         return DecryptSuccessScreen(files: files);
       },
     ),

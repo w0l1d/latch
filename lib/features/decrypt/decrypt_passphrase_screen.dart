@@ -139,8 +139,11 @@ class _DecryptPassphraseScreenState extends State<DecryptPassphraseScreen> {
               ),
               const SizedBox(height: 14),
               if (_hasStored)
-                GestureDetector(
-                  onTap: _quickUnlocking ? null : _quickUnlock,
+                Semantics(
+                  button: true,
+                  label: 'Use quick unlock instead',
+                  child: GestureDetector(
+                    onTap: _quickUnlocking ? null : _quickUnlock,
                   child: Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
@@ -170,6 +173,7 @@ class _DecryptPassphraseScreenState extends State<DecryptPassphraseScreen> {
                       ],
                     ),
                   ),
+                ),
                 ),
               const Spacer(),
               LatchPrimaryButton(

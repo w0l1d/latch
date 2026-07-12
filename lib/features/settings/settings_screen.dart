@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/app_crypto.dart';
 import '../../shared/theme/app_theme.dart';
@@ -39,6 +40,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _cipher = 'Auto';
   String _kdfCost = 'Auto';
   int _storedCount = 0;
+  String _version = '';
 
   bool _loaded = false;
 
@@ -63,6 +65,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
 
     if (!mounted) return;
+
+    final info = await PackageInfo.fromPlatform();
+
+    if (!mounted) return;
     setState(() {
       _deleteOriginals = prefs.getBool('delete_originals') ?? false;
       _encryptFilename = prefs.getBool('encrypt_filename') ?? true;
@@ -70,6 +76,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _deviceBoundRecovery = prefs.getBool('device_bound_recovery') ?? false;
       _kdfCost = label;
       _storedCount = count;
+      _version = '${info.version}+${info.buildNumber}';
       _loaded = true;
     });
   }
@@ -200,7 +207,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             value: 'Beside each original',
           ),
           _SectionHeader('About'),
-          _InfoTile(title: 'Version', value: '1.0.0'),
+          _InfoTile(title: 'Version', value: _version),
           _InfoTile(
             title: 'File format',
             value: '.latch (v1)',

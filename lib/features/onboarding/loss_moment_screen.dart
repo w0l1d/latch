@@ -56,8 +56,7 @@ class _LossMomentScreenState extends State<LossMomentScreen> {
                 ),
               ),
               const SizedBox(height: 28),
-              GestureDetector(
-                onTap: () => setState(() => _acknowledged = !_acknowledged),
+              MergeSemantics(
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [

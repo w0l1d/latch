@@ -88,6 +88,8 @@
 			</dict>
 		</dict>
 	</array>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Latch uses Face ID to let you unlock files quickly without retyping your passphrase each time.</string>
 	<key>UILaunchStoryboardName</key>

@@ -49,9 +49,12 @@ class _EncryptPickScreenState extends State<EncryptPickScreen> {
             children: [
               if (_files.isEmpty)
                 Expanded(
-                  child: GestureDetector(
-                    onTap: _picking ? null : _pickFiles,
-                    child: Container(
+                  child: Semantics(
+                    button: true,
+                    label: 'Choose files to lock',
+                    child: GestureDetector(
+                      onTap: _picking ? null : _pickFiles,
+                      child: Container(
                       decoration: BoxDecoration(
                         border: Border.all(color: LatchColors.border, width: 2),
                         borderRadius: BorderRadius.circular(18),
@@ -87,6 +90,7 @@ class _EncryptPickScreenState extends State<EncryptPickScreen> {
                               ),
                       ),
                     ),
+                  ),
                   ),
                 )
               else ...[
@@ -158,9 +162,10 @@ class _FileRow extends StatelessWidget {
           Expanded(
             child: Text(name, style: Theme.of(context).textTheme.bodyLarge),
           ),
-          GestureDetector(
-            onTap: onRemove,
-            child: const Icon(Icons.close, color: LatchColors.subtle),
+          IconButton(
+            icon: const Icon(Icons.close, color: LatchColors.subtle),
+            tooltip: 'Remove file',
+            onPressed: onRemove,
           ),
         ],
       ),
