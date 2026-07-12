@@ -35,6 +35,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _deleteOriginals = false;
   bool _encryptFilename = true;
   bool _quickUnlock = false;
+  bool _deviceBoundRecovery = false;
   String _cipher = 'Auto';
   String _kdfCost = 'Auto';
   int _storedCount = 0;
@@ -66,6 +67,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _deleteOriginals = prefs.getBool('delete_originals') ?? false;
       _encryptFilename = prefs.getBool('encrypt_filename') ?? true;
       _quickUnlock = prefs.getBool('quick_unlock') ?? false;
+      _deviceBoundRecovery = prefs.getBool('device_bound_recovery') ?? false;
       _kdfCost = label;
       _storedCount = count;
       _loaded = true;
@@ -122,6 +124,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ? (v) {
                     setState(() => _quickUnlock = v);
                     _set('quick_unlock', v);
+                  }
+                : null,
+          ),
+          _SwitchTile(
+            title: 'Device-bound recovery',
+            subtitle:
+                'Add a device-key wrap so files can be opened on this device '
+                'even if you forget the passphrase',
+            value: _deviceBoundRecovery,
+            onChanged: _loaded
+                ? (v) {
+                    setState(() => _deviceBoundRecovery = v);
+                    _set('device_bound_recovery', v);
                   }
                 : null,
           ),

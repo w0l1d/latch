@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'core/app_crypto.dart';
+import 'core/device_key_service.dart';
 import 'core/incoming_file_service.dart';
 import 'core/passphrase_storage_service.dart';
 import 'core/router.dart';
@@ -9,6 +10,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await AppCrypto.init();
   AppCrypto.passphraseStorage = PassphraseStorageService();
+  AppCrypto.deviceKeyService = DeviceKeyService();
   runApp(const LatchApp());
 }
 

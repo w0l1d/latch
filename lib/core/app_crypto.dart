@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'crypto_stub.dart' show PassphraseResult, CryptoStub;
 import 'isolate_worker.dart';
 import 'passphrase_storage_service.dart';
+import 'device_key_service.dart';
 
 /// Per-file outcome from a batch encrypt or decrypt operation.
 class BatchResult {
@@ -22,6 +23,10 @@ class AppCrypto {
   /// Lazy-initialized singleton — set by main() after the widget tree mounts
   /// so platform channels are available.
   static PassphraseStorageService? passphraseStorage;
+
+  /// Device-bound key service — set by main() after the widget tree mounts.
+  /// Used to add/check hardware-key wraps for device-bound recovery.
+  static DeviceKeyService? deviceKeyService;
 
   static Future<void> init() async {
     _kdfParams = await _loadKdfParams();
@@ -46,6 +51,9 @@ class AppCrypto {
   /// One file failing does not abort the rest (spec UC-3).
   /// If [onFileResult] is provided it is called per-file with the outcome.
   ///
+  /// If [deviceKey] is provided (32-byte device-bound key), a hardware-key
+  /// wrap is added so files can be opened on this device without the passphrase.
+  ///
   /// Runs in a background isolate.
   static Stream<double> encryptFiles(
     List<String> files,
@@ -53,6 +61,7 @@ class AppCrypto {
     bool deleteOriginals = false,
     String? outputDir,
     String? keyIdHex,
+    Uint8List? deviceKey,
     void Function(String path, bool ok, String? error)? onFileResult,
   }) async* {
     if (files.isEmpty) return;
@@ -75,6 +84,7 @@ class AppCrypto {
             'deleteOriginals': deleteOriginals,
             'outputDir': outputDir,
             'keyIdHint': _hexToBytes(keyIdHex),
+            'deviceKey': deviceKey,
           });
           continue;
         }
@@ -108,11 +118,15 @@ class AppCrypto {
   /// One file failing does not abort the rest (spec UC-3).
   /// If [onFileResult] is provided it is called per-file with the outcome.
   ///
+  /// If [deviceKey] is provided, hardware-key wraps are tried as a fallback
+  /// when the passphrase is wrong (device-bound recovery).
+  ///
   /// Runs in a background isolate.
   static Stream<double> decryptFiles(
     List<String> files,
     String passphrase, {
     String? outputDir,
+    Uint8List? deviceKey,
     void Function(String path, bool ok, String? error)? onFileResult,
   }) async* {
     if (files.isEmpty) return;
@@ -131,6 +145,7 @@ class AppCrypto {
             'files': files,
             'passphrase': pw,
             'outputDir': outputDir,
+            'deviceKey': deviceKey,
           });
           continue;
         }

@@ -356,6 +356,122 @@ void main() {
     });
   });
 
+  group('EnvelopeService device-key wrap', () {
+    final deviceKey = Uint8List.fromList(List.generate(32, (i) => 0xE0 ^ i));
+    final wrongDeviceKey = Uint8List.fromList(List.generate(32, (i) => 0x11 + i));
+    final plain = utf8.encode('device-bound data');
+
+    Future<Uint8List> encryptWithDeviceKey() => _collect(
+          svc.encrypt(
+            plaintext: _stream([plain]),
+            passphrase: passphrase,
+            params: params,
+            deviceKey: deviceKey,
+          ),
+        );
+
+    test('adds a hardwareKey wrap alongside the passphrase wrap', () async {
+      final ciphertext = await encryptWithDeviceKey();
+      final (hdr, _) = MyencCodec.decodeHeader(ciphertext);
+      expect(hdr.wraps, hasLength(2));
+      expect(hdr.wraps[0].type, WrapType.passphrase);
+      expect(hdr.wraps[1].type, WrapType.hardwareKey);
+    });
+
+    test('correct passphrase still decrypts (device key unused)', () async {
+      final ciphertext = await encryptWithDeviceKey();
+      final recovered = await _collect(svc.decrypt(
+        ciphertext: _stream([ciphertext]),
+        passphrase: passphrase,
+      ));
+      expect(recovered, plain);
+    });
+
+    test('wrong passphrase + correct device key recovers the file', () async {
+      final ciphertext = await encryptWithDeviceKey();
+      final recovered = await _collect(svc.decrypt(
+        ciphertext: _stream([ciphertext]),
+        passphrase: wrongPassphrase,
+        deviceKey: deviceKey,
+      ));
+      expect(recovered, plain);
+    });
+
+    test('wrong passphrase + wrong device key is rejected', () async {
+      final ciphertext = await encryptWithDeviceKey();
+      expect(
+        () => _collect(svc.decrypt(
+          ciphertext: _stream([ciphertext]),
+          passphrase: wrongPassphrase,
+          deviceKey: wrongDeviceKey,
+        )),
+        throwsA(isA<WrongPassphraseError>()),
+      );
+    });
+
+    test('wrong passphrase without a device key is rejected even when a hardware wrap exists', () async {
+      final ciphertext = await encryptWithDeviceKey();
+      expect(
+        () => _collect(svc.decrypt(
+          ciphertext: _stream([ciphertext]),
+          passphrase: wrongPassphrase,
+        )),
+        throwsA(isA<WrongPassphraseError>()),
+      );
+    });
+
+    test('device key on a file without a hardware wrap does not bypass the passphrase', () async {
+      final ciphertext = await _collect(svc.encrypt(
+        plaintext: _stream([plain]),
+        passphrase: passphrase,
+        params: params,
+      ));
+      expect(
+        () => _collect(svc.decrypt(
+          ciphertext: _stream([ciphertext]),
+          passphrase: wrongPassphrase,
+          deviceKey: deviceKey,
+        )),
+        throwsA(isA<WrongPassphraseError>()),
+      );
+    });
+
+    test('rejects a device key that is not 32 bytes', () {
+      expect(
+        () => _collect(svc.encrypt(
+          plaintext: _stream([plain]),
+          passphrase: passphrase,
+          params: params,
+          deviceKey: Uint8List(16),
+        )),
+        throwsA(isA<CorruptedFileError>()),
+      );
+    });
+
+    test('changePassphrase carries the hardware wrap over — device key still opens', () async {
+      final original = await encryptWithDeviceKey();
+      final newPassphrase = utf8.encode('rotated-passphrase');
+      final rewrapped = await _collect(svc.changePassphrase(
+        ciphertext: _stream([original]),
+        oldPassphrase: passphrase,
+        newPassphrase: newPassphrase,
+        params: params,
+      ));
+
+      final (hdr, _) = MyencCodec.decodeHeader(rewrapped);
+      expect(hdr.wraps.map((w) => w.type),
+          containsAll([WrapType.passphrase, WrapType.hardwareKey]));
+
+      // The DEK is unchanged, so the ORIGINAL device key must still unwrap it.
+      final recovered = await _collect(svc.decrypt(
+        ciphertext: _stream([rewrapped]),
+        passphrase: wrongPassphrase,
+        deviceKey: deviceKey,
+      ));
+      expect(recovered, plain);
+    });
+  });
+
   group('EnvelopeService error cases', () {
     late Uint8List validCiphertext;
 

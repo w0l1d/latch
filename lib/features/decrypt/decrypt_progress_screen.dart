@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as p;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/latch_button.dart';
 import '../../shared/widgets/latch_alert.dart';
@@ -36,9 +38,20 @@ class _DecryptProgressScreenState extends State<DecryptProgressScreen> {
   }
 
   void _start() {
+    _loadAndRun();
+  }
+
+  Future<void> _loadAndRun() async {
+    Uint8List? deviceKey;
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool('device_bound_recovery') ?? false) {
+      deviceKey = await AppCrypto.deviceKeyService?.getOrCreateKey();
+    }
+    if (!mounted) return;
     _sub = AppCrypto.decryptFiles(
       widget.files,
       widget.passphrase,
+      deviceKey: deviceKey,
       onFileResult: (path, ok, error) {
         _results.add(BatchResult(path: path, ok: ok, errorMessage: error));
         _doneCount++;

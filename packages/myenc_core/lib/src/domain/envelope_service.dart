@@ -17,6 +17,10 @@ class EnvelopeService {
   ///
   /// If [filename] is set and &flags includes bit0, the filename is encrypted
   /// with the DEK and stored in the header (spec §6, §7.15, and §8).
+  ///
+  /// If [deviceKey] is provided (32-byte device-bound symmetric key), a second
+  /// WrapEntry of type [WrapType.hardwareKey] is added so the file can also be
+  /// opened on this device without the passphrase (spec §Device-bound recovery).
   Stream<Uint8List> encrypt({
     required Stream<Uint8List> plaintext,
     required Uint8List passphrase,
@@ -25,12 +29,17 @@ class EnvelopeService {
     int chunkSize = FileHeader.defaultChunkSize,
     String? filename,
     Uint8List? keyIdHint,
+    Uint8List? deviceKey,
   }) async* {
     if (!params.meetsFloor()) {
       throw CorruptedFileError('KDF params below security floor');
     }
     if (keyIdHint != null && keyIdHint.length != 16) {
       throw CorruptedFileError('key-id hint must be 16 bytes');
+    }
+    if (deviceKey != null && deviceKey.length != DekWrap.kekLength) {
+      throw CorruptedFileError(
+          'device key must be ${DekWrap.kekLength} bytes');
     }
     final salt = _crypto.randomBytes(16);
     keyIdHint ??= _crypto.randomBytes(16);
@@ -44,6 +53,12 @@ class EnvelopeService {
       opslimit: params.opslimit,
       memlimit: params.memlimit,
     );
+
+    final wraps = <WrapEntry>[passphraseWrap];
+    if (deviceKey != null) {
+      wraps.add(DekWrap.wrapDeviceKey(
+          crypto: _crypto, dek: dek, deviceKey: deviceKey));
+    }
 
     // Encrypt the filename with the DEK before zeroizing.
     Uint8List? encFilename;
@@ -78,7 +93,7 @@ class EnvelopeService {
       cipherId: FileHeader.cipherXchacha20Poly1305,
       chunkSize: chunkSize,
       keyIdHint: keyIdHint,
-      wraps: [passphraseWrap],
+      wraps: wraps,
       secretstreamHeader: ssHeader,
       encryptedFilename: encFilename,
     );
@@ -91,14 +106,19 @@ class EnvelopeService {
 
   /// Decrypts a [ciphertext] stream back to plaintext.
   ///
+  /// If [deviceKey] is provided and the passphrase wrap fails, the hardware-key
+  /// wrap (if present) is tried before throwing — enabling device-bound
+  /// recovery (spec §Device-bound recovery).
+  ///
   /// Throws [WrongPassphraseError], [CorruptedFileError], or [VersionTooNewError].
   Stream<Uint8List> decrypt({
     required Stream<Uint8List> ciphertext,
     required Uint8List passphrase,
+    Uint8List? deviceKey,
   }) async* {
     final reader = _StreamReader(ciphertext);
     final hdr = await _readHeader(reader);
-    final dek = _unwrapDek(hdr, passphrase);
+    final dek = _unwrapDek(hdr, passphrase, deviceKey: deviceKey);
 
     // Prepend the ss header to the body and decrypt.
     final bodyWithHeader = _prependStream(hdr.secretstreamHeader, reader.remainingStream());
@@ -230,19 +250,38 @@ class EnvelopeService {
     return hdr;
   }
 
-  /// Unwraps the DEK from [hdr]'s passphrase wrap. The caller owns the
-  /// returned bytes and must zeroize them.
-  Uint8List _unwrapDek(FileHeader hdr, Uint8List passphrase) {
+  /// Unwraps the DEK from [hdr]'s passphrase wrap. If the passphrase is wrong
+  /// and [deviceKey] is available, tries the hardware-key wrap as a fallback
+  /// before rethrowing (device-bound recovery). The caller owns the returned
+  /// bytes and must zeroize them.
+  Uint8List _unwrapDek(FileHeader hdr, Uint8List passphrase,
+      {Uint8List? deviceKey}) {
     final pw = hdr.wraps.where((w) => w.type == WrapType.passphrase).firstOrNull;
     if (pw == null) throw CorruptedFileError('no passphrase wrap found');
-    return DekWrap.unwrapPassphrase(
-      crypto: _crypto,
-      entry: pw,
-      passphrase: passphrase,
-      salt: hdr.salt,
-      opslimit: hdr.opslimit,
-      memlimit: hdr.memlimit,
-    );
+    try {
+      return DekWrap.unwrapPassphrase(
+        crypto: _crypto,
+        entry: pw,
+        passphrase: passphrase,
+        salt: hdr.salt,
+        opslimit: hdr.opslimit,
+        memlimit: hdr.memlimit,
+      );
+    } on WrongPassphraseError {
+      if (deviceKey != null) {
+        final hw = hdr.wraps
+            .where((w) => w.type == WrapType.hardwareKey)
+            .firstOrNull;
+        if (hw != null) {
+          return DekWrap.unwrapDeviceKey(
+            crypto: _crypto,
+            entry: hw,
+            deviceKey: deviceKey,
+          );
+        }
+      }
+      rethrow;
+    }
   }
 
   /// Decrypts the encrypted filename from [header] using the given [dek].
