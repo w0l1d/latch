@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:myenc_core/myenc_core.dart';
 import 'package:myenc_adapters/myenc_adapters.dart';
 import 'package:sodium/sodium_sumo.dart';
+import 'crypto_erase.dart';
 
 /// Top-level entry point for Isolate.spawn.
 void latchWorker(SendPort mainPort) async {
@@ -26,6 +27,8 @@ void latchWorker(SendPort mainPort) async {
         await _decryptBatch(crypto, io, task, mainPort);
       case 'rewrap':
         await _rewrapBatch(crypto, io, task, mainPort);
+      case 'shred':
+        await _shredBatch(task, mainPort);
     }
 
     mainPort.send({'type': 'done'});
@@ -173,6 +176,29 @@ Future<void> _rewrapBatch(
           keyIdHint: keyIdHint,
         ),
       );
+      mainPort.send({'type': 'file_done', 'path': path, 'ok': true, 'error': null});
+    } catch (e) {
+      mainPort.send({
+        'type': 'file_done',
+        'path': path,
+        'ok': false,
+        'error': '$e',
+      });
+    }
+    mainPort.send({'type': 'progress', 'pct': (i + 1.0) / files.length});
+  }
+}
+
+Future<void> _shredBatch(
+  Map<String, dynamic> task,
+  SendPort mainPort,
+) async {
+  final files = (task['files'] as List).cast<String>();
+
+  for (int i = 0; i < files.length; i++) {
+    final path = files[i];
+    try {
+      await CryptoErase.eraseAndDelete(path);
       mainPort.send({'type': 'file_done', 'path': path, 'ok': true, 'error': null});
     } catch (e) {
       mainPort.send({

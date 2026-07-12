@@ -220,6 +220,52 @@ class AppCrypto {
     }
   }
 
+  /// Crypto-erase each file in [files] (full paths to .latch files).
+  /// Overwrites the header with random bytes (destroying the DEK), then
+  /// deletes the file. The body becomes permanent noise (spec UC-10).
+  ///
+  /// Yields overall progress 0.0–1.0. One file failing does not abort the
+  /// rest; per-file outcomes arrive via [onFileResult].
+  static Stream<double> secureDeleteFiles(
+    List<String> files, {
+    void Function(String path, bool ok, String? error)? onFileResult,
+  }) async* {
+    if (files.isEmpty) return;
+    final port = ReceivePort();
+    final isolate = await Isolate.spawn(latchWorker, port.sendPort);
+    bool done = false;
+
+    try {
+      SendPort? workerPort;
+      await for (final msg in port) {
+        if (workerPort == null) {
+          workerPort = msg as SendPort;
+          workerPort.send({'cmd': 'shred', 'files': files});
+          continue;
+        }
+        final map = msg as Map<String, dynamic>;
+        switch (map['type']) {
+          case 'progress':
+            yield map['pct'] as double;
+          case 'file_done':
+            onFileResult?.call(
+              map['path'] as String,
+              map['ok'] as bool,
+              map['error'] as String?,
+            );
+          case 'error':
+            _throwTypedError(map['code'] as String, map['message'] as String);
+          case 'done':
+            done = true;
+            return;
+        }
+      }
+    } finally {
+      port.close();
+      if (!done) isolate.kill(priority: Isolate.immediate);
+    }
+  }
+
   /// Convenience: single-file decrypt with the batch API.
   /// Throws on failure (unlike [decryptFiles] which reports via callback).
   static Stream<double> decryptFile(String filePath, String passphrase) async* {

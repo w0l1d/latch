@@ -36,6 +36,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
             subtitle: 'Re-lock .latch files under a new passphrase',
             onTap: () => context.push('/settings/change-passphrase'),
           ),
+          _NavTile(
+            title: 'Secure delete',
+            subtitle: 'Crypto-erase .latch file headers — permanent',
+            onTap: () => context.push('/settings/secure-delete'),
+          ),
           _SwitchTile(
             title: 'Quick unlock',
             subtitle: 'Biometric / device PIN gate',

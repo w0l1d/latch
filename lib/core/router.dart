@@ -18,6 +18,7 @@ import '../features/decrypt/decrypt_success_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/settings/passphrase_storage_screen.dart';
 import '../features/settings/change_passphrase_screen.dart';
+import '../features/settings/secure_delete_screen.dart';
 
 final router = GoRouter(
   initialLocation: '/onboarding/welcome',
@@ -108,5 +109,6 @@ final router = GoRouter(
     GoRoute(path: '/settings', builder: (ctx, st) => const SettingsScreen()),
     GoRoute(path: '/settings/passphrase-storage', builder: (ctx, st) => const PassphraseStorageScreen()),
     GoRoute(path: '/settings/change-passphrase', builder: (ctx, st) => const ChangePassphraseScreen()),
+    GoRoute(path: '/settings/secure-delete', builder: (ctx, st) => const SecureDeleteScreen()),
   ],
 );
