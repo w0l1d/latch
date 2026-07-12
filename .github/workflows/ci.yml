@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze-and-test:
+    name: Analyze + test (app, core, adapters)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.44.2
+          cache: true
+
+      - name: Pub get
+        run: flutter pub get
+
+      - name: Analyze app
+        run: flutter analyze --no-pub
+
+      - name: Analyze myenc_core
+        run: flutter analyze --no-pub
+        working-directory: packages/myenc_core
+
+      - name: Analyze myenc_adapters
+        run: flutter analyze --no-pub
+        working-directory: packages/myenc_adapters
+
+      - name: Test myenc_core
+        run: flutter test
+        working-directory: packages/myenc_core
+
+      # sodium 4.x loads libsodium via Dart native assets — flutter test
+      # builds/bundles it automatically; no apt install needed.
+      - name: Test myenc_adapters (real libsodium + golden vectors)
+        run: flutter test
+        working-directory: packages/myenc_adapters
+
+      - name: Test app
+        run: flutter test
