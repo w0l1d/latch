@@ -76,4 +76,32 @@ class DekWrap {
     }
     return crypto.secretboxOpen(entry.bytes, deviceKey);
   }
+
+  /// Wraps [dek] to an X25519 [recipientPublicKey] via crypto_box_seal
+  /// (spec §3, wrap type 0x03). The recipient later unwraps with their
+  /// keypair. For a 32-byte DEK the output is 80 bytes.
+  static WrapEntry wrapRecipient({
+    required CryptoPort crypto,
+    required Uint8List dek,
+    required Uint8List recipientPublicKey,
+  }) {
+    final wrapped = crypto.boxSeal(dek, recipientPublicKey);
+    return WrapEntry(type: WrapType.recipient, bytes: wrapped);
+  }
+
+  /// Unwraps a recipient WrapEntry to recover the DEK using the recipient's
+  /// X25519 keypair. Throws [WrongPassphraseError] on authentication failure.
+  static Uint8List unwrapRecipient({
+    required CryptoPort crypto,
+    required WrapEntry entry,
+    required Uint8List recipientPublicKey,
+    required Uint8List recipientSecretKey,
+  }) {
+    if (entry.type != WrapType.recipient) {
+      throw CorruptedFileError(
+          'expected recipient wrap entry, got ${entry.type}');
+    }
+    return crypto.boxSealOpen(entry.bytes, recipientPublicKey,
+        recipientSecretKey);
+  }
 }

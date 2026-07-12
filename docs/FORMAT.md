@@ -63,7 +63,7 @@ Defined wrap types:
 |---|---|---|
 | `0x01` | Passphrase | secretbox of the DEK under the Argon2id-derived KEK — 72 bytes |
 | `0x02` | Hardware / device key | secretbox of the DEK under a 32-byte device-bound key — 72 bytes |
-| `0x03` | Recipient (X25519) | **reserved in v1** — writers must not emit it; readers reject unknown codes above `0x03` |
+| `0x03` | Recipient (X25519) | sealed box (`crypto_box_seal`) of the DEK — 80 bytes (ephemeral pk 32 + MAC 16 + ciphertext 32). Readers accept since v1; writers may emit as of this amendment. |
 
 secretbox format (libsodium XSalsa20-Poly1305, `crypto_secretbox_easy`):
 `nonce (24) ‖ MAC (16) ‖ ciphertext (32)` = 72 bytes for a 32-byte DEK.
@@ -182,8 +182,10 @@ passphrase fails at the 72-byte wrap before the body is ever touched.
 - Reserved flag bits are validation-enforced to zero in v1, so a future
   version can repurpose them without ambiguity: a v1 file with a set
   reserved bit is by definition corrupt.
-- New wrap types (e.g. `0x03` recipient) require a version bump, because
-  v1 readers reject unknown wrap codes.
+- Wrap code `0x03` (recipient) was already reader-accepted in v1 — it was
+  defined as a known code from the start and v1 decoders parse it without
+  error. Wrap codes **above `0x03`** require a version bump, because v1
+  readers reject unknown wrap codes.
 - The golden vectors freeze this layout: `golden_v1.latch` (341 bytes,
   produced independently of the Dart implementation) must decrypt
   correctly forever, and `codec_freeze_test.dart` pins the header bytes

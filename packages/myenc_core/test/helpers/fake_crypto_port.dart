@@ -80,6 +80,54 @@ class FakeCryptoPort implements CryptoPort {
       Uint8List key, int chunkSize) {
     return _FakeDecryptTransformer(key, chunkSize);
   }
+
+  // --- X25519 sealed box (fake, deterministic) ---
+  //
+  // Output layout: fake-ephemeral-pk (32) ‖ fake-MAC (16) ‖ ciphertext.
+  // For a 32-byte DEK: 48 + 32 = 80 bytes (matching real sealed box length).
+  //
+  // Fake keypair relationship: sk[i] == pk[i] ^ 0xAA. The seal operation XORs
+  // plaintext with pk; the open operation XORs with sk ^ 0xAA (= pk for a
+  // matching pair). A wrong secret key (sk[i] ≠ pk[i] ^ 0xAA) produces a
+  // different XOR pad, garbles the plaintext, and the MAC check fails.
+
+  @override
+  Uint8List boxSeal(Uint8List plaintext, Uint8List recipientPublicKey) {
+    // Deterministic fake ephemeral pk derived from the recipient pk.
+    final ephem = Uint8List(32);
+    for (int i = 0; i < 32; i++) {
+      ephem[i] = recipientPublicKey[i] ^ 0xA5;
+    }
+    final cipher = Uint8List(plaintext.length);
+    int xorAcc = 0;
+    for (int i = 0; i < plaintext.length; i++) {
+      cipher[i] = plaintext[i] ^ recipientPublicKey[i % 32];
+      xorAcc ^= plaintext[i];
+    }
+    final mac = Uint8List(16)..fillRange(0, 16, xorAcc);
+    return Uint8List.fromList([...ephem, ...mac, ...cipher]);
+  }
+
+  @override
+  Uint8List boxSealOpen(
+      Uint8List ciphertext, Uint8List publicKey, Uint8List secretKey) {
+    if (ciphertext.length < 48) throw WrongPassphraseError();
+    final macBytes = ciphertext.sublist(32, 48);
+    final cipher = ciphertext.sublist(48);
+    final plain = Uint8List(cipher.length);
+    int xorAcc = 0;
+    // Derive the XOR pad from the secret key: for a matching pair
+    // (sk[i] == pk[i] ^ 0xAA), pad = sk ^ 0xAA = pk — same pad as seal.
+    for (int i = 0; i < cipher.length; i++) {
+      final pad = secretKey[i % 32] ^ 0xAA;
+      plain[i] = cipher[i] ^ pad;
+      xorAcc ^= plain[i];
+    }
+    for (final b in macBytes) {
+      if (b != xorAcc) throw WrongPassphraseError();
+    }
+    return plain;
+  }
 }
 
 // Chunk format: tag(1) + mac(16) + plaintext(n). Overhead = 17 bytes.

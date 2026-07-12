@@ -505,6 +505,194 @@ void main() {
     });
   });
 
+  group('EnvelopeService recipient wrap', () {
+    // Fake keypair: sk[i] == pk[i] ^ 0xAA (matches FakeCryptoPort's sealed-box
+    // convention — see test/helpers/fake_crypto_port.dart).
+    final recipientPk =
+        Uint8List.fromList(List.generate(32, (i) => 0x50 + i));
+    final recipientSk = Uint8List.fromList(
+        List.generate(32, (i) => (0x50 + i) ^ 0xAA));
+    final wrongSk =
+        Uint8List.fromList(List.generate(32, (i) => 0x11 + i));
+    final plain = utf8.encode('recipient-wrapped data');
+
+    Future<Uint8List> encryptSample({Uint8List? deviceKey}) => _collect(
+          svc.encrypt(
+            plaintext: _stream([plain]),
+            passphrase: passphrase,
+            params: params,
+            deviceKey: deviceKey,
+          ),
+        );
+
+    test('addRecipient appends a 0x03 wrap; passphrase + hardware wraps untouched',
+        () async {
+      final deviceKey =
+          Uint8List.fromList(List.generate(32, (i) => 0xE0 ^ i));
+      final original = await _collect(svc.encrypt(
+        plaintext: _stream([plain]),
+        passphrase: passphrase,
+        params: params,
+        deviceKey: deviceKey,
+      ));
+      final (origHdr, _) = MyencCodec.decodeHeader(original);
+      expect(origHdr.wraps, hasLength(2));
+      expect(origHdr.wraps.map((w) => w.type),
+          [WrapType.passphrase, WrapType.hardwareKey]);
+
+      final updated = await _collect(svc.addRecipient(
+        ciphertext: _stream([original]),
+        passphrase: passphrase,
+        recipientPublicKey: recipientPk,
+      ));
+      final (newHdr, newBodyStart) = MyencCodec.decodeHeader(updated);
+
+      expect(newHdr.wraps, hasLength(3));
+      expect(newHdr.wraps[0].type, WrapType.passphrase);
+      expect(newHdr.wraps[1].type, WrapType.hardwareKey);
+      expect(newHdr.wraps[2].type, WrapType.recipient);
+      expect(newHdr.wraps[2].bytes.length, 80); // 32 ephem + 16 mac + 32 ct
+    });
+
+    test('original passphrase still decrypts after addRecipient', () async {
+      final original = await encryptSample();
+      final updated = await _collect(svc.addRecipient(
+        ciphertext: _stream([original]),
+        passphrase: passphrase,
+        recipientPublicKey: recipientPk,
+      ));
+      final recovered = await _collect(svc.decrypt(
+        ciphertext: _stream([updated]),
+        passphrase: passphrase,
+      ));
+      expect(recovered, plain);
+    });
+
+    test('recipient keypair decrypts (wrong passphrase + keypair → plaintext)',
+        () async {
+      final original = await encryptSample();
+      final updated = await _collect(svc.addRecipient(
+        ciphertext: _stream([original]),
+        passphrase: passphrase,
+        recipientPublicKey: recipientPk,
+      ));
+      final recovered = await _collect(svc.decrypt(
+        ciphertext: _stream([updated]),
+        passphrase: wrongPassphrase,
+        recipientPublicKey: recipientPk,
+        recipientSecretKey: recipientSk,
+      ));
+      expect(recovered, plain);
+    });
+
+    test('wrong recipient secret key rejected (WrongPassphraseError)', () async {
+      final original = await encryptSample();
+      final updated = await _collect(svc.addRecipient(
+        ciphertext: _stream([original]),
+        passphrase: passphrase,
+        recipientPublicKey: recipientPk,
+      ));
+      expect(
+        () => _collect(svc.decrypt(
+          ciphertext: _stream([updated]),
+          passphrase: wrongPassphrase,
+          recipientPublicKey: recipientPk,
+          recipientSecretKey: wrongSk,
+        )),
+        throwsA(isA<WrongPassphraseError>()),
+      );
+    });
+
+    test('body bytes verbatim after addRecipient (compare past header)', () async {
+      final original = await encryptSample();
+      final updated = await _collect(svc.addRecipient(
+        ciphertext: _stream([original]),
+        passphrase: passphrase,
+        recipientPublicKey: recipientPk,
+      ));
+      final (_, oldBodyStart) = MyencCodec.decodeHeader(original);
+      final (_, newBodyStart) = MyencCodec.decodeHeader(updated);
+      expect(updated.sublist(newBodyStart), original.sublist(oldBodyStart));
+    });
+
+    test('changePassphrase after addRecipient keeps the recipient wrap working',
+        () async {
+      final newPassphrase = utf8.encode('rotated-again');
+      final original = await encryptSample();
+      final withRecipient = await _collect(svc.addRecipient(
+        ciphertext: _stream([original]),
+        passphrase: passphrase,
+        recipientPublicKey: recipientPk,
+      ));
+      final rewrapped = await _collect(svc.changePassphrase(
+        ciphertext: _stream([withRecipient]),
+        oldPassphrase: passphrase,
+        newPassphrase: newPassphrase,
+        params: params,
+      ));
+
+      // The recipient wrap should still be present.
+      final (hdr, _) = MyencCodec.decodeHeader(rewrapped);
+      expect(hdr.wraps.map((w) => w.type),
+          containsAll([WrapType.passphrase, WrapType.recipient]));
+
+      // Recipient keypair still decrypts.
+      final recovered = await _collect(svc.decrypt(
+        ciphertext: _stream([rewrapped]),
+        passphrase: wrongPassphrase,
+        recipientPublicKey: recipientPk,
+        recipientSecretKey: recipientSk,
+      ));
+      expect(recovered, plain);
+
+      // New passphrase also works.
+      final recovered2 = await _collect(svc.decrypt(
+        ciphertext: _stream([rewrapped]),
+        passphrase: newPassphrase,
+      ));
+      expect(recovered2, plain);
+    });
+
+    test('addRecipient with wrong passphrase throws WrongPassphraseError',
+        () async {
+      final original = await encryptSample();
+      expect(
+        () => _collect(svc.addRecipient(
+          ciphertext: _stream([original]),
+          passphrase: wrongPassphrase,
+          recipientPublicKey: recipientPk,
+        )),
+        throwsA(isA<WrongPassphraseError>()),
+      );
+    });
+
+    test('recipient public key must be 32 bytes (CorruptedFileError)', () async {
+      final original = await encryptSample();
+      expect(
+        () => _collect(svc.addRecipient(
+          ciphertext: _stream([original]),
+          passphrase: passphrase,
+          recipientPublicKey: Uint8List(16),
+        )),
+        throwsA(isA<CorruptedFileError>()),
+      );
+    });
+
+    test('recipient keypair on a file without a recipient wrap does not bypass passphrase',
+        () async {
+      final original = await encryptSample();
+      expect(
+        () => _collect(svc.decrypt(
+          ciphertext: _stream([original]),
+          passphrase: wrongPassphrase,
+          recipientPublicKey: recipientPk,
+          recipientSecretKey: recipientSk,
+        )),
+        throwsA(isA<WrongPassphraseError>()),
+      );
+    });
+  });
+
   group('EnvelopeService error cases', () {
     late Uint8List validCiphertext;
 

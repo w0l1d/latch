@@ -109,15 +109,24 @@ class EnvelopeService {
   /// wrap (if present) is tried before throwing — enabling device-bound
   /// recovery (spec §Device-bound recovery).
   ///
+  /// If [recipientPublicKey] and [recipientSecretKey] are both provided and the
+  /// passphrase wrap fails, each recipient wrap (type 0x03) is tried before
+  /// rethrowing (spec §3, UC-6).
+  ///
   /// Throws [WrongPassphraseError], [CorruptedFileError], or [VersionTooNewError].
   Stream<Uint8List> decrypt({
     required Stream<Uint8List> ciphertext,
     required Uint8List passphrase,
     Uint8List? deviceKey,
+    Uint8List? recipientPublicKey,
+    Uint8List? recipientSecretKey,
   }) async* {
     final reader = _StreamReader(ciphertext);
     final hdr = await _readHeader(reader);
-    final dek = _unwrapDek(hdr, passphrase, deviceKey: deviceKey);
+    final dek = _unwrapDek(hdr, passphrase,
+        deviceKey: deviceKey,
+        recipientPublicKey: recipientPublicKey,
+        recipientSecretKey: recipientSecretKey);
 
     // Prepend the ss header to the body and decrypt.
     final bodyWithHeader = _prependStream(hdr.secretstreamHeader, reader.remainingStream());
@@ -196,6 +205,61 @@ class EnvelopeService {
     yield* reader.remainingStream();
   }
 
+  /// Adds an X25519 recipient wrap to an existing .latch file (spec §3,
+  /// UC-6). Unwraps the DEK with [passphrase], appends a sealed-box wrap for
+  /// [recipientPublicKey], then emits the rewritten header followed by every
+  /// body byte verbatim. The original passphrase and any existing wraps
+  /// (hardware-key, other recipients) are untouched.
+  ///
+  /// [recipientPublicKey] must be 32 bytes — the raw X25519 public key.
+  ///
+  /// Throws [WrongPassphraseError] if the passphrase is wrong.
+  /// Throws [CorruptedFileError] if the public key is not 32 bytes.
+  Stream<Uint8List> addRecipient({
+    required Stream<Uint8List> ciphertext,
+    required Uint8List passphrase,
+    required Uint8List recipientPublicKey,
+  }) async* {
+    if (recipientPublicKey.length != 32) {
+      throw CorruptedFileError(
+          'recipient public key must be 32 bytes, got ${recipientPublicKey.length}');
+    }
+    final reader = _StreamReader(ciphertext);
+    final hdr = await _readHeader(reader);
+    final dek = _unwrapDek(hdr, passphrase);
+
+    try {
+      final recipientWrap = DekWrap.wrapRecipient(
+        crypto: _crypto,
+        dek: dek,
+        recipientPublicKey: recipientPublicKey,
+      );
+
+      // Append the recipient wrap; every other wrap carries over verbatim.
+      final newWraps = [...hdr.wraps, recipientWrap];
+
+      yield MyencCodec.encodeHeader(FileHeader(
+        version: hdr.version,
+        flags: hdr.flags,
+        kdfId: hdr.kdfId,
+        salt: hdr.salt,
+        opslimit: hdr.opslimit,
+        memlimit: hdr.memlimit,
+        cipherId: hdr.cipherId,
+        chunkSize: hdr.chunkSize,
+        keyIdHint: hdr.keyIdHint,
+        wraps: newWraps,
+        secretstreamHeader: hdr.secretstreamHeader,
+        encryptedFilename: hdr.encryptedFilename,
+      ));
+    } finally {
+      dek.fillRange(0, dek.length, 0);
+    }
+
+    // Body passthrough — ciphertext unchanged under the unchanged DEK.
+    yield* reader.remainingStream();
+  }
+
   /// Reads and decodes the full header from [reader], leaving the reader
   /// positioned at the first body byte.
   Future<FileHeader> _readHeader(_StreamReader reader) async {
@@ -251,10 +315,13 @@ class EnvelopeService {
 
   /// Unwraps the DEK from [hdr]'s passphrase wrap. If the passphrase is wrong
   /// and [deviceKey] is available, tries the hardware-key wrap as a fallback
-  /// before rethrowing (device-bound recovery). The caller owns the returned
-  /// bytes and must zeroize them.
+  /// (device-bound recovery). If that also fails and a recipient keypair is
+  /// provided, tries each recipient wrap (0x03) before rethrowing (UC-6).
+  /// The caller owns the returned bytes and must zeroize them.
   Uint8List _unwrapDek(FileHeader hdr, Uint8List passphrase,
-      {Uint8List? deviceKey}) {
+      {Uint8List? deviceKey,
+      Uint8List? recipientPublicKey,
+      Uint8List? recipientSecretKey}) {
     final pw = hdr.wraps.where((w) => w.type == WrapType.passphrase).firstOrNull;
     if (pw == null) throw CorruptedFileError('no passphrase wrap found');
     try {
@@ -272,11 +339,30 @@ class EnvelopeService {
             .where((w) => w.type == WrapType.hardwareKey)
             .firstOrNull;
         if (hw != null) {
-          return DekWrap.unwrapDeviceKey(
-            crypto: _crypto,
-            entry: hw,
-            deviceKey: deviceKey,
-          );
+          try {
+            return DekWrap.unwrapDeviceKey(
+              crypto: _crypto,
+              entry: hw,
+              deviceKey: deviceKey,
+            );
+          } on WrongPassphraseError {
+            // Fall through to recipient fallback below.
+          }
+        }
+      }
+      if (recipientPublicKey != null && recipientSecretKey != null) {
+        for (final rw
+            in hdr.wraps.where((w) => w.type == WrapType.recipient)) {
+          try {
+            return DekWrap.unwrapRecipient(
+              crypto: _crypto,
+              entry: rw,
+              recipientPublicKey: recipientPublicKey,
+              recipientSecretKey: recipientSecretKey,
+            );
+          } on WrongPassphraseError {
+            // Try the next recipient wrap.
+          }
         }
       }
       rethrow;

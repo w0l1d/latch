@@ -154,4 +154,35 @@ class SodiumCryptoAdapter implements CryptoPort {
         SodiumException() => CorruptedFileError('authentication failed'),
         _ => e,
       };
+
+  // --- X25519 sealed box (spec §3, wrap type 0x03) ---
+
+  @override
+  Uint8List boxSeal(Uint8List plaintext, Uint8List recipientPublicKey) {
+    return _sodium.crypto.box.seal(
+      message: plaintext,
+      publicKey: recipientPublicKey,
+    );
+  }
+
+  @override
+  Uint8List boxSealOpen(
+      Uint8List ciphertext, Uint8List publicKey, Uint8List secretKey) {
+    // Create SecureKeys eagerly before any zeroize — the caller (DekWrap)
+    // may zeroize the plain secret-key bytes after this returns, and a lazy
+    // copy would read the already-zeroed array (same zero-key bug pattern
+    // documented in createEncryptTransformer).
+    final secureSk = SecureKey.fromList(_sodium, secretKey);
+    try {
+      return _sodium.crypto.box.sealOpen(
+        cipherText: ciphertext,
+        publicKey: publicKey,
+        secretKey: secureSk,
+      );
+    } on SodiumException {
+      throw WrongPassphraseError();
+    } finally {
+      secureSk.dispose();
+    }
+  }
 }
