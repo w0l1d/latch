@@ -40,11 +40,12 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
 
   Future<void> _storeAndContinue() async {
     final svc = AppCrypto.passphraseStorage;
+    String? keyIdHex;
     if (_saveForQuickUnlock && svc != null && _canSave) {
       final label = widget.files.length == 1
           ? widget.files.first
           : '${widget.files.length} files';
-      await svc.store(label, _controller.text);
+      keyIdHex = await svc.store(label, _controller.text);
     }
     if (mounted) {
       context.push(
@@ -52,6 +53,7 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
         extra: {
           'files': widget.files,
           'passphrase': _controller.text,
+          'keyIdHex': keyIdHex,
         },
       );
     }

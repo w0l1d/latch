@@ -123,6 +123,32 @@ void main() {
       expect(await svc.loadWithAuth('report.pdf'), 'new-pass');
     });
 
+    test('store returns a 16-byte hex key-id, unique per entry', () async {
+      final idA = await svc.store('a.pdf', 'pass-a');
+      final idB = await svc.store('b.pdf', 'pass-b');
+      expect(idA, hasLength(32));
+      expect(idB, hasLength(32));
+      expect(idA, isNot(idB));
+
+      final entries = await svc.list();
+      expect(entries.map((e) => e.keyIdHex), containsAll([idA, idB]));
+    });
+
+    test('overwriting a label keeps its key-id', () async {
+      final original = await svc.store('report.pdf', 'old-pass');
+      final afterOverwrite = await svc.store('report.pdf', 'new-pass');
+      // Files already encrypted under this id must still resolve here.
+      expect(afterOverwrite, original);
+    });
+
+    test('findLabelByKeyId resolves the right entry', () async {
+      await svc.store('a.pdf', 'pass-a');
+      final idB = await svc.store('b.pdf', 'pass-b');
+      expect(await svc.findLabelByKeyId(idB), 'b.pdf');
+      expect(await svc.findLabelByKeyId('ff' * 16), isNull);
+      expect(await svc.findLabelByKeyId(''), isNull);
+    });
+
     test('store after delete never clobbers another entry (key reuse)', () async {
       fakeAuth.setNextResult(true);
       await svc.store('a.pdf', 'pass-a');

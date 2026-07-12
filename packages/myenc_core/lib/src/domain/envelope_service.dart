@@ -24,12 +24,16 @@ class EnvelopeService {
     int flags = 0,
     int chunkSize = FileHeader.defaultChunkSize,
     String? filename,
+    Uint8List? keyIdHint,
   }) async* {
     if (!params.meetsFloor()) {
       throw CorruptedFileError('KDF params below security floor');
     }
+    if (keyIdHint != null && keyIdHint.length != 16) {
+      throw CorruptedFileError('key-id hint must be 16 bytes');
+    }
     final salt = _crypto.randomBytes(16);
-    final keyIdHint = _crypto.randomBytes(16);
+    keyIdHint ??= _crypto.randomBytes(16);
     final dek = _crypto.randomBytes(DekWrap.dekLength);
 
     final passphraseWrap = DekWrap.wrapPassphrase(

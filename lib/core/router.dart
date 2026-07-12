@@ -42,6 +42,7 @@ final router = GoRouter(
         return EncryptOptionsScreen(
           files: extra['files'] as List<String>? ?? [],
           passphrase: extra['passphrase'] as String? ?? '',
+          keyIdHex: extra['keyIdHex'] as String?,
         );
       },
     ),
@@ -54,6 +55,7 @@ final router = GoRouter(
           passphrase: extra['passphrase'] as String? ?? '',
           deleteOriginals: extra['deleteOriginals'] as bool? ?? false,
           outputDir: extra['outputDir'] as String?,
+          keyIdHex: extra['keyIdHex'] as String?,
         );
       },
     ),
@@ -66,6 +68,7 @@ final router = GoRouter(
           passphrase: extra['passphrase'] as String? ?? '',
           deleteOriginals: extra['deleteOriginals'] as bool? ?? false,
           outputDir: extra['outputDir'] as String?,
+          keyIdHex: extra['keyIdHex'] as String?,
         );
       },
     ),

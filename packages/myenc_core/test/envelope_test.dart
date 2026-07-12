@@ -211,6 +211,46 @@ void main() {
     });
   });
 
+  group('EnvelopeService key-id hint', () {
+    test('explicit keyIdHint is written into the header verbatim', () async {
+      final hint = Uint8List.fromList(List.generate(16, (i) => 0xA0 + i));
+      final ciphertext = await _collect(
+        svc.encrypt(
+          plaintext: _stream([utf8.encode('data')]),
+          passphrase: passphrase,
+          params: params,
+          keyIdHint: hint,
+        ),
+      );
+      final (hdr, _) = MyencCodec.decodeHeader(ciphertext);
+      expect(hdr.keyIdHint, hint);
+    });
+
+    test('omitted keyIdHint falls back to a random per-file hint', () async {
+      final ciphertext = await _collect(
+        svc.encrypt(
+          plaintext: _stream([utf8.encode('data')]),
+          passphrase: passphrase,
+          params: params,
+        ),
+      );
+      final (hdr, _) = MyencCodec.decodeHeader(ciphertext);
+      expect(hdr.keyIdHint.length, 16);
+    });
+
+    test('rejects a keyIdHint that is not 16 bytes', () {
+      expect(
+        () => _collect(svc.encrypt(
+          plaintext: _stream([utf8.encode('data')]),
+          passphrase: passphrase,
+          params: params,
+          keyIdHint: Uint8List(8),
+        )),
+        throwsA(isA<CorruptedFileError>()),
+      );
+    });
+  });
+
   group('EnvelopeService error cases', () {
     late Uint8List validCiphertext;
 

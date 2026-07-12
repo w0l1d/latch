@@ -8,8 +8,10 @@ import '../../shared/widgets/latch_button.dart';
 class EncryptOptionsScreen extends StatefulWidget {
   final List<String> files;
   final String passphrase;
+  final String? keyIdHex;
 
-  const EncryptOptionsScreen({super.key, required this.files, required this.passphrase});
+  const EncryptOptionsScreen(
+      {super.key, required this.files, required this.passphrase, this.keyIdHex});
 
   @override
   State<EncryptOptionsScreen> createState() => _EncryptOptionsScreenState();
@@ -97,6 +99,7 @@ class _EncryptOptionsScreenState extends State<EncryptOptionsScreen> {
                     'passphrase': widget.passphrase,
                     'deleteOriginals': _deleteOriginals,
                     'outputDir': _outputDir,
+                    'keyIdHex': widget.keyIdHex,
                   },
                 ),
               ),

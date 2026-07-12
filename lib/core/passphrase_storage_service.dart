@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
 
@@ -8,24 +9,18 @@ class StoredPassphrase {
   final String passphrase;
   final DateTime createdAt;
 
+  /// Hex of the opaque random 16-byte key-id written into the header of files
+  /// encrypted with this passphrase (spec UC-9). Random — derived from nothing
+  /// — so it reveals nothing about the passphrase; it only links a file to
+  /// this stored entry.
+  final String keyIdHex;
+
   const StoredPassphrase({
     required this.label,
     required this.passphrase,
     required this.createdAt,
+    required this.keyIdHex,
   });
-
-  Map<String, dynamic> toJson() => {
-        'label': label,
-        'passphrase': passphrase,
-        'createdAt': createdAt.toIso8601String(),
-      };
-
-  factory StoredPassphrase.fromJson(Map<String, dynamic> json) =>
-      StoredPassphrase(
-        label: json['label'] as String,
-        passphrase: json['passphrase'] as String,
-        createdAt: DateTime.parse(json['createdAt'] as String),
-      );
 }
 
 /// Persists passphrases in platform secure storage (iOS Keychain / Android
@@ -56,23 +51,42 @@ class PassphraseStorageService {
   }
 
   /// Lists stored entries (without their passphrases — the secret stays in
-  /// secure storage until [load] is called).
+  /// secure storage until [loadWithAuth] is called).
   Future<List<StoredPassphrase>> list() async {
     return (await _readMeta()).map((m) {
       return StoredPassphrase(
         label: m['label'] as String,
         passphrase: '', // never returned by list()
         createdAt: DateTime.parse(m['createdAt'] as String),
+        keyIdHex: (m['keyId'] as String?) ?? '',
       );
     }).toList();
   }
 
-  /// Persists [passphrase] under [label]. If [label] already exists it is
-  /// overwritten (re-encrypting with a new passphrase).
-  Future<void> store(String label, String passphrase) async {
+  /// Returns the label of the entry whose key-id matches [keyIdHex], or null.
+  /// Used to resolve which stored passphrase a .latch header points at.
+  Future<String?> findLabelByKeyId(String keyIdHex) async {
+    if (keyIdHex.isEmpty) return null;
     final meta = await _readMeta();
+    for (final m in meta) {
+      if (m['keyId'] == keyIdHex) return m['label'] as String;
+    }
+    return null;
+  }
+
+  /// Persists [passphrase] under [label] and returns the entry's key-id (hex).
+  /// If [label] already exists it is overwritten with the new passphrase but
+  /// KEEPS its key-id — files already encrypted under that id must still
+  /// resolve to this entry.
+  Future<String> store(String label, String passphrase) async {
+    final meta = await _readMeta();
+    String? keyIdHex;
     final existing = meta.indexWhere((m) => m['label'] == label);
-    if (existing >= 0) meta.removeAt(existing);
+    if (existing >= 0) {
+      keyIdHex = meta[existing]['keyId'] as String?;
+      meta.removeAt(existing);
+    }
+    keyIdHex ??= _randomKeyIdHex();
 
     // Next key = max existing index + 1 — meta.length would collide after a
     // delete (store a,b → delete a → store c would reuse b's key and silently
@@ -86,10 +100,12 @@ class PassphraseStorageService {
     meta.add({
       'label': label,
       'key': key,
+      'keyId': keyIdHex,
       'createdAt': DateTime.now().toIso8601String(),
     });
     await _storage.write(key: _metaKey, value: jsonEncode(meta));
     await _storage.write(key: key, value: passphrase);
+    return keyIdHex;
   }
 
   /// Presents the system biometric / device-credential dialog, then — if the
@@ -133,6 +149,12 @@ class PassphraseStorageService {
   }
 
   // ---- internal -------------------------------------------------------------
+
+  static String _randomKeyIdHex() {
+    final rng = Random.secure();
+    return List.generate(16, (_) => rng.nextInt(256).toRadixString(16).padLeft(2, '0'))
+        .join();
+  }
 
   Future<List<Map<String, dynamic>>> _readMeta() async {
     final raw = await _storage.read(key: _metaKey);

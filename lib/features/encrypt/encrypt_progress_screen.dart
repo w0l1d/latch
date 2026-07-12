@@ -13,6 +13,7 @@ class EncryptProgressScreen extends StatefulWidget {
   final String passphrase;
   final bool deleteOriginals;
   final String? outputDir;
+  final String? keyIdHex;
 
   const EncryptProgressScreen({
     super.key,
@@ -20,6 +21,7 @@ class EncryptProgressScreen extends StatefulWidget {
     required this.passphrase,
     required this.deleteOriginals,
     this.outputDir,
+    this.keyIdHex,
   });
 
   @override
@@ -46,6 +48,7 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
       widget.passphrase,
       deleteOriginals: widget.deleteOriginals,
       outputDir: widget.outputDir,
+      keyIdHex: widget.keyIdHex,
       onFileResult: (path, ok, error) {
         _results.add(BatchResult(path: path, ok: ok, errorMessage: error));
         _doneCount++;

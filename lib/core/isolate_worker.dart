@@ -52,6 +52,7 @@ Future<void> _encryptBatch(
   final memlimit = task['memlimit'] as int;
   final deleteOriginals = task['deleteOriginals'] as bool;
   final outputDir = task['outputDir'] as String?;
+  final keyIdHint = task['keyIdHint'] as Uint8List?;
   final params = KdfParams(opslimit: opslimit, memlimit: memlimit);
 
   if (!params.meetsFloor()) {
@@ -65,7 +66,7 @@ Future<void> _encryptBatch(
 
     try {
       await _encryptOne(crypto, io, svc, path, passphrase, params,
-          deleteOriginals, outputDir, i, files.length, mainPort);
+          deleteOriginals, outputDir, keyIdHint, i, files.length, mainPort);
       mainPort.send({'type': 'file_done', 'path': path, 'ok': true, 'error': null});
     } catch (e) {
       mainPort.send({
@@ -89,6 +90,7 @@ Future<void> _encryptOne(
   KdfParams params,
   bool deleteOriginals,
   String? outputDir,
+  Uint8List? keyIdHint,
   int index,
   int total,
   SendPort mainPort,
@@ -114,6 +116,7 @@ Future<void> _encryptOne(
       plaintext: tracked(),
       passphrase: passphrase,
       params: params,
+      keyIdHint: keyIdHint,
     )) {
       sink.add(chunk);
       final fileFrac =

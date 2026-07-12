@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/latch_button.dart';
 import '../../core/app_crypto.dart';
+import '../../core/key_id_resolver.dart';
 
 class DecryptPassphraseScreen extends StatefulWidget {
   final List<String> files;
@@ -38,9 +39,18 @@ class _DecryptPassphraseScreenState extends State<DecryptPassphraseScreen> {
     try {
       final stored = await svc.list();
       if (stored.isEmpty) return;
-      // Use the first stored passphrase. When #15 (key-id resolution) lands
-      // the matched key-id hint from the .latch header can auto-select.
-      final passphrase = await svc.loadWithAuth(stored.first.label);
+
+      // Resolve which stored passphrase this file points at via the opaque
+      // key-id hint in its header (spec UC-9) — no Argon2 trial needed.
+      // Falls back to the first entry for files without a matching id.
+      String label = stored.first.label;
+      final keyIdHex = await KeyIdResolver.keyIdHexFromFile(widget.files.first);
+      if (keyIdHex != null) {
+        final match = await svc.findLabelByKeyId(keyIdHex);
+        if (match != null) label = match;
+      }
+
+      final passphrase = await svc.loadWithAuth(label);
       if (passphrase != null && mounted) {
         _controller.text = passphrase;
         _submit();

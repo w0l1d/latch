@@ -9,6 +9,7 @@ class EncryptReviewScreen extends StatelessWidget {
   final String passphrase;
   final bool deleteOriginals;
   final String? outputDir;
+  final String? keyIdHex;
 
   const EncryptReviewScreen({
     super.key,
@@ -16,6 +17,7 @@ class EncryptReviewScreen extends StatelessWidget {
     required this.passphrase,
     required this.deleteOriginals,
     this.outputDir,
+    this.keyIdHex,
   });
 
   @override
@@ -71,6 +73,7 @@ class EncryptReviewScreen extends StatelessWidget {
                     'passphrase': passphrase,
                     'deleteOriginals': deleteOriginals,
                     'outputDir': outputDir,
+                    'keyIdHex': keyIdHex,
                   },
                 ),
               ),

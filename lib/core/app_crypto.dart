@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:isolate';
+import 'dart:typed_data';
 import 'package:myenc_core/myenc_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'crypto_stub.dart' show PassphraseResult, CryptoStub;
@@ -51,6 +52,7 @@ class AppCrypto {
     String passphrase, {
     bool deleteOriginals = false,
     String? outputDir,
+    String? keyIdHex,
     void Function(String path, bool ok, String? error)? onFileResult,
   }) async* {
     if (files.isEmpty) return;
@@ -72,6 +74,7 @@ class AppCrypto {
             'memlimit': _kdfParams.memlimit,
             'deleteOriginals': deleteOriginals,
             'outputDir': outputDir,
+            'keyIdHint': _hexToBytes(keyIdHex),
           });
           continue;
         }
@@ -169,6 +172,19 @@ class AppCrypto {
       if (error!.contains('VersionTooNewError')) throw VersionTooNewError(0);
       throw Exception(error);
     }
+  }
+
+  /// Decodes a hex key-id into bytes; null/malformed hex yields null so the
+  /// isolate falls back to a random per-file hint.
+  static Uint8List? _hexToBytes(String? hex) {
+    if (hex == null || hex.length != 32) return null;
+    final out = Uint8List(16);
+    for (var i = 0; i < 16; i++) {
+      final b = int.tryParse(hex.substring(i * 2, i * 2 + 2), radix: 16);
+      if (b == null) return null;
+      out[i] = b;
+    }
+    return out;
   }
 
   /// Reconstructs typed LatchError from the isolate's error report.
