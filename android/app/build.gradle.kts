@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.latch.latch"
-    compileSdk = 36
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
