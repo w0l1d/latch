@@ -50,47 +50,37 @@ class AppCrypto {
   static PassphraseResult evaluate(String passphrase) =>
       CryptoStub.evaluate(passphrase);
 
-  /// Encrypts each file in [files] (full paths).
-  /// Yields overall progress 0.0–1.0; last value is 1.0.
+  /// Spawns [latchWorker], sends [task], and translates the worker's message
+  /// protocol into a progress stream (0.0–1.0). Per-file outcomes arrive via
+  /// [onFileResult]; typed errors are rethrown on the main isolate.
   ///
-  /// One file failing does not abort the rest (spec UC-3).
-  /// If [onFileResult] is provided it is called per-file with the outcome.
-  ///
-  /// If [deviceKey] is provided (32-byte device-bound key), a hardware-key
-  /// wrap is added so files can be opened on this device without the passphrase.
-  ///
-  /// Runs in a background isolate.
-  static Stream<double> encryptFiles(
-    List<String> files,
-    String passphrase, {
-    bool deleteOriginals = false,
-    String? outputDir,
-    String? keyIdHex,
-    Uint8List? deviceKey,
+  /// The worker's exit and uncaught-error ports are wired to the same
+  /// ReceivePort, so a worker that dies without reporting (e.g. killed by the
+  /// OS under memory pressure during Argon2id) surfaces as a stream error
+  /// instead of hanging the caller forever.
+  static Stream<double> _runBatch(
+    Map<String, dynamic> task, {
     void Function(String path, bool ok, String? error)? onFileResult,
   }) async* {
-    if (files.isEmpty) return;
-    final pw = utf8.encode(passphrase);
     final port = ReceivePort();
-    final isolate = await Isolate.spawn(latchWorker, port.sendPort);
+    final isolate = await Isolate.spawn(latchWorker, port.sendPort,
+        onExit: port.sendPort, onError: port.sendPort);
     bool done = false;
 
     try {
       SendPort? workerPort;
       await for (final msg in port) {
+        if (msg == null) {
+          // onExit fired before 'done' — the worker died without reporting.
+          throw Exception('crypto isolate exited before finishing');
+        }
+        if (msg is List) {
+          // onError port: [error, stackTrace] from an uncaught worker error.
+          throw Exception('crypto isolate crashed: ${msg.firstOrNull}');
+        }
         if (workerPort == null) {
           workerPort = msg as SendPort;
-          workerPort.send({
-            'cmd': 'encrypt',
-            'files': files,
-            'passphrase': pw,
-            'opslimit': _kdfParams.opslimit,
-            'memlimit': _kdfParams.memlimit,
-            'deleteOriginals': deleteOriginals,
-            'outputDir': outputDir,
-            'keyIdHint': _hexToBytes(keyIdHex),
-            'deviceKey': deviceKey,
-          });
+          workerPort.send(task);
           continue;
         }
         final map = msg as Map<String, dynamic>;
@@ -113,6 +103,43 @@ class AppCrypto {
     } finally {
       port.close();
       if (!done) isolate.kill(priority: Isolate.immediate);
+    }
+  }
+
+  /// Encrypts each file in [files] (full paths).
+  /// Yields overall progress 0.0–1.0; last value is 1.0.
+  ///
+  /// One file failing does not abort the rest (spec UC-3).
+  /// If [onFileResult] is provided it is called per-file with the outcome.
+  ///
+  /// If [deviceKey] is provided (32-byte device-bound key), a hardware-key
+  /// wrap is added so files can be opened on this device without the passphrase.
+  ///
+  /// Runs in a background isolate.
+  static Stream<double> encryptFiles(
+    List<String> files,
+    String passphrase, {
+    bool deleteOriginals = false,
+    String? outputDir,
+    String? keyIdHex,
+    Uint8List? deviceKey,
+    void Function(String path, bool ok, String? error)? onFileResult,
+  }) async* {
+    if (files.isEmpty) return;
+    final pw = utf8.encode(passphrase);
+    try {
+      yield* _runBatch({
+        'cmd': 'encrypt',
+        'files': files,
+        'passphrase': pw,
+        'opslimit': _kdfParams.opslimit,
+        'memlimit': _kdfParams.memlimit,
+        'deleteOriginals': deleteOriginals,
+        'outputDir': outputDir,
+        'keyIdHint': _hexToBytes(keyIdHex),
+        'deviceKey': deviceKey,
+      }, onFileResult: onFileResult);
+    } finally {
       pw.fillRange(0, pw.length, 0);
     }
   }
@@ -140,46 +167,17 @@ class AppCrypto {
   }) async* {
     if (files.isEmpty) return;
     final pw = utf8.encode(passphrase);
-    final port = ReceivePort();
-    final isolate = await Isolate.spawn(latchWorker, port.sendPort);
-    bool done = false;
-
     try {
-      SendPort? workerPort;
-      await for (final msg in port) {
-        if (workerPort == null) {
-          workerPort = msg as SendPort;
-          workerPort.send({
-            'cmd': 'decrypt',
-            'files': files,
-            'passphrase': pw,
-            'outputDir': outputDir,
-            'deviceKey': deviceKey,
-            'recipientPublicKey': recipientPublicKey,
-            'recipientSecretKey': recipientSecretKey,
-          });
-          continue;
-        }
-        final map = msg as Map<String, dynamic>;
-        switch (map['type']) {
-          case 'progress':
-            yield map['pct'] as double;
-          case 'file_done':
-            onFileResult?.call(
-              map['path'] as String,
-              map['ok'] as bool,
-              map['error'] as String?,
-            );
-          case 'error':
-            _throwTypedError(map['code'] as String, map['message'] as String);
-          case 'done':
-            done = true;
-            return;
-        }
-      }
+      yield* _runBatch({
+        'cmd': 'decrypt',
+        'files': files,
+        'passphrase': pw,
+        'outputDir': outputDir,
+        'deviceKey': deviceKey,
+        'recipientPublicKey': recipientPublicKey,
+        'recipientSecretKey': recipientSecretKey,
+      }, onFileResult: onFileResult);
     } finally {
-      port.close();
-      if (!done) isolate.kill(priority: Isolate.immediate);
       pw.fillRange(0, pw.length, 0);
     }
   }
@@ -201,46 +199,17 @@ class AppCrypto {
     if (files.isEmpty) return;
     final oldPw = utf8.encode(oldPassphrase);
     final newPw = utf8.encode(newPassphrase);
-    final port = ReceivePort();
-    final isolate = await Isolate.spawn(latchWorker, port.sendPort);
-    bool done = false;
-
     try {
-      SendPort? workerPort;
-      await for (final msg in port) {
-        if (workerPort == null) {
-          workerPort = msg as SendPort;
-          workerPort.send({
-            'cmd': 'rewrap',
-            'files': files,
-            'oldPassphrase': oldPw,
-            'newPassphrase': newPw,
-            'opslimit': _kdfParams.opslimit,
-            'memlimit': _kdfParams.memlimit,
-            'keyIdHint': _hexToBytes(keyIdHex),
-          });
-          continue;
-        }
-        final map = msg as Map<String, dynamic>;
-        switch (map['type']) {
-          case 'progress':
-            yield map['pct'] as double;
-          case 'file_done':
-            onFileResult?.call(
-              map['path'] as String,
-              map['ok'] as bool,
-              map['error'] as String?,
-            );
-          case 'error':
-            _throwTypedError(map['code'] as String, map['message'] as String);
-          case 'done':
-            done = true;
-            return;
-        }
-      }
+      yield* _runBatch({
+        'cmd': 'rewrap',
+        'files': files,
+        'oldPassphrase': oldPw,
+        'newPassphrase': newPw,
+        'opslimit': _kdfParams.opslimit,
+        'memlimit': _kdfParams.memlimit,
+        'keyIdHint': _hexToBytes(keyIdHex),
+      }, onFileResult: onFileResult);
     } finally {
-      port.close();
-      if (!done) isolate.kill(priority: Isolate.immediate);
       oldPw.fillRange(0, oldPw.length, 0);
       newPw.fillRange(0, newPw.length, 0);
     }
@@ -262,43 +231,14 @@ class AppCrypto {
   }) async* {
     if (files.isEmpty) return;
     final pw = utf8.encode(passphrase);
-    final port = ReceivePort();
-    final isolate = await Isolate.spawn(latchWorker, port.sendPort);
-    bool done = false;
-
     try {
-      SendPort? workerPort;
-      await for (final msg in port) {
-        if (workerPort == null) {
-          workerPort = msg as SendPort;
-          workerPort.send({
-            'cmd': 'add_recipient',
-            'files': files,
-            'passphrase': pw,
-            'recipientPublicKey': recipientPublicKey,
-          });
-          continue;
-        }
-        final map = msg as Map<String, dynamic>;
-        switch (map['type']) {
-          case 'progress':
-            yield map['pct'] as double;
-          case 'file_done':
-            onFileResult?.call(
-              map['path'] as String,
-              map['ok'] as bool,
-              map['error'] as String?,
-            );
-          case 'error':
-            _throwTypedError(map['code'] as String, map['message'] as String);
-          case 'done':
-            done = true;
-            return;
-        }
-      }
+      yield* _runBatch({
+        'cmd': 'add_recipient',
+        'files': files,
+        'passphrase': pw,
+        'recipientPublicKey': recipientPublicKey,
+      }, onFileResult: onFileResult);
     } finally {
-      port.close();
-      if (!done) isolate.kill(priority: Isolate.immediate);
       pw.fillRange(0, pw.length, 0);
     }
   }
@@ -307,13 +247,22 @@ class AppCrypto {
   /// only initialized there). Used as RecipientKeyService's generator.
   static Future<ShareKeypair> generateShareKeypair() async {
     final port = ReceivePort();
-    final isolate = await Isolate.spawn(latchWorker, port.sendPort);
+    final isolate = await Isolate.spawn(latchWorker, port.sendPort,
+        onExit: port.sendPort, onError: port.sendPort);
     bool done = false;
     ShareKeypair? result;
 
     try {
       SendPort? workerPort;
       await for (final msg in port) {
+        if (msg == null) {
+          // onExit fired before 'done' — the worker died without reporting.
+          throw StateError('keygen isolate exited before finishing');
+        }
+        if (msg is List) {
+          // onError port: [error, stackTrace] from an uncaught worker error.
+          throw Exception('keygen isolate crashed: ${msg.firstOrNull}');
+        }
         if (workerPort == null) {
           workerPort = msg as SendPort;
           workerPort.send({'cmd': 'keygen'});
@@ -355,39 +304,8 @@ class AppCrypto {
     void Function(String path, bool ok, String? error)? onFileResult,
   }) async* {
     if (files.isEmpty) return;
-    final port = ReceivePort();
-    final isolate = await Isolate.spawn(latchWorker, port.sendPort);
-    bool done = false;
-
-    try {
-      SendPort? workerPort;
-      await for (final msg in port) {
-        if (workerPort == null) {
-          workerPort = msg as SendPort;
-          workerPort.send({'cmd': 'shred', 'files': files});
-          continue;
-        }
-        final map = msg as Map<String, dynamic>;
-        switch (map['type']) {
-          case 'progress':
-            yield map['pct'] as double;
-          case 'file_done':
-            onFileResult?.call(
-              map['path'] as String,
-              map['ok'] as bool,
-              map['error'] as String?,
-            );
-          case 'error':
-            _throwTypedError(map['code'] as String, map['message'] as String);
-          case 'done':
-            done = true;
-            return;
-        }
-      }
-    } finally {
-      port.close();
-      if (!done) isolate.kill(priority: Isolate.immediate);
-    }
+    yield* _runBatch({'cmd': 'shred', 'files': files},
+        onFileResult: onFileResult);
   }
 
   /// Convenience: single-file decrypt with the batch API.

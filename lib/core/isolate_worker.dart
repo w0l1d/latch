@@ -140,17 +140,20 @@ Future<void> _encryptOne(
         lastPct = pct;
       }
     }
-    await sink.close();
-    await writeDone;
   } catch (e) {
+    // Sink is still open — forward the error so writeChunked can clean up
+    // the temp file, then close and rethrow.
     sink.addError(e);
     await sink.close();
     rethrow;
   }
+  // Close the sink only after the encrypt loop finishes cleanly, then wait
+  // for the write to land on disk. writeDone errors (e.g. ENOSPC) are NOT
+  // fed back into the now-closed sink — they propagate directly.
+  await sink.close();
+  await writeDone;
 
   if (deleteOriginals) await io.deleteFile(path);
-
-  mainPort.send({'type': 'progress', 'pct': (index + 1.0) / total});
 }
 
 Future<void> _rewrapBatch(
@@ -355,13 +358,17 @@ Future<void> _decryptOne(
         lastPct = pct;
       }
     }
-    await sink.close();
-    await writeDone;
   } catch (e) {
+    // Sink is still open — forward the error so writeChunked can clean up
+    // the temp file, then close and rethrow.
     sink.addError(e);
     await sink.close();
     rethrow;
   }
+  // Close the sink only after the decrypt loop finishes cleanly, then wait
+  // for the write to land on disk. writeDone errors are NOT fed back into
+  // the now-closed sink — they propagate directly.
+  await sink.close();
+  await writeDone;
 
-  mainPort.send({'type': 'progress', 'pct': (index + 1.0) / total});
 }

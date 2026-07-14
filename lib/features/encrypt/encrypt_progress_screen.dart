@@ -70,7 +70,7 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
       (prog) {
         if (!mounted || _cancelled) return;
         setState(() => _progress = prog);
-        if (prog >= 1.0 && !_reported) {
+        if (_doneCount >= widget.files.length && !_reported) {
           _reported = true;
           _onDone();
         }
