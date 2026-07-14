@@ -2,6 +2,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/latch_button.dart';
@@ -30,9 +31,11 @@ class _EncryptOptionsScreenState extends State<EncryptOptionsScreen> {
 
   Future<void> _loadDefaults() async {
     final prefs = await SharedPreferences.getInstance();
+    final docsDir = (await getApplicationDocumentsDirectory()).path;
     if (!mounted) return;
     setState(() {
       _deleteOriginals = prefs.getBool('delete_originals') ?? false;
+      _outputDir ??= docsDir;
     });
   }
 
@@ -78,7 +81,10 @@ class _EncryptOptionsScreenState extends State<EncryptOptionsScreen> {
               _OutputFolderRow(
                 outputDir: _outputDir,
                 onChoose: _pickFolder,
-                onClear: () => setState(() => _outputDir = null),
+                onClear: () async {
+                  final docsDir = (await getApplicationDocumentsDirectory()).path;
+                  if (mounted) setState(() => _outputDir = docsDir);
+                },
               ),
               const SizedBox(height: 16),
               Container(
@@ -140,7 +146,8 @@ class _OutputFolderRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final beside = outputDir == null;
+    final dir = outputDir;
+    final isDefault = dir == null;
     return Semantics(
       button: true,
       label: 'Choose output folder',
@@ -154,27 +161,27 @@ class _OutputFolderRow extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(beside ? Icons.folder_outlined : Icons.folder_special_outlined,
+            Icon(isDefault ? Icons.folder_outlined : Icons.folder_special_outlined,
                 color: LatchColors.ink),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(beside ? 'Beside each original' : p.basename(outputDir!),
+                  Text(isDefault ? 'Choose folder…' : p.basename(dir),
                       style: Theme.of(context).textTheme.bodyLarge),
                   const SizedBox(height: 2),
-                  Text(beside ? 'Tap to choose a folder' : outputDir!,
+                  Text(dir ?? 'Tap to choose',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodySmall),
                 ],
               ),
             ),
-            if (!beside)
+            if (!isDefault)
               IconButton(
                 icon: const Icon(Icons.close, size: 18, color: LatchColors.muted),
-                tooltip: 'Save beside each original instead',
+                tooltip: 'Reset to default folder',
                 onPressed: onClear,
               ),
           ],

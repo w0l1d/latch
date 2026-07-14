@@ -19,6 +19,7 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
   bool _saveForQuickUnlock = false;
   bool _canSave = false;
   PassphraseResult? _strength;
+  int _selectedChip = 0;
 
   @override
   void initState() {
@@ -36,6 +37,63 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
     if (svc == null) return;
     final ok = await svc.canAuthenticate;
     if (mounted) setState(() => _canSave = ok);
+  }
+
+  Future<void> _onChipSelected(int index) async {
+    setState(() => _selectedChip = index);
+    if (index == 1) {
+      await _pickFromApp();
+    }
+  }
+
+  Future<void> _pickFromApp() async {
+    final svc = AppCrypto.passphraseStorage;
+    if (svc == null || !mounted) return;
+    final entries = await svc.list();
+    if (entries.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No saved passphrases yet. Save one on this screen first.')),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+    final label = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('Pick a saved passphrase',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+            ),
+            ...entries.map((e) => ListTile(
+              leading: const Icon(Icons.vpn_key_outlined),
+              title: Text(e.label),
+              subtitle: Text('Saved ${_friendlyDate(e.createdAt)}'),
+              onTap: () => Navigator.pop(ctx, e.label),
+            )),
+          ],
+        ),
+      ),
+    );
+    if (label == null || !mounted) return;
+    final passphrase = await svc.loadWithAuth(label);
+    if (passphrase != null && mounted) {
+      _controller.text = passphrase;
+    }
+  }
+
+  static String _friendlyDate(DateTime dt) {
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+    if (diff.inDays == 0) return 'today';
+    if (diff.inDays == 1) return 'yesterday';
+    if (diff.inDays < 30) return '${diff.inDays}d ago';
+    return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
   }
 
   Future<void> _storeAndContinue() async {
@@ -88,22 +146,41 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _SourceChips(),
+              _SourceChips(selected: _selectedChip, onSelected: _onChipSelected),
               const SizedBox(height: 20),
-              TextField(
-                controller: _controller,
-                obscureText: _obscure,
-                autofocus: true,
-                decoration: InputDecoration(
-                  hintText: 'Enter passphrase',
-                  suffixIcon: TextButton(
-                    onPressed: () => setState(() => _obscure = !_obscure),
-                    child: Text(_obscure ? 'show' : 'hide',
-                        style: const TextStyle(color: LatchColors.subtle)),
+              if (_selectedChip == 2)
+                AutofillGroup(
+                  child: TextField(
+                    controller: _controller,
+                    obscureText: _obscure,
+                    autofocus: true,
+                    autofillHints: const [AutofillHints.newPassword],
+                    decoration: InputDecoration(
+                      hintText: 'Enter passphrase',
+                      suffixIcon: TextButton(
+                        onPressed: () => setState(() => _obscure = !_obscure),
+                        child: Text(_obscure ? 'show' : 'hide',
+                            style: const TextStyle(color: LatchColors.subtle)),
+                      ),
+                    ),
+                    style: const TextStyle(fontSize: 17, letterSpacing: 1.5),
                   ),
+                )
+              else
+                TextField(
+                  controller: _controller,
+                  obscureText: _obscure,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    hintText: 'Enter passphrase',
+                    suffixIcon: TextButton(
+                      onPressed: () => setState(() => _obscure = !_obscure),
+                      child: Text(_obscure ? 'show' : 'hide',
+                          style: const TextStyle(color: LatchColors.subtle)),
+                    ),
+                  ),
+                  style: const TextStyle(fontSize: 17, letterSpacing: 1.5),
                 ),
-                style: const TextStyle(fontSize: 17, letterSpacing: 1.5),
-              ),
               const SizedBox(height: 12),
               if (_strength != null) ...[
                 _StrengthBar(score: _strength!.score, color: _strengthColor),
@@ -176,26 +253,24 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
   }
 }
 
-class _SourceChips extends StatefulWidget {
-  @override
-  State<_SourceChips> createState() => _SourceChipsState();
-}
+class _SourceChips extends StatelessWidget {
+  final int selected;
+  final ValueChanged<int> onSelected;
+  static const _labels = ['Type it', 'From app', 'Password mgr'];
 
-class _SourceChipsState extends State<_SourceChips> {
-  int _selected = 0;
-  final _labels = ['Type it', 'From app', 'Password mgr'];
+  const _SourceChips({required this.selected, required this.onSelected});
 
   @override
   Widget build(BuildContext context) {
     return Wrap(
       spacing: 8,
       children: List.generate(_labels.length, (i) {
-        final active = i == _selected;
+        final active = i == selected;
         return Semantics(
           button: true,
           label: _labels[i],
           child: GestureDetector(
-            onTap: () => setState(() => _selected = i),
+            onTap: () => onSelected(i),
             child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
             decoration: BoxDecoration(
