@@ -57,15 +57,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
         .firstWhere((p) => p.matches(ops, mem), orElse: () => _kdfPresets[0])
         .label;
 
+    // Platform-channel failures must not blank the whole settings screen —
+    // fall back to neutral values and render everything else.
     final svc = AppCrypto.passphraseStorage;
     int count = 0;
     if (svc != null) {
-      count = (await svc.list()).length;
+      try {
+        count = (await svc.list()).length;
+      } catch (_) {}
     }
 
     if (!mounted) return;
 
-    final info = await PackageInfo.fromPlatform();
+    String version = '';
+    try {
+      final info = await PackageInfo.fromPlatform();
+      version = '${info.version}+${info.buildNumber}';
+    } catch (_) {}
 
     if (!mounted) return;
     setState(() {
@@ -76,7 +84,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _deviceBoundRecovery = prefs.getBool('device_bound_recovery') ?? false;
       _kdfCost = label;
       _storedCount = count;
-      _version = '${info.version}+${info.buildNumber}';
+      _version = version;
       _loaded = true;
     });
   }

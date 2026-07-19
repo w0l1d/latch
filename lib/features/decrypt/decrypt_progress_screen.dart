@@ -56,24 +56,34 @@ class _DecryptProgressScreenState extends State<DecryptProgressScreen> {
 
   Future<void> _loadAndRun() async {
     Uint8List? deviceKey;
-    final prefs = await SharedPreferences.getInstance();
-    if (prefs.getBool('device_bound_recovery') ?? false) {
-      deviceKey = await AppCrypto.deviceKeyService?.getOrCreateKey();
-    }
-    // Files shared TO this install: if a sharing keypair exists, pass it so
-    // recipient wraps are tried when the passphrase wrap fails.
     Uint8List? recipientPk;
     Uint8List? recipientSk;
-    final recipientSvc = AppCrypto.recipientKeys;
-    if (recipientSvc != null && await recipientSvc.hasKeyPair()) {
-      final kp = await recipientSvc.getOrCreateKeyPair();
-      recipientPk = kp.publicKey;
-      recipientSk = kp.secretKey;
+    String? outputDir;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool('device_bound_recovery') ?? false) {
+        deviceKey = await AppCrypto.deviceKeyService?.getOrCreateKey();
+      }
+      // Files shared TO this install: if a sharing keypair exists, pass it so
+      // recipient wraps are tried when the passphrase wrap fails.
+      final recipientSvc = AppCrypto.recipientKeys;
+      if (recipientSvc != null && await recipientSvc.hasKeyPair()) {
+        final kp = await recipientSvc.getOrCreateKeyPair();
+        recipientPk = kp.publicKey;
+        recipientSk = kp.secretKey;
+      }
+      // Mobile pickers hand us cache COPIES of the .latch files, so restoring
+      // "beside the original" would land in app-private storage. Use the
+      // platform's visible default folder (Downloads on Android).
+      outputDir = await DefaultOutput.directory();
+    } catch (e) {
+      // A pre-batch platform failure (secure storage, prefs) must surface —
+      // falling out of this method silently would leave the spinner forever.
+      if (!mounted || _cancelled) return;
+      _reported = true;
+      _showError('Decryption failed', userMessageForError('$e'));
+      return;
     }
-    // Mobile pickers hand us cache COPIES of the .latch files, so restoring
-    // "beside the original" would land in app-private storage. Use the
-    // platform's visible default folder (Downloads on Android).
-    final outputDir = await DefaultOutput.directory();
     if (!mounted) return;
     _sub = AppCrypto.decryptFiles(
       widget.files,

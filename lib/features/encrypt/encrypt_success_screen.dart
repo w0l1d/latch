@@ -50,7 +50,16 @@ class EncryptSuccessScreen extends StatelessWidget {
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 24),
-                ...files.map((f) => _OutputFile(name: p.basename(f))),
+                // Flexible + ListView: a large batch scrolls instead of
+                // overflowing the column.
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: files
+                        .map((f) => _OutputFile(name: p.basename(f)))
+                        .toList(),
+                  ),
+                ),
                 const SizedBox(height: 12),
                 Text(
                   _savedWhere,

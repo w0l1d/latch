@@ -59,9 +59,17 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
 
   Future<void> _loadAndRun() async {
     Uint8List? deviceKey;
-    final prefs = await SharedPreferences.getInstance();
-    if (prefs.getBool('device_bound_recovery') ?? false) {
-      deviceKey = await AppCrypto.deviceKeyService?.getOrCreateKey();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool('device_bound_recovery') ?? false) {
+        deviceKey = await AppCrypto.deviceKeyService?.getOrCreateKey();
+      }
+    } catch (e) {
+      // A pre-batch platform failure (secure storage, prefs) must surface —
+      // falling out of this method silently would leave the spinner forever.
+      if (!mounted || _cancelled) return;
+      _showFatalError(e);
+      return;
     }
     if (!mounted) return;
     _sub = AppCrypto.encryptFiles(

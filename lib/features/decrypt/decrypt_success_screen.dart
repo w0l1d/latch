@@ -41,7 +41,12 @@ class DecryptSuccessScreen extends StatelessWidget {
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 24),
-                ...files.map((f) => Container(
+                // Flexible + ListView: a large batch scrolls instead of
+                // overflowing the column.
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: files.map((f) => Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(14),
                   margin: const EdgeInsets.only(bottom: 8),
@@ -71,7 +76,9 @@ class DecryptSuccessScreen extends StatelessWidget {
                       ),
                     ],
                   ),
-                )),
+                )).toList(),
+                  ),
+                ),
                 const Spacer(),
                 LatchPrimaryButton(
                   label: 'Done',
