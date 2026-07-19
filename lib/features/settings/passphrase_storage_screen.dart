@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../core/app_crypto.dart';
+import '../../core/passphrase_policy.dart';
+import '../../core/passphrase_storage_service.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/latch_button.dart';
 
@@ -14,7 +18,9 @@ class PassphraseStorageScreen extends StatefulWidget {
 }
 
 class _PassphraseStorageScreenState extends State<PassphraseStorageScreen> {
-  _StorageMode _mode = _StorageMode.none;
+  _StorageMode _mode = _StorageMode.appVault;
+  List<StoredPassphrase> _entries = [];
+  bool _saving = false;
 
   @override
   void initState() {
@@ -24,22 +30,100 @@ class _PassphraseStorageScreenState extends State<PassphraseStorageScreen> {
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
-    final stored = prefs.getString('passphrase_storage_mode');
+    final stored = prefs.getString(PassphrasePolicy.prefKey);
+    final svc = AppCrypto.passphraseStorage;
+    final entries = svc == null ? <StoredPassphrase>[] : await svc.list();
     if (!mounted) return;
     setState(() {
+      // Unset = default behavior, which allows storing (see PassphrasePolicy).
       _mode = _StorageMode.values.firstWhere(
         (m) => m.name == stored,
-        orElse: () => _StorageMode.none,
+        orElse: () => _StorageMode.appVault,
       );
+      _entries = entries;
     });
   }
 
-  Future<void> _save() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('passphrase_storage_mode', _mode.name);
-    if (!mounted) return;
-    context.pop();
+  Future<void> _deleteEntry(StoredPassphrase entry) async {
+    final svc = AppCrypto.passphraseStorage;
+    if (svc == null) return;
+    final confirmed = await _confirm(
+      'Delete this passphrase?',
+      '"${_entryLabel(entry)}" will be removed from this device. Files locked '
+          'with it still need the passphrase itself to open.',
+    );
+    if (confirmed != true) return;
+    try {
+      await svc.delete(entry.label);
+    } catch (e) {
+      _showSnack('Could not delete: $e');
+      return;
+    }
+    _load();
   }
+
+  Future<void> _save() async {
+    final svc = AppCrypto.passphraseStorage;
+    setState(() => _saving = true);
+    try {
+      // Choosing a non-vault mode with passphrases still stored would be a
+      // lie ("Nothing is stored") — purge them, with consent.
+      if (_mode != _StorageMode.appVault && _entries.isNotEmpty) {
+        final confirmed = await _confirm(
+          'Delete ${_entries.length} stored passphrase${_entries.length == 1 ? '' : 's'}?',
+          'This choice means the app stores nothing, so the saved '
+              'passphrase${_entries.length == 1 ? '' : 's'} will be removed '
+              'from this device. Make sure you know them — files can only be '
+              'opened with the passphrase they were locked with.',
+        );
+        if (confirmed != true) return;
+        try {
+          await svc?.deleteAll();
+        } catch (e) {
+          _showSnack('Could not delete stored passphrases: $e');
+          return;
+        }
+      }
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(PassphrasePolicy.prefKey, _mode.name);
+      if (_mode != _StorageMode.appVault) {
+        await prefs.setBool('quick_unlock', false);
+      }
+      if (mounted) context.pop();
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<bool?> _confirm(String title, String message) {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete', style: TextStyle(color: LatchColors.danger)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showSnack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  /// Entry labels are file paths when saved from a single-file encrypt —
+  /// show just the file name.
+  static String _entryLabel(StoredPassphrase e) =>
+      e.label.contains('/') ? p.basename(e.label) : e.label;
 
   @override
   Widget build(BuildContext context) {
@@ -51,7 +135,7 @@ class _PassphraseStorageScreenState extends State<PassphraseStorageScreen> {
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          child: Column(
+          child: ListView(
             children: [
               _ModeCard(
                 title: 'Type it every time',
@@ -73,10 +157,40 @@ class _PassphraseStorageScreenState extends State<PassphraseStorageScreen> {
                 selected: _mode == _StorageMode.passwordManager,
                 onTap: () => setState(() => _mode = _StorageMode.passwordManager),
               ),
-              const Spacer(),
+              const SizedBox(height: 24),
+              Text(
+                'STORED ON THIS DEVICE',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      letterSpacing: 0.8,
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+              const SizedBox(height: 8),
+              if (_entries.isEmpty)
+                Text(
+                  'No passphrases are stored.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                )
+              else
+                ..._entries.map(
+                  (e) => ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.vpn_key_outlined,
+                        color: LatchColors.muted),
+                    title: Text(_entryLabel(e),
+                        style: Theme.of(context).textTheme.bodyMedium),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete_outline,
+                          color: LatchColors.danger),
+                      tooltip: 'Delete stored passphrase',
+                      onPressed: () => _deleteEntry(e),
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 24),
               LatchPrimaryButton(
                 label: 'Save choice',
-                onPressed: _save,
+                onPressed: _saving ? null : _save,
               ),
               const SizedBox(height: 8),
             ],

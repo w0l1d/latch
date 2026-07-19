@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:path/path.dart' as p;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/latch_button.dart';
 import '../../core/app_crypto.dart';
 import '../../core/crypto_stub.dart';
+import '../../core/passphrase_policy.dart';
 
 class EncryptPassphraseScreen extends StatefulWidget {
   final List<String> files;
@@ -35,6 +38,8 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
   Future<void> _checkAuth() async {
     final svc = AppCrypto.passphraseStorage;
     if (svc == null) return;
+    // Respect an explicit "the app stores nothing" choice from Settings.
+    if (!await PassphrasePolicy.storageAllowed()) return;
     final ok = await svc.canAuthenticate;
     if (mounted) setState(() => _canSave = ok);
   }
@@ -82,8 +87,15 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
     );
     if (label == null || !mounted) return;
     final passphrase = await svc.loadWithAuth(label);
-    if (passphrase != null && mounted) {
+    if (!mounted) return;
+    if (passphrase != null) {
       _controller.text = passphrase;
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text(
+                'Could not unlock the saved passphrase — authentication was cancelled or failed.')),
+      );
     }
   }
 
@@ -101,9 +113,26 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
     String? keyIdHex;
     if (_saveForQuickUnlock && svc != null && _canSave) {
       final label = widget.files.length == 1
-          ? widget.files.first
+          ? p.basename(widget.files.first)
           : '${widget.files.length} files';
-      keyIdHex = await svc.store(label, _controller.text);
+      try {
+        keyIdHex = await svc.store(label, _controller.text);
+        // Saving implies the user wants quick unlock — turn it on so the
+        // saved passphrase is actually offered at decrypt time.
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('quick_unlock', true);
+      } catch (e) {
+        // Continue without quick unlock rather than silently doing nothing —
+        // encryption itself must not be blocked by a vault failure.
+        keyIdHex = null;
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text(
+                    'Could not save the passphrase — continuing without quick unlock.')),
+          );
+        }
+      }
     }
     if (mounted) {
       context.push(

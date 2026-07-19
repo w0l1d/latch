@@ -5,6 +5,7 @@ import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/latch_button.dart';
 import '../../core/app_crypto.dart';
 import '../../core/key_id_resolver.dart';
+import '../../core/passphrase_policy.dart';
 
 class DecryptPassphraseScreen extends StatefulWidget {
   final List<String> files;
@@ -27,8 +28,12 @@ class _DecryptPassphraseScreenState extends State<DecryptPassphraseScreen> {
   }
 
   Future<void> _checkStored() async {
+    // Respect an explicit "the app stores nothing" choice from Settings.
+    if (!await PassphrasePolicy.storageAllowed()) return;
     final prefs = await SharedPreferences.getInstance();
-    final quickUnlockOn = prefs.getBool('quick_unlock') ?? false;
+    // Default true: saving a passphrase in the encrypt flow enables quick
+    // unlock; the Settings switch remains as an explicit kill switch.
+    final quickUnlockOn = prefs.getBool('quick_unlock') ?? true;
     if (!quickUnlockOn) return;
     final svc = AppCrypto.passphraseStorage;
     if (svc == null) return;
@@ -55,9 +60,16 @@ class _DecryptPassphraseScreenState extends State<DecryptPassphraseScreen> {
       }
 
       final passphrase = await svc.loadWithAuth(label);
-      if (passphrase != null && mounted) {
+      if (!mounted) return;
+      if (passphrase != null) {
         _controller.text = passphrase;
         _submit();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text(
+                  'Quick unlock cancelled — type the passphrase instead.')),
+        );
       }
     } finally {
       if (mounted) setState(() => _quickUnlocking = false);
