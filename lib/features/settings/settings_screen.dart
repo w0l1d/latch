@@ -34,10 +34,8 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _deleteOriginals = false;
-  bool _encryptFilename = true;
   bool _quickUnlock = false;
   bool _deviceBoundRecovery = false;
-  String _cipher = 'Auto';
   String _kdfCost = 'Auto';
   int _storedCount = 0;
   String _version = '';
@@ -71,14 +69,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!mounted) return;
     setState(() {
       _deleteOriginals = prefs.getBool('delete_originals') ?? false;
-      _encryptFilename = prefs.getBool('encrypt_filename') ?? true;
-      _quickUnlock = prefs.getBool('quick_unlock') ?? false;
+      // Default true — saving a passphrase in the encrypt flow enables quick
+      // unlock; this switch is the explicit kill switch.
+      _quickUnlock = prefs.getBool('quick_unlock') ?? true;
       _deviceBoundRecovery = prefs.getBool('device_bound_recovery') ?? false;
       _kdfCost = label;
       _storedCount = count;
       _version = '${info.version}+${info.buildNumber}';
       _loaded = true;
     });
+  }
+
+  /// Applies a KDF preset. "Auto" restores the values calibrated during
+  /// onboarding rather than a fixed pair.
+  Future<void> _setKdf(_KdfPreset preset) async {
+    final prefs = await SharedPreferences.getInstance();
+    var ops = preset.opslimit;
+    var mem = preset.memlimit;
+    if (preset.label == 'Auto') {
+      ops = prefs.getInt('kdf_calibrated_opslimit') ?? ops;
+      mem = prefs.getInt('kdf_calibrated_memlimit') ?? mem;
+    }
+    await prefs.setInt('kdf_opslimit', ops);
+    await prefs.setInt('kdf_memlimit', mem);
   }
 
   Future<void> _set(String key, dynamic value) async {
@@ -158,13 +171,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 : null,
           ),
           _SectionHeader('Encryption'),
-          _SelectTile(
+          // The .latch v1 format has exactly one cipher — state it instead of
+          // offering a selector that couldn't change anything.
+          _InfoTile(
             title: 'Cipher',
-            value: _cipher,
-            options: const ['Auto', 'ChaCha20-Poly1305', 'AES-256-GCM'],
-            onChanged: _loaded
-                ? (v) => setState(() => _cipher = v)
-                : null,
+            value: 'XChaCha20-Poly1305',
           ),
           _SelectTile(
             title: 'KDF cost',
@@ -174,19 +185,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ? (v) {
                     final preset = _kdfPresets.firstWhere((p) => p.label == v);
                     setState(() => _kdfCost = v);
-                    _set('kdf_opslimit', preset.opslimit);
-                    _set('kdf_memlimit', preset.memlimit);
-                  }
-                : null,
-          ),
-          _SwitchTile(
-            title: 'Encrypt filename',
-            subtitle: 'Stores real name inside the locked file',
-            value: _encryptFilename,
-            onChanged: _loaded
-                ? (v) {
-                    setState(() => _encryptFilename = v);
-                    _set('encrypt_filename', v);
+                    _setKdf(preset);
                   }
                 : null,
           ),
@@ -204,7 +203,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           _InfoTile(
             title: 'Output location',
-            value: 'Beside each original',
+            value: 'App documents — changeable per encrypt',
           ),
           _SectionHeader('About'),
           _InfoTile(title: 'Version', value: _version),

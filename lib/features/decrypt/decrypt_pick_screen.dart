@@ -21,8 +21,19 @@ class _DecryptPickScreenState extends State<DecryptPickScreen> {
     try {
       final result = await FilePicker.platform.pickFiles(allowMultiple: true);
       if (result != null && result.files.isNotEmpty && mounted) {
-        final paths = result.files.map((f) => f.path!).where((p) => p.isNotEmpty).toList();
+        // A platform can return entries with a null path — never force-unwrap.
+        final paths = result.files
+            .map((f) => f.path)
+            .whereType<String>()
+            .where((p) => p.isNotEmpty)
+            .toList();
         if (paths.isNotEmpty) setState(() => _selectedFiles = paths);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not open the file picker: $e')),
+        );
       }
     } finally {
       if (mounted) setState(() => _picking = false);

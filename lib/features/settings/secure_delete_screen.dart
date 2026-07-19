@@ -34,14 +34,30 @@ class _SecureDeleteScreenState extends State<SecureDeleteScreen> {
   bool get _ready => _files.isNotEmpty && !_busy;
 
   Future<void> _pickFiles() async {
-    final result = await FilePicker.platform.pickFiles(allowMultiple: true);
-    if (result == null) return;
-    setState(() {
-      _files = result.paths
-          .whereType<String>()
-          .where((path) => path.endsWith('.latch'))
-          .toList();
-    });
+    List<String> paths;
+    try {
+      final result = await FilePicker.platform.pickFiles(allowMultiple: true);
+      if (result == null) return;
+      paths = result.paths.whereType<String>().toList();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not open the file picker: $e')),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+    final latch = paths.where((path) => path.endsWith('.latch')).toList();
+    final skipped = paths.length - latch.length;
+    setState(() => _files = latch);
+    if (skipped > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text(
+                '$skipped file${skipped == 1 ? '' : 's'} skipped — only .latch files can be shredded.')),
+      );
+    }
   }
 
   Future<void> _showConfirm() async {
@@ -104,7 +120,7 @@ class _SecureDeleteScreenState extends State<SecureDeleteScreen> {
         ],
       ),
     );
-    if (ok == true) _run();
+    if (ok == true && mounted) _run();
   }
 
   void _run() {
@@ -112,8 +128,8 @@ class _SecureDeleteScreenState extends State<SecureDeleteScreen> {
     final results = <BatchResult>[];
     _sub = AppCrypto.secureDeleteFiles(
       _files,
-      onFileResult: (path, ok, error) {
-        results.add(BatchResult(path: path, ok: ok, errorMessage: error));
+      onFileResult: (path, ok, error, outPath) {
+        results.add(BatchResult(path: path, ok: ok, errorMessage: error, outPath: outPath));
       },
     ).listen(
       (_) {},
@@ -181,9 +197,15 @@ class _SecureDeleteScreenState extends State<SecureDeleteScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PopScope(
+      // Leaving mid-shred would hide which files were already destroyed —
+      // block back navigation until the batch reports.
+      canPop: !_busy,
+      child: Scaffold(
       appBar: AppBar(
-        leading: BackButton(onPressed: () => context.pop()),
+        leading: BackButton(onPressed: () {
+          if (!_busy) context.pop();
+        }),
         title: const Text('Secure delete'),
       ),
       body: SafeArea(
@@ -263,6 +285,7 @@ class _SecureDeleteScreenState extends State<SecureDeleteScreen> {
           ),
         ),
       ),
+    ),
     );
   }
 }

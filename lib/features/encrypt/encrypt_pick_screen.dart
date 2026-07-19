@@ -28,6 +28,12 @@ class _EncryptPickScreenState extends State<EncryptPickScreen> {
           }
         });
       }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not open the file picker: $e')),
+        );
+      }
     } finally {
       if (mounted) setState(() => _picking = false);
     }

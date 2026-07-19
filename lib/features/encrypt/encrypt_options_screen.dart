@@ -40,9 +40,19 @@ class _EncryptOptionsScreenState extends State<EncryptOptionsScreen> {
   }
 
   Future<void> _pickFolder() async {
-    final dir = await FilePicker.platform.getDirectoryPath(
-      dialogTitle: 'Choose where to save locked files',
-    );
+    final String? dir;
+    try {
+      dir = await FilePicker.platform.getDirectoryPath(
+        dialogTitle: 'Choose where to save locked files',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not open the folder picker: $e')),
+        );
+      }
+      return;
+    }
     if (dir != null && mounted) setState(() => _outputDir = dir);
   }
 

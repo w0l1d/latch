@@ -60,14 +60,30 @@ class _AddRecipientScreenState extends State<AddRecipientScreen> {
       !_busy;
 
   Future<void> _pickFiles() async {
-    final result = await FilePicker.platform.pickFiles(allowMultiple: true);
-    if (result == null) return;
-    setState(() {
-      _files = result.paths
-          .whereType<String>()
-          .where((path) => path.endsWith('.latch'))
-          .toList();
-    });
+    List<String> paths;
+    try {
+      final result = await FilePicker.platform.pickFiles(allowMultiple: true);
+      if (result == null) return;
+      paths = result.paths.whereType<String>().toList();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not open the file picker: $e')),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+    final latch = paths.where((path) => path.endsWith('.latch')).toList();
+    final skipped = paths.length - latch.length;
+    setState(() => _files = latch);
+    if (skipped > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text(
+                '$skipped file${skipped == 1 ? '' : 's'} skipped — only .latch files can be shared.')),
+      );
+    }
   }
 
   void _run() {
@@ -83,8 +99,8 @@ class _AddRecipientScreenState extends State<AddRecipientScreen> {
       _files,
       _passphraseController.text,
       recipientPublicKey: decodePublicKeyHex(recipient.publicKeyHex),
-      onFileResult: (path, ok, error) {
-        results.add(BatchResult(path: path, ok: ok, errorMessage: error));
+      onFileResult: (path, ok, error, outPath) {
+        results.add(BatchResult(path: path, ok: ok, errorMessage: error, outPath: outPath));
       },
     ).listen(
       (_) {},
@@ -153,9 +169,15 @@ class _AddRecipientScreenState extends State<AddRecipientScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PopScope(
+      // Leaving mid-batch would hide which files were already re-wrapped —
+      // block back navigation until the batch reports.
+      canPop: !_busy,
+      child: Scaffold(
       appBar: AppBar(
-        leading: BackButton(onPressed: () => context.pop()),
+        leading: BackButton(onPressed: () {
+          if (!_busy) context.pop();
+        }),
         title: const Text('Share with recipient'),
       ),
       body: SafeArea(
@@ -277,6 +299,7 @@ class _AddRecipientScreenState extends State<AddRecipientScreen> {
           ),
         ),
       ),
+    ),
     );
   }
 }

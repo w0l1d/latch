@@ -40,14 +40,30 @@ class _ChangePassphraseScreenState extends State<ChangePassphraseScreen> {
       !_busy;
 
   Future<void> _pickFiles() async {
-    final result = await FilePicker.platform.pickFiles(allowMultiple: true);
-    if (result == null) return;
-    setState(() {
-      _files = result.paths
-          .whereType<String>()
-          .where((path) => path.endsWith('.latch'))
-          .toList();
-    });
+    List<String> paths;
+    try {
+      final result = await FilePicker.platform.pickFiles(allowMultiple: true);
+      if (result == null) return;
+      paths = result.paths.whereType<String>().toList();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not open the file picker: $e')),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+    final latch = paths.where((path) => path.endsWith('.latch')).toList();
+    final skipped = paths.length - latch.length;
+    setState(() => _files = latch);
+    if (skipped > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text(
+                '$skipped file${skipped == 1 ? '' : 's'} skipped — only .latch files can be changed here.')),
+      );
+    }
   }
 
   void _run() {
@@ -57,8 +73,8 @@ class _ChangePassphraseScreenState extends State<ChangePassphraseScreen> {
       _files,
       _oldController.text,
       _newController.text,
-      onFileResult: (path, ok, error) {
-        results.add(BatchResult(path: path, ok: ok, errorMessage: error));
+      onFileResult: (path, ok, error, outPath) {
+        results.add(BatchResult(path: path, ok: ok, errorMessage: error, outPath: outPath));
       },
     ).listen(
       (_) {},
@@ -129,9 +145,15 @@ class _ChangePassphraseScreenState extends State<ChangePassphraseScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PopScope(
+      // Leaving mid-rewrap would hide which files were already changed —
+      // block back navigation until the batch reports.
+      canPop: !_busy,
+      child: Scaffold(
       appBar: AppBar(
-        leading: BackButton(onPressed: () => context.pop()),
+        leading: BackButton(onPressed: () {
+          if (!_busy) context.pop();
+        }),
         title: const Text('Change passphrase'),
       ),
       body: SafeArea(
@@ -216,6 +238,7 @@ class _ChangePassphraseScreenState extends State<ChangePassphraseScreen> {
           ),
         ),
       ),
+    ),
     );
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as p;
+import '../../core/crypto_stub.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/latch_button.dart';
 
@@ -22,6 +23,12 @@ class EncryptReviewScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final strength = CryptoStub.evaluate(passphrase);
+    final strengthColor = switch (strength.strength) {
+      PassphraseStrength.weak => LatchColors.danger,
+      PassphraseStrength.fair => LatchColors.caution,
+      _ => LatchColors.safe,
+    };
     return Scaffold(
       appBar: AppBar(
         leading: BackButton(onPressed: () => context.pop()),
@@ -36,8 +43,8 @@ class EncryptReviewScreen extends StatelessWidget {
               _Divider(),
               _ReviewRow(
                 label: 'Passphrase',
-                value: 'Set · strong',
-                valueColor: LatchColors.safe,
+                value: 'Set · ${strength.label.toLowerCase()}',
+                valueColor: strengthColor,
               ),
               _Divider(),
               _ReviewRow(
