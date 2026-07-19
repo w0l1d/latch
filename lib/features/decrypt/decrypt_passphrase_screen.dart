@@ -59,7 +59,18 @@ class _DecryptPassphraseScreenState extends State<DecryptPassphraseScreen> {
         if (match != null) label = match;
       }
 
-      final passphrase = await svc.loadWithAuth(label);
+      String? passphrase;
+      try {
+        passphrase = await svc.loadWithAuth(label);
+      } catch (e) {
+        // A platform-level auth failure must be visible, not a silent no-op.
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not show the unlock prompt: $e')),
+          );
+        }
+        return;
+      }
       if (!mounted) return;
       if (passphrase != null) {
         _controller.text = passphrase;

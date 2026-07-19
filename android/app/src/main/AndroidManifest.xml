@@ -1,4 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Biometric / device-credential prompt for the passphrase vault. -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC"/>
     <!-- Writing to the public Downloads folder is permission-free from API 29
          (MediaStore-backed paths); older API levels need the legacy flag and
          WRITE permission. -->
