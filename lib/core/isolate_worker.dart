@@ -127,6 +127,9 @@ Future<String> _encryptOne(
 
   final outPath = io.resolveNameCollision(
       io.resolveOutputPath('$path.latch', outputDir));
+  // Announce the output before writing so the main isolate can remove the
+  // in-flight <outPath>.tmp if the batch is cancelled mid-write.
+  mainPort.send({'type': 'file_start', 'outPath': outPath});
   final sink = StreamController<Uint8List>();
   final writeDone = io.writeChunked(outPath, sink.stream);
   int lastPct = -1;
@@ -186,6 +189,7 @@ Future<void> _rewrapBatch(
     try {
       // writeChunked writes to <path>.tmp and renames — the original is
       // replaced atomically only after the full rewrapped file is on disk.
+      mainPort.send({'type': 'file_start', 'outPath': path});
       await io.writeChunked(
         path,
         svc.changePassphrase(
@@ -243,6 +247,7 @@ Future<void> _addRecipientBatch(
     try {
       // writeChunked writes to <path>.tmp and renames — the original is
       // replaced atomically only after the full rewritten file is on disk.
+      mainPort.send({'type': 'file_start', 'outPath': path});
       await io.writeChunked(
         path,
         svc.addRecipient(
@@ -358,6 +363,9 @@ Future<String> _decryptOne(
 
   final outPath = io.resolveNameCollision(
       io.resolveOutputPath(io.withoutSuffix(path, '.latch'), outputDir));
+  // Announce the output before writing so the main isolate can remove the
+  // in-flight <outPath>.tmp (partial plaintext!) if the batch is cancelled.
+  mainPort.send({'type': 'file_start', 'outPath': outPath});
   final sink = StreamController<Uint8List>();
   final writeDone = io.writeChunked(outPath, sink.stream);
   int lastPct = -1;

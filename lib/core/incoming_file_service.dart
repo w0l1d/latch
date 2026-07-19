@@ -16,12 +16,21 @@ class IncomingFileService {
   /// Call once at startup — gates .latch files that arrived BEFORE the Dart
   /// engine was running (cold-start open).
   Future<void> handleInitialMedia() async {
-    final files = await _plugin.getInitialMedia();
-    if (files.isNotEmpty) {
-      final latchFiles = _filterLatch(files);
-      if (latchFiles.isNotEmpty) {
-        _navigate(latchFiles);
+    // Never let a platform-channel failure take down startup — an intent we
+    // can't read just means nothing to open.
+    try {
+      final files = await _plugin.getInitialMedia();
+      if (files.isNotEmpty) {
+        final latchFiles = _filterLatch(files);
+        if (latchFiles.isNotEmpty) {
+          _navigate(latchFiles);
+        }
+        // Consume the intent so a hot restart / engine re-attach doesn't
+        // replay the same files into a second navigation.
+        _plugin.reset();
       }
+    } catch (_) {
+      // MissingPluginException on platforms without share-intent support.
     }
   }
 
@@ -32,6 +41,9 @@ class IncomingFileService {
     _sub = _plugin.getMediaStream().listen((files) {
       final latchFiles = _filterLatch(files);
       if (latchFiles.isNotEmpty) _navigate(latchFiles);
+    }, onError: (_) {
+      // A malformed intent must not kill the stream subscription silently —
+      // ignore it and keep listening for the next share.
     });
   }
 
@@ -40,11 +52,11 @@ class IncomingFileService {
   }
 
   List<String> _filterLatch(List<SharedMediaFile> files) {
+    // Only the .latch extension counts. Matching on a generic mime type
+    // (application/octet-stream) would route arbitrary shared files into the
+    // decrypt flow, where they'd fail with a confusing error.
     return files
-        .where((f) =>
-            f.path.endsWith('.latch') ||
-            (f.mimeType != null &&
-                f.mimeType == 'application/octet-stream'))
+        .where((f) => f.path.toLowerCase().endsWith('.latch'))
         .map((f) => f.path)
         .toList();
   }

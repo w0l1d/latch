@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show File;
 import 'dart:isolate';
 import 'dart:typed_data';
 import 'package:myenc_core/myenc_core.dart';
@@ -77,6 +78,11 @@ class AppCrypto {
     final isolate = await Isolate.spawn(latchWorker, port.sendPort,
         onExit: port.sendPort, onError: port.sendPort);
     bool done = false;
+    // Output file currently being written by the worker. If the batch is
+    // torn down mid-write (cancel kills the isolate outright), its
+    // writeChunked temp file is orphaned — and for decrypt it holds partial
+    // plaintext — so we sweep it up in the finally below.
+    String? inFlightOutPath;
 
     try {
       SendPort? workerPort;
@@ -98,7 +104,10 @@ class AppCrypto {
         switch (map['type']) {
           case 'progress':
             yield map['pct'] as double;
+          case 'file_start':
+            inFlightOutPath = map['outPath'] as String;
           case 'file_done':
+            inFlightOutPath = null;
             onFileResult?.call(
               map['path'] as String,
               map['ok'] as bool,
@@ -114,7 +123,17 @@ class AppCrypto {
       }
     } finally {
       port.close();
-      if (!done) isolate.kill(priority: Isolate.immediate);
+      if (!done) {
+        isolate.kill(priority: Isolate.immediate);
+        // The kill above is immediate — writeChunked never reaches its own
+        // cleanup, so remove the half-written temp file ourselves. For
+        // decrypt that temp holds partial plaintext.
+        final orphan = inFlightOutPath;
+        if (orphan != null) {
+          unawaited(
+              File('$orphan.tmp').delete().then((_) {}, onError: (_) {}));
+        }
+      }
     }
   }
 

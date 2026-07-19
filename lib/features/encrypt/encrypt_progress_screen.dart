@@ -226,7 +226,7 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
                 const SizedBox(height: 12),
                 Text(
                   fileCount > 1
-                      ? '${_doneCount + 1} of $fileCount · $currentName'
+                      ? '${(_doneCount + 1).clamp(1, fileCount)} of $fileCount · $currentName'
                       : currentName,
                   style: Theme.of(context).textTheme.bodySmall,
                   textAlign: TextAlign.center,

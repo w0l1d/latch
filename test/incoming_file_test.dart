@@ -106,6 +106,33 @@ void main() {
       expect(find.text('passphrase'), findsOneWidget);
     });
 
+    testWidgets(
+        'ignores generic octet-stream files that are not .latch', (tester) async {
+      final router = _testRouter();
+      final controller = StreamController<List<SharedMediaFile>>();
+
+      ReceiveSharingIntent.setMockValues(
+        initialMedia: [
+          SharedMediaFile(
+            path: '/downloads/firmware.bin',
+            type: SharedMediaType.file,
+            mimeType: 'application/octet-stream',
+          ),
+        ],
+        mediaStream: controller.stream,
+      );
+
+      await tester.pumpWidget(MaterialApp.router(
+        routerConfig: router,
+      ));
+
+      final svc = IncomingFileService(router: router);
+      await svc.handleInitialMedia();
+      await tester.pumpAndSettle();
+
+      expect(find.text('home'), findsOneWidget);
+    });
+
     testWidgets('ignores non-latch files from the media stream',
         (tester) async {
       final router = _testRouter();

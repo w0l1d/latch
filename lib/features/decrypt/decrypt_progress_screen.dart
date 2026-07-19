@@ -261,7 +261,7 @@ class _DecryptProgressScreenState extends State<DecryptProgressScreen> {
                 const SizedBox(height: 12),
                 Text(
                   fileCount > 1
-                      ? '${_doneCount + 1} of $fileCount'
+                      ? '${(_doneCount + 1).clamp(1, fileCount)} of $fileCount'
                       : 'Checking the file is intact, then restoring.',
                   style: Theme.of(context).textTheme.bodySmall,
                   textAlign: TextAlign.center,
