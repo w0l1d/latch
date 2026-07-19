@@ -75,15 +75,22 @@ Future<void> _encryptBatch(
     final path = files[i];
 
     try {
-      await _encryptOne(crypto, io, svc, path, passphrase, params,
+      final outPath = await _encryptOne(crypto, io, svc, path, passphrase, params,
           deleteOriginals, outputDir, keyIdHint, deviceKey, i, files.length, mainPort);
-      mainPort.send({'type': 'file_done', 'path': path, 'ok': true, 'error': null});
+      mainPort.send({
+        'type': 'file_done',
+        'path': path,
+        'ok': true,
+        'error': null,
+        'outPath': outPath,
+      });
     } catch (e) {
       mainPort.send({
         'type': 'file_done',
         'path': path,
         'ok': false,
         'error': '$e',
+        'outPath': null,
       });
     }
   }
@@ -91,7 +98,9 @@ Future<void> _encryptBatch(
   mainPort.send({'type': 'progress', 'pct': 1.0});
 }
 
-Future<void> _encryptOne(
+/// Returns the path the encrypted file was actually written to (may differ
+/// from `<input>.latch` due to outputDir and collision renaming).
+Future<String> _encryptOne(
   SodiumCryptoAdapter crypto,
   FileIoDart io,
   EnvelopeService svc,
@@ -154,6 +163,7 @@ Future<void> _encryptOne(
   await writeDone;
 
   if (deleteOriginals) await io.deleteFile(path);
+  return outPath;
 }
 
 Future<void> _rewrapBatch(
@@ -186,13 +196,14 @@ Future<void> _rewrapBatch(
           keyIdHint: keyIdHint,
         ),
       );
-      mainPort.send({'type': 'file_done', 'path': path, 'ok': true, 'error': null});
+      mainPort.send({'type': 'file_done', 'path': path, 'ok': true, 'error': null, 'outPath': path});
     } catch (e) {
       mainPort.send({
         'type': 'file_done',
         'path': path,
         'ok': false,
         'error': '$e',
+        'outPath': null,
       });
     }
     mainPort.send({'type': 'progress', 'pct': (i + 1.0) / files.length});
@@ -240,13 +251,14 @@ Future<void> _addRecipientBatch(
           recipientPublicKey: recipientPublicKey,
         ),
       );
-      mainPort.send({'type': 'file_done', 'path': path, 'ok': true, 'error': null});
+      mainPort.send({'type': 'file_done', 'path': path, 'ok': true, 'error': null, 'outPath': path});
     } catch (e) {
       mainPort.send({
         'type': 'file_done',
         'path': path,
         'ok': false,
         'error': '$e',
+        'outPath': null,
       });
     }
     mainPort.send({'type': 'progress', 'pct': (i + 1.0) / files.length});
@@ -263,13 +275,14 @@ Future<void> _shredBatch(
     final path = files[i];
     try {
       await CryptoErase.eraseAndDelete(path);
-      mainPort.send({'type': 'file_done', 'path': path, 'ok': true, 'error': null});
+      mainPort.send({'type': 'file_done', 'path': path, 'ok': true, 'error': null, 'outPath': path});
     } catch (e) {
       mainPort.send({
         'type': 'file_done',
         'path': path,
         'ok': false,
         'error': '$e',
+        'outPath': null,
       });
     }
     mainPort.send({'type': 'progress', 'pct': (i + 1.0) / files.length});
@@ -294,15 +307,22 @@ Future<void> _decryptBatch(
     final path = files[i];
 
     try {
-      await _decryptOne(crypto, io, svc, path, passphrase, outputDir,
+      final outPath = await _decryptOne(crypto, io, svc, path, passphrase, outputDir,
           deviceKey, recipientPublicKey, recipientSecretKey, i, files.length, mainPort);
-      mainPort.send({'type': 'file_done', 'path': path, 'ok': true, 'error': null});
+      mainPort.send({
+        'type': 'file_done',
+        'path': path,
+        'ok': true,
+        'error': null,
+        'outPath': outPath,
+      });
     } catch (e) {
       mainPort.send({
         'type': 'file_done',
         'path': path,
         'ok': false,
         'error': '$e',
+        'outPath': null,
       });
     }
   }
@@ -310,7 +330,9 @@ Future<void> _decryptBatch(
   mainPort.send({'type': 'progress', 'pct': 1.0});
 }
 
-Future<void> _decryptOne(
+/// Returns the path the plaintext was actually written to (may differ from
+/// the input minus `.latch` due to outputDir and collision renaming).
+Future<String> _decryptOne(
   SodiumCryptoAdapter crypto,
   FileIoDart io,
   EnvelopeService svc,
@@ -370,5 +392,5 @@ Future<void> _decryptOne(
   // the now-closed sink — they propagate directly.
   await sink.close();
   await writeDone;
-
+  return outPath;
 }

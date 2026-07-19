@@ -42,7 +42,7 @@ void main() {
     await for (final prog in AppCrypto.encryptFiles(
       [src.path],
       'correct horse battery staple',
-      onFileResult: (_, ok, _) => results.add(ok),
+      onFileResult: (_, ok, _, _) => results.add(ok),
     )) {
       if (prog >= 1.0) doneCountAtFinalProgress = results.length;
     }
@@ -69,7 +69,7 @@ void main() {
     await for (final prog in AppCrypto.encryptFiles(
       paths,
       'a strong enough passphrase',
-      onFileResult: (_, ok, _) => results.add(ok),
+      onFileResult: (_, ok, _, _) => results.add(ok),
     )) {
       if (prog >= 1.0) doneCountAtFinalProgress = results.length;
     }
@@ -93,7 +93,7 @@ void main() {
       [enc],
       pass,
       outputDir: tmp.path,
-      onFileResult: (_, ok, _) => decResults.add(ok),
+      onFileResult: (_, ok, _, _) => decResults.add(ok),
     ).drain<void>();
 
     expect(decResults, [true]);
@@ -115,10 +115,96 @@ void main() {
     await AppCrypto.decryptFiles(
       ['${src.path}.latch'],
       'the WRONG passphrase',
-      onFileResult: (_, _, error) => errors.add(error),
+      onFileResult: (_, _, error, _) => errors.add(error),
     ).drain<void>();
 
     expect(errors.length, 1);
     expect(errors.first, contains('WrongPassphraseError'));
+  });
+
+  test('encrypt with outputDir: reported outPath is the real file', () async {
+    final outDir = Directory('${tmp.path}/out')..createSync();
+    final src = File('${tmp.path}/doc.txt')
+      ..writeAsBytesSync(Uint8List.fromList(List.filled(2048, 42)));
+
+    final outPaths = <String?>[];
+    await AppCrypto.encryptFiles(
+      [src.path],
+      'output dir passphrase',
+      outputDir: outDir.path,
+      onFileResult: (_, _, _, outPath) => outPaths.add(outPath),
+    ).drain<void>();
+
+    expect(outPaths.length, 1);
+    final reported = outPaths.single;
+    expect(reported, isNotNull);
+    expect(File(reported!).existsSync(), isTrue,
+        reason: 'the UI shows this path — it must exist on disk');
+    expect(reported, startsWith(outDir.path),
+        reason: 'output must land in the chosen folder');
+    expect(reported, isNot('${src.path}.latch'),
+        reason: 'with an outputDir the naive input-derived path is wrong');
+    // The naive path the old UI fabricated must NOT exist.
+    expect(File('${src.path}.latch').existsSync(), isFalse);
+  });
+
+  test('collision renaming: outPath reports the renamed file', () async {
+    final src = File('${tmp.path}/dup.txt')
+      ..writeAsBytesSync(Uint8List.fromList([9, 9, 9]));
+    // Occupy the natural output name.
+    final squatter = File('${src.path}.latch')
+      ..writeAsBytesSync(Uint8List.fromList([0]));
+
+    final outPaths = <String?>[];
+    await AppCrypto.encryptFiles(
+      [src.path],
+      'collision passphrase',
+      onFileResult: (_, _, _, outPath) => outPaths.add(outPath),
+    ).drain<void>();
+
+    final reported = outPaths.single!;
+    expect(reported, isNot(squatter.path),
+        reason: 'must not claim the pre-existing file as its output');
+    expect(File(reported).existsSync(), isTrue);
+    // The squatter is untouched.
+    expect(squatter.readAsBytesSync(), [0]);
+  });
+
+  test('decrypt outPath: reported file holds the original bytes', () async {
+    final original = Uint8List.fromList(List.generate(3000, (i) => i % 251));
+    final src = File('${tmp.path}/orig.bin')..writeAsBytesSync(original);
+    const pass = 'decrypt outPath pass';
+    await AppCrypto.encryptFiles([src.path], pass).drain<void>();
+
+    final outPaths = <String?>[];
+    await AppCrypto.decryptFiles(
+      ['${src.path}.latch'],
+      pass,
+      onFileResult: (_, _, _, outPath) => outPaths.add(outPath),
+    ).drain<void>();
+
+    final reported = outPaths.single!;
+    // src still exists, so collision renaming must have picked a new name —
+    // and the reported path must be that real file with the right contents.
+    expect(File(reported).existsSync(), isTrue);
+    expect(File(reported).readAsBytesSync(), original);
+  });
+
+  test('failed file reports a null outPath', () async {
+    final notLatch = File('${tmp.path}/garbage.latch')
+      ..writeAsBytesSync(Uint8List.fromList(List.filled(64, 7)));
+
+    final outPaths = <String?>['sentinel'];
+    outPaths.clear();
+    await AppCrypto.decryptFiles(
+      [notLatch.path],
+      'whatever',
+      onFileResult: (_, ok, _, outPath) {
+        expect(ok, isFalse);
+        outPaths.add(outPath);
+      },
+    ).drain<void>();
+
+    expect(outPaths, [null]);
   });
 }

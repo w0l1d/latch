@@ -1,12 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:path/path.dart' as p;
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/latch_button.dart';
 
 class EncryptSuccessScreen extends StatelessWidget {
+  /// Full paths the worker actually wrote the .latch files to.
   final List<String> files;
 
   const EncryptSuccessScreen({super.key, required this.files});
+
+  /// Human description of where the outputs landed, from the real paths.
+  String get _savedWhere {
+    final dirs = files.map(p.dirname).toSet();
+    if (dirs.isEmpty) return '';
+    if (dirs.length == 1) return 'Saved in ${dirs.first}';
+    return 'Saved across ${dirs.length} folders';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -40,29 +50,17 @@ class EncryptSuccessScreen extends StatelessWidget {
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 24),
-                ...files.map((f) => _OutputFile(name: f)),
+                ...files.map((f) => _OutputFile(name: p.basename(f))),
                 const SizedBox(height: 12),
                 Text(
-                  'Saved next to the originals.',
+                  _savedWhere,
                   style: Theme.of(context).textTheme.bodySmall,
+                  textAlign: TextAlign.center,
                 ),
                 const Spacer(),
-                Row(
-                  children: [
-                    Expanded(
-                      child: LatchSecondaryButton(
-                        label: 'Show in files',
-                        onPressed: () => context.go('/home'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: LatchPrimaryButton(
-                        label: 'Done',
-                        onPressed: () => context.go('/home'),
-                      ),
-                    ),
-                  ],
+                LatchPrimaryButton(
+                  label: 'Done',
+                  onPressed: () => context.go('/home'),
                 ),
                 const SizedBox(height: 16),
               ],

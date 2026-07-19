@@ -15,8 +15,19 @@ class BatchResult {
   final String path;
   final bool ok;
   final String? errorMessage;
-  const BatchResult({required this.path, required this.ok, this.errorMessage});
+
+  /// Where the output actually landed (differs from a path derived from
+  /// [path] when an output folder or collision renaming applied). Null on
+  /// failure; equals [path] for in-place operations (rewrap, shred).
+  final String? outPath;
+
+  const BatchResult(
+      {required this.path, required this.ok, this.errorMessage, this.outPath});
 }
+
+/// Per-file completion callback for batch operations.
+typedef FileResultCallback = void Function(
+    String path, bool ok, String? error, String? outPath);
 
 class AppCrypto {
   /// Lazy-initialized singleton — set by main() after the widget tree mounts
@@ -60,7 +71,7 @@ class AppCrypto {
   /// instead of hanging the caller forever.
   static Stream<double> _runBatch(
     Map<String, dynamic> task, {
-    void Function(String path, bool ok, String? error)? onFileResult,
+    FileResultCallback? onFileResult,
   }) async* {
     final port = ReceivePort();
     final isolate = await Isolate.spawn(latchWorker, port.sendPort,
@@ -92,6 +103,7 @@ class AppCrypto {
               map['path'] as String,
               map['ok'] as bool,
               map['error'] as String?,
+              map['outPath'] as String?,
             );
           case 'error':
             _throwTypedError(map['code'] as String, map['message'] as String);
@@ -123,7 +135,7 @@ class AppCrypto {
     String? outputDir,
     String? keyIdHex,
     Uint8List? deviceKey,
-    void Function(String path, bool ok, String? error)? onFileResult,
+    FileResultCallback? onFileResult,
   }) async* {
     if (files.isEmpty) return;
     final kdf = await _loadKdfParams();
@@ -164,7 +176,7 @@ class AppCrypto {
     Uint8List? deviceKey,
     Uint8List? recipientPublicKey,
     Uint8List? recipientSecretKey,
-    void Function(String path, bool ok, String? error)? onFileResult,
+    FileResultCallback? onFileResult,
   }) async* {
     if (files.isEmpty) return;
     final pw = utf8.encode(passphrase);
@@ -195,7 +207,7 @@ class AppCrypto {
     String oldPassphrase,
     String newPassphrase, {
     String? keyIdHex,
-    void Function(String path, bool ok, String? error)? onFileResult,
+    FileResultCallback? onFileResult,
   }) async* {
     if (files.isEmpty) return;
     final kdf = await _loadKdfParams();
@@ -229,7 +241,7 @@ class AppCrypto {
     List<String> files,
     String passphrase, {
     required Uint8List recipientPublicKey,
-    void Function(String path, bool ok, String? error)? onFileResult,
+    FileResultCallback? onFileResult,
   }) async* {
     if (files.isEmpty) return;
     final pw = utf8.encode(passphrase);
@@ -303,7 +315,7 @@ class AppCrypto {
   /// rest; per-file outcomes arrive via [onFileResult].
   static Stream<double> secureDeleteFiles(
     List<String> files, {
-    void Function(String path, bool ok, String? error)? onFileResult,
+    FileResultCallback? onFileResult,
   }) async* {
     if (files.isEmpty) return;
     yield* _runBatch({'cmd': 'shred', 'files': files},
@@ -314,7 +326,8 @@ class AppCrypto {
   /// Throws on failure (unlike [decryptFiles] which reports via callback).
   static Stream<double> decryptFile(String filePath, String passphrase) async* {
     String? error;
-    yield* decryptFiles([filePath], passphrase, onFileResult: (path, ok, err) {
+    yield* decryptFiles([filePath], passphrase,
+        onFileResult: (path, ok, err, outPath) {
       error = err;
     });
     if (error != null) {

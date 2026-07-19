@@ -65,8 +65,8 @@ class _DecryptProgressScreenState extends State<DecryptProgressScreen> {
       deviceKey: deviceKey,
       recipientPublicKey: recipientPk,
       recipientSecretKey: recipientSk,
-      onFileResult: (path, ok, error) {
-        _results.add(BatchResult(path: path, ok: ok, errorMessage: error));
+      onFileResult: (path, ok, error, outPath) {
+        _results.add(BatchResult(path: path, ok: ok, errorMessage: error, outPath: outPath));
         _doneCount++;
       },
     ).listen(
@@ -90,16 +90,12 @@ class _DecryptProgressScreenState extends State<DecryptProgressScreen> {
     final ok = _results.where((r) => r.ok).length;
     final bad = _results.where((r) => !r.ok).length;
     if (ok > 0) {
-      final outFiles = _results
-          .where((r) => r.ok)
-          .map((r) => p.withoutExtension(r.path))
-          .toList();
       if (bad > 0) {
         _showPartialSuccess(ok, bad);
         return;
       }
       if (mounted) {
-        context.pushReplacement('/decrypt/success', extra: outFiles);
+        context.pushReplacement('/decrypt/success', extra: _outFiles());
       }
     } else {
       // All failed — pick the first error and show the right dialog.
@@ -125,6 +121,14 @@ class _DecryptProgressScreenState extends State<DecryptProgressScreen> {
     }
   }
 
+  /// Paths the worker actually wrote (accounts for the output folder and
+  /// collision renaming); falls back to the derived name only if a worker
+  /// predates the outPath protocol field.
+  List<String> _outFiles() => _results
+      .where((r) => r.ok)
+      .map((r) => r.outPath ?? p.withoutExtension(r.path))
+      .toList();
+
   void _showPartialSuccess(int ok, int bad) {
     final listed = _results.where((r) => !r.ok).take(3).map((r) {
       final msg = userMessageForError(r.errorMessage ?? '');
@@ -140,11 +144,7 @@ class _DecryptProgressScreenState extends State<DecryptProgressScreen> {
       buttonLabel: 'Continue',
       onPressed: () {
         Navigator.pop(context);
-        final outFiles = _results
-            .where((r) => r.ok)
-            .map((r) => p.withoutExtension(r.path))
-            .toList();
-        context.pushReplacement('/decrypt/success', extra: outFiles);
+        context.pushReplacement('/decrypt/success', extra: _outFiles());
       },
     );
   }

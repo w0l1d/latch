@@ -62,8 +62,8 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
       outputDir: widget.outputDir,
       keyIdHex: widget.keyIdHex,
       deviceKey: deviceKey,
-      onFileResult: (path, ok, error) {
-        _results.add(BatchResult(path: path, ok: ok, errorMessage: error));
+      onFileResult: (path, ok, error, outPath) {
+        _results.add(BatchResult(path: path, ok: ok, errorMessage: error, outPath: outPath));
         _doneCount++;
       },
     ).listen(
@@ -86,8 +86,7 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
     final ok = _results.where((r) => r.ok).length;
     final bad = _results.where((r) => !r.ok).length;
     if (ok > 0) {
-      final outFiles =
-          _results.where((r) => r.ok).map((r) => '${r.path}.latch').toList();
+      final outFiles = _outFiles();
       if (bad > 0) {
         _showPartialSuccess(ok, bad);
         return;
@@ -99,6 +98,14 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
       _showError('Encryption failed', first.errorMessage ?? 'Unknown error');
     }
   }
+
+  /// Paths the worker actually wrote (accounts for the output folder and
+  /// collision renaming); falls back to the derived name only if a worker
+  /// predates the outPath protocol field.
+  List<String> _outFiles() => _results
+      .where((r) => r.ok)
+      .map((r) => r.outPath ?? '${r.path}.latch')
+      .toList();
 
   void _showPartialSuccess(int ok, int bad) {
     final listed = _results.where((r) => !r.ok).take(3).map((r) {
@@ -114,9 +121,7 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
       buttonLabel: 'Continue',
       onPressed: () {
         Navigator.pop(context);
-        final outFiles =
-            _results.where((r) => r.ok).map((r) => '${r.path}.latch').toList();
-        context.pushReplacement('/encrypt/success', extra: outFiles);
+        context.pushReplacement('/encrypt/success', extra: _outFiles());
       },
     );
   }

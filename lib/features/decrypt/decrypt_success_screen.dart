@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:path/path.dart' as p;
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/latch_button.dart';
 
@@ -58,12 +59,12 @@ class DecryptSuccessScreen extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              f,
+                              p.basename(f),
                               style: const TextStyle(fontSize: 14, color: Color(0xFF2A6F57)),
                             ),
-                            const Text(
-                              'Ready to open',
-                              style: TextStyle(fontSize: 12, color: Color(0xFF6FAE93)),
+                            Text(
+                              'In ${p.dirname(f)}',
+                              style: const TextStyle(fontSize: 12, color: Color(0xFF6FAE93)),
                             ),
                           ],
                         ),
@@ -72,22 +73,9 @@ class DecryptSuccessScreen extends StatelessWidget {
                   ),
                 )),
                 const Spacer(),
-                Row(
-                  children: [
-                    Expanded(
-                      child: LatchSecondaryButton(
-                        label: 'Show in files',
-                        onPressed: () => context.go('/home'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: LatchPrimaryButton(
-                        label: 'Open',
-                        onPressed: () => context.go('/home'),
-                      ),
-                    ),
-                  ],
+                LatchPrimaryButton(
+                  label: 'Done',
+                  onPressed: () => context.go('/home'),
                 ),
                 const SizedBox(height: 16),
               ],
