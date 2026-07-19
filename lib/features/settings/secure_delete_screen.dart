@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as p;
 import '../../core/app_crypto.dart';
+import '../../core/crypto_erase.dart';
+import '../../core/saf_bridge.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/latch_alert.dart';
 import '../../shared/widgets/latch_button.dart';
@@ -38,6 +40,11 @@ class _SecureDeleteScreenState extends State<SecureDeleteScreen> {
     try {
       final result = await FilePicker.platform.pickFiles(allowMultiple: true);
       if (result == null) return;
+      // Keep each real document's content:// URI — shredding only the
+      // picker's cache copy would leave the user's actual file intact.
+      for (final f in result.files) {
+        if (f.path != null) SafBridge.rememberUri(f.path!, f.identifier);
+      }
       paths = result.paths.whereType<String>().toList();
     } catch (e) {
       if (mounted) {
@@ -125,11 +132,35 @@ class _SecureDeleteScreenState extends State<SecureDeleteScreen> {
 
   void _run() {
     setState(() => _busy = true);
+    _shred();
+  }
+
+  Future<void> _shred() async {
+    // Phase 1 (Android): crypto-erase and delete the REAL documents behind
+    // the picked cache copies. The worker below only ever sees the copies —
+    // shredding just those would leave the user's actual files intact while
+    // reporting them destroyed.
+    final safFailures = <String, String>{};
+    for (final path in _files) {
+      if (!SafBridge.canWriteBack(path)) continue;
+      try {
+        final noise = await CryptoErase.headerNoise(path);
+        await SafBridge.overwriteAndDelete(path, noise);
+      } catch (e) {
+        safFailures[path] = 'The original file could not be shredded: $e';
+      }
+    }
+    if (!mounted) return;
+    // Phase 2: shred the cache copies so no readable header lingers there.
     final results = <BatchResult>[];
     _sub = AppCrypto.secureDeleteFiles(
       _files,
       onFileResult: (path, ok, error, outPath) {
-        results.add(BatchResult(path: path, ok: ok, errorMessage: error, outPath: outPath));
+        final safError = safFailures[path];
+        results.add(safError != null
+            ? BatchResult(path: path, ok: false, errorMessage: safError)
+            : BatchResult(
+                path: path, ok: ok, errorMessage: error, outPath: outPath));
       },
     ).listen(
       (_) {},

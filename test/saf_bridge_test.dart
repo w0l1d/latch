@@ -1,0 +1,72 @@
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:latch/core/saf_bridge.dart';
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  final calls = <MethodCall>[];
+
+  setUp(() {
+    calls.clear();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SafBridge.channel, (call) async {
+      calls.add(call);
+      return null;
+    });
+  });
+
+  tearDown(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SafBridge.channel, null);
+  });
+
+  group('SafBridge', () {
+    test('rememberUri keeps content:// identifiers only', () {
+      SafBridge.rememberUri('/cache/a.latch', 'content://provider/doc/1');
+      SafBridge.rememberUri('/cache/b.latch', '/storage/emulated/0/b.latch');
+      SafBridge.rememberUri('/cache/c.latch', null);
+
+      expect(SafBridge.uriFor('/cache/a.latch'), 'content://provider/doc/1');
+      expect(SafBridge.uriFor('/cache/b.latch'), isNull);
+      expect(SafBridge.uriFor('/cache/c.latch'), isNull);
+    });
+
+    test('writeBack sends the registered uri and the cache path', () async {
+      SafBridge.rememberUri('/cache/d.latch', 'content://provider/doc/2');
+      await SafBridge.writeBack('/cache/d.latch');
+
+      expect(calls, hasLength(1));
+      expect(calls.single.method, 'writeBack');
+      expect(calls.single.arguments, {
+        'uri': 'content://provider/doc/2',
+        'path': '/cache/d.latch',
+      });
+    });
+
+    test('overwriteAndDelete sends the noise bytes', () async {
+      SafBridge.rememberUri('/cache/e.latch', 'content://provider/doc/3');
+      final noise = Uint8List.fromList(List.generate(64, (i) => i));
+      await SafBridge.overwriteAndDelete('/cache/e.latch', noise);
+
+      expect(calls.single.method, 'overwriteAndDelete');
+      final args = calls.single.arguments as Map;
+      expect(args['uri'], 'content://provider/doc/3');
+      expect(args['bytes'], noise);
+    });
+
+    test('deleteDocument sends the registered uri', () async {
+      SafBridge.rememberUri('/cache/f.latch', 'content://provider/doc/4');
+      await SafBridge.deleteDocument('/cache/f.latch');
+
+      expect(calls.single.method, 'delete');
+      expect(calls.single.arguments, {'uri': 'content://provider/doc/4'});
+    });
+
+    test('canWriteBack is false off-Android even with a registered uri', () {
+      SafBridge.rememberUri('/cache/g.latch', 'content://provider/doc/5');
+      // Tests run on the host platform, so the Android gate must hold.
+      expect(SafBridge.canWriteBack('/cache/g.latch'), isFalse);
+    });
+  });
+}

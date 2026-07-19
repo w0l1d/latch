@@ -35,6 +35,21 @@ void main() {
     if (await tmpDir.exists()) await tmpDir.delete(recursive: true);
   });
 
+  group('CryptoErase.headerNoise', () {
+    test('sizes exactly to the header and leaves the file untouched', () async {
+      final header = _validHeader();
+      final body = Uint8List.fromList(List.generate(100, (i) => i));
+      final path = '${tmpDir.path}/noise.latch';
+      await File(path).writeAsBytes([...header, ...body]);
+
+      final noise = await CryptoErase.headerNoise(path);
+      expect(noise.length, header.length);
+      // Generating noise must not modify the file itself.
+      final after = await File(path).readAsBytes();
+      expect(after, equals([...header, ...body]));
+    });
+  });
+
   group('CryptoErase.eraseHeader', () {
     test('overwrites the magic bytes and returns header length', () async {
       final header = _validHeader();

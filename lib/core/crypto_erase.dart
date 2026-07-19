@@ -15,12 +15,13 @@ import 'package:myenc_core/myenc_core.dart';
 class CryptoErase {
   static const int _peekBytes = 128 * 1024;
 
-  /// Overwrites the header of [path] with random bytes in place and flushes.
-  /// Returns the number of bytes destroyed.
+  /// Random bytes sized to [path]'s exact header length — for destroying the
+  /// header of THIS file wherever it lives (e.g. the real document behind an
+  /// Android cache copy, via SafBridge).
   ///
   /// Throws [NotALatchFileError] / [CorruptedFileError] when the file has no
-  /// decodable .latch header (nothing is written in that case).
-  static Future<int> eraseHeader(String path) async {
+  /// decodable .latch header.
+  static Future<Uint8List> headerNoise(String path) async {
     final file = File(path);
     final len = await file.length();
 
@@ -41,6 +42,18 @@ class CryptoErase {
     for (var i = 0; i < headerLen; i++) {
       noise[i] = rng.nextInt(256);
     }
+    return noise;
+  }
+
+  /// Overwrites the header of [path] with random bytes in place and flushes.
+  /// Returns the number of bytes destroyed.
+  ///
+  /// Throws [NotALatchFileError] / [CorruptedFileError] when the file has no
+  /// decodable .latch header (nothing is written in that case).
+  static Future<int> eraseHeader(String path) async {
+    final noise = await headerNoise(path);
+    final headerLen = noise.length;
+    final file = File(path);
 
     // FileMode.append opens read/write WITHOUT truncating; position is
     // movable, so we can overwrite the first headerLen bytes in place.

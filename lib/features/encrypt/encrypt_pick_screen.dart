@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
+import '../../core/saf_bridge.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/latch_button.dart';
 
@@ -24,7 +25,11 @@ class _EncryptPickScreenState extends State<EncryptPickScreen> {
         setState(() {
           for (final f in result.files) {
             final path = f.path;
-            if (path != null && !_files.contains(path)) _files.add(path);
+            if (path == null) continue;
+            // Keep the real document's content:// URI so "delete originals"
+            // can remove the actual file, not just the picker's cache copy.
+            SafBridge.rememberUri(path, f.identifier);
+            if (!_files.contains(path)) _files.add(path);
           }
         });
       }

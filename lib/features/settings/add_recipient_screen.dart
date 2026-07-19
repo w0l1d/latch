@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as p;
 import '../../core/app_crypto.dart';
 import '../../core/recipient_key_service.dart';
+import '../../core/saf_bridge.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/latch_alert.dart';
 import '../../shared/widgets/latch_button.dart';
@@ -64,6 +65,12 @@ class _AddRecipientScreenState extends State<AddRecipientScreen> {
     try {
       final result = await FilePicker.platform.pickFiles(allowMultiple: true);
       if (result == null) return;
+      // Keep each real document's content:// URI — the batch rewrites the
+      // picker's cache copy, and the result must be written back to the
+      // user's actual file.
+      for (final f in result.files) {
+        if (f.path != null) SafBridge.rememberUri(f.path!, f.identifier);
+      }
       paths = result.paths.whereType<String>().toList();
     } catch (e) {
       if (mounted) {
@@ -104,7 +111,8 @@ class _AddRecipientScreenState extends State<AddRecipientScreen> {
       },
     ).listen(
       (_) {},
-      onDone: () {
+      onDone: () async {
+        await _writeBackOriginals(results);
         if (!mounted) return;
         setState(() => _busy = false);
         _showResults(results, recipient.label);
@@ -115,6 +123,26 @@ class _AddRecipientScreenState extends State<AddRecipientScreen> {
         _showFatal(e.toString());
       },
     );
+  }
+
+  /// On Android the batch modified cache copies — push each successful
+  /// rewrite back to the real document it was picked from, and downgrade the
+  /// result to a failure when that write-back fails.
+  Future<void> _writeBackOriginals(List<BatchResult> results) async {
+    for (var i = 0; i < results.length; i++) {
+      final r = results[i];
+      if (!r.ok || !SafBridge.canWriteBack(r.path)) continue;
+      try {
+        await SafBridge.writeBack(r.path);
+      } catch (e) {
+        results[i] = BatchResult(
+          path: r.path,
+          ok: false,
+          errorMessage:
+              'The change could not be written back to the original file: $e',
+        );
+      }
+    }
   }
 
   void _showResults(List<BatchResult> results, String recipientLabel) {

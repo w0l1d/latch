@@ -9,6 +9,7 @@ import '../../shared/widgets/latch_button.dart';
 import '../../shared/widgets/latch_alert.dart';
 import '../../shared/error_messages.dart';
 import '../../core/app_crypto.dart';
+import '../../core/saf_bridge.dart';
 
 class EncryptProgressScreen extends StatefulWidget {
   final List<String> files;
@@ -113,10 +114,12 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
     );
   }
 
-  void _onDone() {
+  Future<void> _onDone() async {
     final ok = _results.where((r) => r.ok).length;
     final bad = _results.where((r) => !r.ok).length;
     if (ok > 0) {
+      await _deleteRealOriginals();
+      if (!mounted) return;
       final outFiles = _outFiles();
       if (bad > 0) {
         _showPartialSuccess(ok, bad);
@@ -127,6 +130,27 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
       // All failed — show the first error.
       final first = _results.firstWhere((r) => !r.ok);
       _showError('Encryption failed', first.errorMessage ?? 'Unknown error');
+    }
+  }
+
+  /// "Delete originals after": the worker only removed the picker's cache
+  /// copies — delete the REAL documents behind them too (Android SAF).
+  /// Failures are surfaced, not silent: the user chose deletion for a reason.
+  Future<void> _deleteRealOriginals() async {
+    if (!widget.deleteOriginals) return;
+    var failed = 0;
+    for (final r in _results.where((r) => r.ok)) {
+      if (!SafBridge.canWriteBack(r.path)) continue;
+      try {
+        await SafBridge.deleteDocument(r.path);
+      } catch (_) {
+        failed++;
+      }
+    }
+    if (failed > 0 && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+              '$failed original file${failed == 1 ? '' : 's'} could not be deleted — remove ${failed == 1 ? 'it' : 'them'} manually.')));
     }
   }
 
