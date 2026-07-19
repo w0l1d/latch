@@ -2,7 +2,6 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/latch_button.dart';
@@ -31,11 +30,13 @@ class _EncryptOptionsScreenState extends State<EncryptOptionsScreen> {
 
   Future<void> _loadDefaults() async {
     final prefs = await SharedPreferences.getInstance();
-    final docsDir = (await getApplicationDocumentsDirectory()).path;
     if (!mounted) return;
     setState(() {
+      // _outputDir stays null: locked files land beside their originals,
+      // where the user will actually find them. The app documents folder is
+      // app-private on Android — files saved there are invisible to file
+      // managers.
       _deleteOriginals = prefs.getBool('delete_originals') ?? false;
-      _outputDir ??= docsDir;
     });
   }
 
@@ -91,10 +92,7 @@ class _EncryptOptionsScreenState extends State<EncryptOptionsScreen> {
               _OutputFolderRow(
                 outputDir: _outputDir,
                 onChoose: _pickFolder,
-                onClear: () async {
-                  final docsDir = (await getApplicationDocumentsDirectory()).path;
-                  if (mounted) setState(() => _outputDir = docsDir);
-                },
+                onClear: () => setState(() => _outputDir = null),
               ),
               const SizedBox(height: 16),
               Container(
@@ -178,10 +176,10 @@ class _OutputFolderRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(isDefault ? 'Choose folder…' : p.basename(dir),
+                  Text(isDefault ? 'Same folder as each original' : p.basename(dir),
                       style: Theme.of(context).textTheme.bodyLarge),
                   const SizedBox(height: 2),
-                  Text(dir ?? 'Tap to choose',
+                  Text(dir ?? 'Tap to choose a different folder',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodySmall),

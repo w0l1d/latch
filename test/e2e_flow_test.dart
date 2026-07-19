@@ -314,8 +314,10 @@ void main() {
         await tester.tap(continueBtn);
         await tester.pumpAndSettle();
 
-        // options
+        // options — default destination is beside the originals (the app
+        // documents folder is invisible to Android file managers).
         expect(find.text('After locking…'), findsOneWidget);
+        expect(find.text('Same folder as each original'), findsOneWidget);
         await tester.tap(find.text('Continue'));
         await tester.pumpAndSettle();
 

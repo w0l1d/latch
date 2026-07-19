@@ -203,7 +203,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           _InfoTile(
             title: 'Output location',
-            value: 'App documents — changeable per encrypt',
+            value: 'Next to each original — changeable per encrypt',
           ),
           _SectionHeader('About'),
           _InfoTile(title: 'Version', value: _version),
