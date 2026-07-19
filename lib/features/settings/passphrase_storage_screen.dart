@@ -178,6 +178,8 @@ class _PassphraseStorageScreenState extends State<PassphraseStorageScreen> {
                     leading: const Icon(Icons.vpn_key_outlined,
                         color: LatchColors.muted),
                     title: Text(_entryLabel(e),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodyMedium),
                     trailing: IconButton(
                       icon: const Icon(Icons.delete_outline,
