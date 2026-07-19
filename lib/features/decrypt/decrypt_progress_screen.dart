@@ -39,6 +39,17 @@ class _DecryptProgressScreenState extends State<DecryptProgressScreen> {
   }
 
   void _start() {
+    // An empty batch would complete instantly with no events, leaving the
+    // spinner running forever — fail fast and visibly instead.
+    if (widget.files.isEmpty) {
+      _reported = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _showError('Nothing to unlock', 'No files were selected.');
+        }
+      });
+      return;
+    }
     _loadAndRun();
   }
 
@@ -82,6 +93,20 @@ class _DecryptProgressScreenState extends State<DecryptProgressScreen> {
         if (!mounted || _cancelled) return;
         // Fatal error (isolate crash, init failure) — not per-file.
         _showError('Decryption failed', userMessageForError(e));
+      },
+      onDone: () {
+        if (!mounted || _cancelled || _reported) return;
+        _reported = true;
+        if (_doneCount >= widget.files.length) {
+          // Normal completion where the terminal progress event was missed
+          // (defensive — the worker normally reports 1.0 after the last file).
+          _onDone();
+        } else {
+          // The worker stream ended without reporting every file. Without
+          // this the spinner runs forever with Cancel as the only way out.
+          _showError('Decryption stopped unexpectedly',
+              'Only $_doneCount of ${widget.files.length} files were processed.');
+        }
       },
     );
   }

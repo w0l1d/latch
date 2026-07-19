@@ -45,6 +45,15 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
   }
 
   void _start() {
+    // An empty batch would complete instantly with no events, leaving the
+    // spinner running forever — fail fast and visibly instead.
+    if (widget.files.isEmpty) {
+      _reported = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _showError('Nothing to lock', 'No files were selected.');
+      });
+      return;
+    }
     _loadAndRun();
   }
 
@@ -78,6 +87,20 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
       onError: (Object e) {
         if (!mounted || _cancelled) return;
         _showFatalError(e);
+      },
+      onDone: () {
+        if (!mounted || _cancelled || _reported) return;
+        _reported = true;
+        if (_doneCount >= widget.files.length) {
+          // Normal completion where the terminal progress event was missed
+          // (defensive — the worker normally reports 1.0 after the last file).
+          _onDone();
+        } else {
+          // The worker stream ended without reporting every file. Without
+          // this the spinner runs forever with Cancel as the only way out.
+          _showError('Encryption stopped unexpectedly',
+              'Only $_doneCount of ${widget.files.length} files were processed.');
+        }
       },
     );
   }
