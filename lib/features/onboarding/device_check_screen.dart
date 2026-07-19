@@ -39,8 +39,16 @@ class _DeviceCheckScreenState extends State<DeviceCheckScreen> {
     setState(() => _progress = 0.9);
 
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('kdf_opslimit', calibrated.opslimit);
-    await prefs.setInt('kdf_memlimit', calibrated.memlimit);
+    // Always remember what this device calibrated to — the "Auto" KDF preset
+    // in Settings restores these values.
+    await prefs.setInt('kdf_calibrated_opslimit', calibrated.opslimit);
+    await prefs.setInt('kdf_calibrated_memlimit', calibrated.memlimit);
+    // Never clobber an existing choice (a preset picked in Settings, or a
+    // previous calibration) if onboarding somehow runs again.
+    if (!prefs.containsKey('kdf_opslimit')) {
+      await prefs.setInt('kdf_opslimit', calibrated.opslimit);
+      await prefs.setInt('kdf_memlimit', calibrated.memlimit);
+    }
 
     if (!mounted) return;
     setState(() => _progress = 1.0);

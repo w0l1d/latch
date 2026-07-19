@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/latch_button.dart';
 
@@ -41,7 +42,11 @@ class ReadyScreen extends StatelessWidget {
               const Spacer(),
               LatchPrimaryButton(
                 label: 'Go to home',
-                onPressed: () => context.go('/home'),
+                onPressed: () async {
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setBool('onboarding_complete', true);
+                  if (context.mounted) context.go('/home');
+                },
               ),
               const SizedBox(height: 16),
             ],

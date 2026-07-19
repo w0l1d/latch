@@ -19,8 +19,6 @@ class BatchResult {
 }
 
 class AppCrypto {
-  static late final KdfParams _kdfParams;
-
   /// Lazy-initialized singleton — set by main() after the widget tree mounts
   /// so platform channels are available.
   static PassphraseStorageService? passphraseStorage;
@@ -33,8 +31,10 @@ class AppCrypto {
   /// widget tree mounts. Used for X25519 recipient wraps (spec §3, UC-6).
   static RecipientKeyService? recipientKeys;
 
+  /// Early smoke test that prefs plumbing works; KDF params themselves are
+  /// re-read per batch so Settings changes apply without a restart.
   static Future<void> init() async {
-    _kdfParams = await _loadKdfParams();
+    await _loadKdfParams();
   }
 
   static Future<KdfParams> _loadKdfParams() async {
@@ -126,14 +126,15 @@ class AppCrypto {
     void Function(String path, bool ok, String? error)? onFileResult,
   }) async* {
     if (files.isEmpty) return;
+    final kdf = await _loadKdfParams();
     final pw = utf8.encode(passphrase);
     try {
       yield* _runBatch({
         'cmd': 'encrypt',
         'files': files,
         'passphrase': pw,
-        'opslimit': _kdfParams.opslimit,
-        'memlimit': _kdfParams.memlimit,
+        'opslimit': kdf.opslimit,
+        'memlimit': kdf.memlimit,
         'deleteOriginals': deleteOriginals,
         'outputDir': outputDir,
         'keyIdHint': _hexToBytes(keyIdHex),
@@ -197,6 +198,7 @@ class AppCrypto {
     void Function(String path, bool ok, String? error)? onFileResult,
   }) async* {
     if (files.isEmpty) return;
+    final kdf = await _loadKdfParams();
     final oldPw = utf8.encode(oldPassphrase);
     final newPw = utf8.encode(newPassphrase);
     try {
@@ -205,8 +207,8 @@ class AppCrypto {
         'files': files,
         'oldPassphrase': oldPw,
         'newPassphrase': newPw,
-        'opslimit': _kdfParams.opslimit,
-        'memlimit': _kdfParams.memlimit,
+        'opslimit': kdf.opslimit,
+        'memlimit': kdf.memlimit,
         'keyIdHint': _hexToBytes(keyIdHex),
       }, onFileResult: onFileResult);
     } finally {

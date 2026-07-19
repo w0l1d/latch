@@ -1,4 +1,5 @@
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../features/onboarding/welcome_screen.dart';
 import '../features/onboarding/how_it_works_screen.dart';
 import '../features/onboarding/device_check_screen.dart';
@@ -24,6 +25,16 @@ import '../features/settings/add_recipient_screen.dart';
 
 final router = GoRouter(
   initialLocation: '/onboarding/welcome',
+  // Onboarding runs once: after ReadyScreen sets `onboarding_complete`, any
+  // navigation into /onboarding/* (including the initial location) lands on
+  // /home instead. Read from prefs on each hop rather than cached at startup
+  // so tests and pref resets take effect immediately.
+  redirect: (context, state) async {
+    if (!state.matchedLocation.startsWith('/onboarding')) return null;
+    final prefs = await SharedPreferences.getInstance();
+    final complete = prefs.getBool('onboarding_complete') ?? false;
+    return complete ? '/home' : null;
+  },
   routes: [
     GoRoute(path: '/onboarding/welcome', builder: (ctx, st) => const WelcomeScreen()),
     GoRoute(path: '/onboarding/how-it-works', builder: (ctx, st) => const HowItWorksScreen()),
