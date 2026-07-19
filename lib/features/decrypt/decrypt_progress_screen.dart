@@ -9,6 +9,7 @@ import '../../shared/widgets/latch_button.dart';
 import '../../shared/widgets/latch_alert.dart';
 import '../../shared/error_messages.dart';
 import '../../core/app_crypto.dart';
+import '../../core/default_output.dart';
 
 class DecryptProgressScreen extends StatefulWidget {
   final List<String> files;
@@ -69,10 +70,15 @@ class _DecryptProgressScreenState extends State<DecryptProgressScreen> {
       recipientPk = kp.publicKey;
       recipientSk = kp.secretKey;
     }
+    // Mobile pickers hand us cache COPIES of the .latch files, so restoring
+    // "beside the original" would land in app-private storage. Use the
+    // platform's visible default folder (Downloads on Android).
+    final outputDir = await DefaultOutput.directory();
     if (!mounted) return;
     _sub = AppCrypto.decryptFiles(
       widget.files,
       widget.passphrase,
+      outputDir: outputDir,
       deviceKey: deviceKey,
       recipientPublicKey: recipientPk,
       recipientSecretKey: recipientSk,

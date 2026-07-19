@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../core/default_output.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/latch_button.dart';
 
@@ -21,6 +22,7 @@ class EncryptOptionsScreen extends StatefulWidget {
 class _EncryptOptionsScreenState extends State<EncryptOptionsScreen> {
   bool _deleteOriginals = false;
   String? _outputDir; // null = beside each original
+  String? _defaultDir; // platform default (Downloads on Android)
 
   @override
   void initState() {
@@ -30,13 +32,15 @@ class _EncryptOptionsScreenState extends State<EncryptOptionsScreen> {
 
   Future<void> _loadDefaults() async {
     final prefs = await SharedPreferences.getInstance();
+    // Mobile pickers hand us cache COPIES of the selected files, so "beside
+    // the original" would bury outputs in app-private storage. Default to a
+    // folder the user can actually see (Downloads on Android).
+    final def = await DefaultOutput.directory();
     if (!mounted) return;
     setState(() {
-      // _outputDir stays null: locked files land beside their originals,
-      // where the user will actually find them. The app documents folder is
-      // app-private on Android — files saved there are invisible to file
-      // managers.
       _deleteOriginals = prefs.getBool('delete_originals') ?? false;
+      _defaultDir = def;
+      _outputDir ??= def;
     });
   }
 
@@ -91,8 +95,9 @@ class _EncryptOptionsScreenState extends State<EncryptOptionsScreen> {
               const SizedBox(height: 8),
               _OutputFolderRow(
                 outputDir: _outputDir,
+                isDefault: _outputDir == _defaultDir,
                 onChoose: _pickFolder,
-                onClear: () => setState(() => _outputDir = null),
+                onClear: () => setState(() => _outputDir = _defaultDir),
               ),
               const SizedBox(height: 16),
               Container(
@@ -143,11 +148,13 @@ class _EncryptOptionsScreenState extends State<EncryptOptionsScreen> {
 
 class _OutputFolderRow extends StatelessWidget {
   final String? outputDir;
+  final bool isDefault;
   final VoidCallback onChoose;
   final VoidCallback onClear;
 
   const _OutputFolderRow({
     required this.outputDir,
+    required this.isDefault,
     required this.onChoose,
     required this.onClear,
   });
@@ -155,7 +162,6 @@ class _OutputFolderRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dir = outputDir;
-    final isDefault = dir == null;
     return Semantics(
       button: true,
       label: 'Choose output folder',
@@ -169,14 +175,14 @@ class _OutputFolderRow extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(isDefault ? Icons.folder_outlined : Icons.folder_special_outlined,
+            Icon(dir == null ? Icons.folder_outlined : Icons.folder_special_outlined,
                 color: LatchColors.ink),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(isDefault ? 'Same folder as each original' : p.basename(dir),
+                  Text(dir == null ? 'Same folder as each original' : p.basename(dir),
                       style: Theme.of(context).textTheme.bodyLarge),
                   const SizedBox(height: 2),
                   Text(dir ?? 'Tap to choose a different folder',

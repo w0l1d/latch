@@ -1,8 +1,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Writing to the public Downloads folder is permission-free from API 29
+         (MediaStore-backed paths); older API levels need the legacy flag and
+         WRITE permission. -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28"/>
     <application
         android:label="latch"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
+        android:requestLegacyExternalStorage="true"
         android:allowBackup="false">
         <activity
             android:name=".MainActivity"

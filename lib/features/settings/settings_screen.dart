@@ -1,3 +1,4 @@
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -203,7 +204,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           _InfoTile(
             title: 'Output location',
-            value: 'Next to each original — changeable per encrypt',
+            value: Platform.isAndroid
+                ? 'Downloads folder — changeable per encrypt'
+                : Platform.isIOS
+                    ? 'Latch folder in Files — changeable per encrypt'
+                    : 'Next to each original — changeable per encrypt',
           ),
           _SectionHeader('About'),
           _InfoTile(title: 'Version', value: _version),
