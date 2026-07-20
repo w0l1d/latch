@@ -72,10 +72,11 @@ class _DecryptProgressScreenState extends State<DecryptProgressScreen> {
         recipientPk = kp.publicKey;
         recipientSk = kp.secretKey;
       }
-      // Mobile pickers hand us cache COPIES of the .latch files, so restoring
-      // "beside the original" would land in app-private storage. Use the
-      // platform's visible default folder (Downloads on Android).
-      outputDir = await DefaultOutput.directory();
+      // Unlocked files should land where the .latch files live. The picker
+      // only hands us cache copies, so resolve their real folder from the
+      // content:// URIs — Downloads is the fallback when scoped storage
+      // makes that folder unwritable.
+      outputDir = await DefaultOutput.directoryFor(widget.files);
     } catch (e) {
       // A pre-batch platform failure (secure storage, prefs) must surface —
       // falling out of this method silently would leave the spinner forever.

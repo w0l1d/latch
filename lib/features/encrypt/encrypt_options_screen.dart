@@ -32,10 +32,11 @@ class _EncryptOptionsScreenState extends State<EncryptOptionsScreen> {
 
   Future<void> _loadDefaults() async {
     final prefs = await SharedPreferences.getInstance();
-    // Mobile pickers hand us cache COPIES of the selected files, so "beside
-    // the original" would bury outputs in app-private storage. Default to a
-    // folder the user can actually see (Downloads on Android).
-    final def = await DefaultOutput.directory();
+    // Locked files should land where the originals live. On Android that
+    // means resolving the picked files' real folder from their content://
+    // URIs (the picker only hands us cache copies) — with Downloads as the
+    // fallback when that folder isn't reachable under scoped storage.
+    final def = await DefaultOutput.directoryFor(widget.files);
     if (!mounted) return;
     setState(() {
       _deleteOriginals = prefs.getBool('delete_originals') ?? false;

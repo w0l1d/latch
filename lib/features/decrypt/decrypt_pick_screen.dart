@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
+import '../../core/saf_bridge.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/latch_button.dart';
 
@@ -22,11 +23,15 @@ class _DecryptPickScreenState extends State<DecryptPickScreen> {
       final result = await FilePicker.platform.pickFiles(allowMultiple: true);
       if (result != null && result.files.isNotEmpty && mounted) {
         // A platform can return entries with a null path — never force-unwrap.
-        final paths = result.files
-            .map((f) => f.path)
-            .whereType<String>()
-            .where((p) => p.isNotEmpty)
-            .toList();
+        final paths = <String>[];
+        for (final f in result.files) {
+          final path = f.path;
+          if (path == null || path.isEmpty) continue;
+          // Keep the real document's URI so the unlocked output can default
+          // to the folder the .latch file actually lives in.
+          SafBridge.rememberUri(path, f.identifier);
+          paths.add(path);
+        }
         if (paths.isNotEmpty) setState(() => _selectedFiles = paths);
       }
     } catch (e) {

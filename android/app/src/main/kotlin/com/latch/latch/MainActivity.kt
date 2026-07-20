@@ -1,6 +1,7 @@
 package com.latch.latch
 
 import android.net.Uri
+import android.os.Environment
 import android.provider.DocumentsContract
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -58,6 +59,14 @@ class MainActivity : FlutterFragmentActivity() {
                                 DocumentsContract.deleteDocument(contentResolver, uri)
                                 runOnUiThread { result.success(null) }
                             }
+                            // Best-effort content URI → filesystem path, so outputs
+                            // can default to the folder the original lives in.
+                            // Null when the provider doesn't expose a real path.
+                            "resolvePath" -> {
+                                val uri = Uri.parse(call.argument<String>("uri")!!)
+                                val path = resolveToFilePath(uri)
+                                runOnUiThread { result.success(path) }
+                            }
                             else -> runOnUiThread { result.notImplemented() }
                         }
                     } catch (e: Exception) {
@@ -65,5 +74,30 @@ class MainActivity : FlutterFragmentActivity() {
                     }
                 }.start()
             }
+    }
+
+    // Only providers that genuinely front filesystem files are mapped;
+    // anything else (media store, cloud providers) returns null and the
+    // caller falls back to the Downloads default.
+    private fun resolveToFilePath(uri: Uri): String? {
+        if (uri.scheme == "file") return uri.path
+        if (!DocumentsContract.isDocumentUri(this, uri)) return null
+        val docId = DocumentsContract.getDocumentId(uri)
+        return when (uri.authority) {
+            "com.android.externalstorage.documents" -> {
+                val split = docId.split(":", limit = 2)
+                if (split.size != 2) return null
+                val root = if (split[0].equals("primary", ignoreCase = true)) {
+                    Environment.getExternalStorageDirectory().absolutePath
+                } else {
+                    "/storage/${split[0]}"
+                }
+                val file = File(root, split[1])
+                if (file.exists()) file.absolutePath else null
+            }
+            "com.android.providers.downloads.documents" ->
+                if (docId.startsWith("raw:")) docId.removePrefix("raw:") else null
+            else -> null
+        }
     }
 }

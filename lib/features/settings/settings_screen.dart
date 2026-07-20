@@ -213,7 +213,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _InfoTile(
             title: 'Output location',
             value: Platform.isAndroid
-                ? 'Downloads folder — changeable per encrypt'
+                ? 'Same folder as the original, or Downloads — changeable per encrypt'
                 : Platform.isIOS
                     ? 'Latch folder in Files — changeable per encrypt'
                     : 'Next to each original — changeable per encrypt',

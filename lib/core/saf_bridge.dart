@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/services.dart';
+import 'package:path/path.dart' as p;
 
 /// Bridge to Android's Storage Access Framework.
 ///
@@ -53,5 +54,27 @@ class SafBridge {
   /// Deletes the real document behind [path].
   static Future<void> deleteDocument(String path) {
     return channel.invokeMethod('delete', {'uri': _uriByPath[path]!});
+  }
+
+  static final Map<String, String?> _realDirByPath = {};
+
+  /// The real folder the document behind [path] lives in, or null when the
+  /// provider doesn't expose a filesystem path (media store, cloud). Used to
+  /// default outputs to the source file's own folder. Best-effort: any
+  /// platform failure resolves to null, never throws.
+  static Future<String?> realDirectoryFor(String path) async {
+    final uri = _uriByPath[path];
+    if (uri == null) return null;
+    if (_realDirByPath.containsKey(path)) return _realDirByPath[path];
+    String? dir;
+    try {
+      final resolved =
+          await channel.invokeMethod<String>('resolvePath', {'uri': uri});
+      if (resolved != null) dir = p.dirname(resolved);
+    } catch (_) {
+      dir = null;
+    }
+    _realDirByPath[path] = dir;
+    return dir;
   }
 }
