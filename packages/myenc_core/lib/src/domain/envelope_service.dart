@@ -79,8 +79,9 @@ class EnvelopeService {
     // be stored in the FileHeader, which must be emitted first.
     final encReader = _StreamReader(encryptedStream);
     final ssHeader = await encReader.readExact(_crypto.secretstreamHeaderBytes);
-    if (ssHeader == null)
+    if (ssHeader == null) {
       throw CorruptedFileError('encrypt produced no output');
+    }
 
     final header = FileHeader(
       version: FileHeader.supportedVersion,
@@ -286,8 +287,9 @@ class EnvelopeService {
     for (int i = 0; i < wrapCount; i++) {
       final typeB = await reader.readExact(1);
       final lenB = await reader.readExact(2);
-      if (typeB == null || lenB == null)
+      if (typeB == null || lenB == null) {
         throw CorruptedFileError('truncated wrap list');
+      }
       final wrapLen = (lenB[0] << 8) | lenB[1];
       final wrapData = await reader.readExact(wrapLen);
       if (wrapData == null) throw CorruptedFileError('truncated wrap data');
@@ -299,12 +301,14 @@ class EnvelopeService {
     // Encrypted filename (only when flags bit0 = 1).
     if ((flags & 0x01) != 0) {
       final encLenB = await reader.readExact(2);
-      if (encLenB == null)
+      if (encLenB == null) {
         throw CorruptedFileError('truncated enc-filename length');
+      }
       final encFilenameLen = (encLenB[0] << 8) | encLenB[1];
       final encFilename = await reader.readExact(encFilenameLen);
-      if (encFilename == null)
+      if (encFilename == null) {
         throw CorruptedFileError('truncated enc-filename data');
+      }
       wrapChunks.add(encLenB);
       wrapChunks.add(encFilename);
     }
@@ -313,8 +317,9 @@ class EnvelopeService {
     final ssHeader = await reader.readExact(
       FileHeader.secretstreamHeaderLength,
     );
-    if (ssHeader == null)
+    if (ssHeader == null) {
       throw CorruptedFileError('truncated secretstream header');
+    }
     wrapChunks.add(ssHeader);
 
     // Assemble the full header buffer and decode via MyencCodec (single parser).

@@ -27,6 +27,14 @@ jobs:
       - name: Pub get
         run: flutter pub get
 
+      - name: Pub get myenc_core
+        run: flutter pub get
+        working-directory: packages/myenc_core
+
+      - name: Pub get myenc_adapters
+        run: flutter pub get
+        working-directory: packages/myenc_adapters
+
       - name: Format check
         run: dart format --output=none --set-exit-if-changed .
 

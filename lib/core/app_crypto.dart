@@ -368,8 +368,9 @@ class AppCrypto {
     if (error != null) {
       if (error!.contains('WrongPassphraseError')) throw WrongPassphraseError();
       if (error!.contains('NotALatchFileError')) throw NotALatchFileError();
-      if (error!.contains('CorruptedFileError'))
+      if (error!.contains('CorruptedFileError')) {
         throw CorruptedFileError(error!);
+      }
       if (error!.contains('VersionTooNewError')) throw VersionTooNewError(0);
       throw Exception(error);
     }

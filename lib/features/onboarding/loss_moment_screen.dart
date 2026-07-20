@@ -69,8 +69,9 @@ class _LossMomentScreenState extends State<LossMomentScreen> {
                         width: 2,
                       ),
                       fillColor: WidgetStateProperty.resolveWith((states) {
-                        if (states.contains(WidgetState.selected))
+                        if (states.contains(WidgetState.selected)) {
                           return LatchColors.danger;
+                        }
                         return Colors.transparent;
                       }),
                     ),

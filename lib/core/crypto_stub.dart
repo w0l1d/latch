@@ -13,8 +13,9 @@ class PassphraseResult {
 
 class CryptoStub {
   static PassphraseResult evaluate(String passphrase) {
-    if (passphrase.isEmpty)
+    if (passphrase.isEmpty) {
       return const PassphraseResult(PassphraseStrength.weak, '', 0);
+    }
     final len = passphrase.length;
     final hasUpper = passphrase.contains(RegExp(r'[A-Z]'));
     final hasDigit = passphrase.contains(RegExp(r'[0-9]'));
@@ -32,20 +33,23 @@ class CryptoStub {
     if (hasSymbol || wordCount >= 3) score++;
     if (wordCount >= 4) score++;
 
-    if (score <= 1)
+    if (score <= 1) {
       return PassphraseResult(PassphraseStrength.weak, 'Too short', score / 6);
-    if (score == 2)
+    }
+    if (score == 2) {
       return PassphraseResult(
         PassphraseStrength.fair,
         'Could be stronger',
         score / 6,
       );
-    if (score <= 4)
+    }
+    if (score <= 4) {
       return PassphraseResult(
         PassphraseStrength.strong,
         'Strong — good work',
         score / 6,
       );
+    }
     return PassphraseResult(
       PassphraseStrength.veryStrong,
       'Excellent — long and easy to remember',

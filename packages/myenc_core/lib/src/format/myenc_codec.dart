@@ -75,8 +75,9 @@ class MyencCodec {
   // Decodes a header from the start of [bytes].
   // Returns (header, bytesConsumed) so the caller knows where the body starts.
   static (FileHeader, int) decodeHeader(Uint8List bytes) {
-    if (bytes.length < 56)
+    if (bytes.length < 56) {
       throw CorruptedFileError('file too short for header');
+    }
     final buf = ByteData.sublistView(bytes);
     int o = 0;
 
@@ -85,22 +86,26 @@ class MyencCodec {
     }
 
     final version = buf.getUint8(o++);
-    if (version > FileHeader.supportedVersion)
+    if (version > FileHeader.supportedVersion) {
       throw VersionTooNewError(version);
+    }
     final flags = buf.getUint8(o++);
     if (flags & ~FileHeader.knownFlagsMask != 0) {
       throw CorruptedFileError('unknown flag bits $flags');
     }
     final kdfId = buf.getUint8(o++);
-    if (kdfId != FileHeader.kdfArgon2id)
+    if (kdfId != FileHeader.kdfArgon2id) {
       throw CorruptedFileError('unsupported KDF $kdfId');
+    }
 
     final saltLen = buf.getUint16(o, Endian.big);
     o += 2;
-    if (saltLen != _saltLength)
+    if (saltLen != _saltLength) {
       throw CorruptedFileError('unexpected salt length $saltLen');
-    if (o + saltLen > bytes.length)
+    }
+    if (o + saltLen > bytes.length) {
       throw CorruptedFileError('file too short for salt');
+    }
     final salt = Uint8List.fromList(bytes.sublist(o, o + saltLen));
     o += saltLen;
 
@@ -128,8 +133,9 @@ class MyencCodec {
       throw CorruptedFileError('chunk size $chunkSize out of range');
     }
 
-    if (o + _keyIdLength > bytes.length)
+    if (o + _keyIdLength > bytes.length) {
       throw CorruptedFileError('file too short for key-id');
+    }
     final keyIdHint = Uint8List.fromList(bytes.sublist(o, o + _keyIdLength));
     o += _keyIdLength;
 
@@ -140,8 +146,9 @@ class MyencCodec {
       final typeCode = buf.getUint8(o++);
       final wrapLen = buf.getUint16(o, Endian.big);
       o += 2;
-      if (o + wrapLen > bytes.length)
+      if (o + wrapLen > bytes.length) {
         throw CorruptedFileError('truncated wrap data');
+      }
       final wrapData = Uint8List.fromList(bytes.sublist(o, o + wrapLen));
       o += wrapLen;
       final wrapType = WrapType.fromCode(typeCode);

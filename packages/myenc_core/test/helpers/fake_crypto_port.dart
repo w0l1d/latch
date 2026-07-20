@@ -226,8 +226,9 @@ final class _FakeDecryptTransformer
     }
 
     if (!gotFinal) {
-      if (!headerConsumed)
+      if (!headerConsumed) {
         throw CorruptedFileError('truncated: header missing');
+      }
       if (buf.isEmpty) throw CorruptedFileError('empty ciphertext body');
       final (:plain, :isFinal) = _decryptChunk(
         Uint8List.fromList(buf),
