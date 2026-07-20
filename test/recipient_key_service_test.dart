@@ -13,16 +13,16 @@ void main() {
   late RecipientKeyService svc;
 
   ShareKeypair fakeKeypair(int seed) => (
-        publicKey: Uint8List.fromList(List.generate(32, (i) => (i + seed) & 0xff)),
-        secretKey:
-            Uint8List.fromList(List.generate(32, (i) => (i + seed) ^ 0xaa)),
-      );
+    publicKey: Uint8List.fromList(List.generate(32, (i) => (i + seed) & 0xff)),
+    secretKey: Uint8List.fromList(List.generate(32, (i) => (i + seed) ^ 0xaa)),
+  );
 
   setUp(() {
     inMemoryData = {};
     keygenCalls = 0;
-    FlutterSecureStoragePlatform.instance =
-        TestFlutterSecureStoragePlatform(inMemoryData);
+    FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform(
+      inMemoryData,
+    );
     svc = RecipientKeyService(
       storage: const FlutterSecureStorage(),
       keygen: () async => fakeKeypair(++keygenCalls),
@@ -49,14 +49,16 @@ void main() {
       expect(inMemoryData['latch_share_sk'], hasLength(64));
     });
 
-    test('getOrCreateKeyPair is stable — same keypair, no regeneration',
-        () async {
-      final first = await svc.getOrCreateKeyPair();
-      final second = await svc.getOrCreateKeyPair();
-      expect(second.publicKey, equals(first.publicKey));
-      expect(second.secretKey, equals(first.secretKey));
-      expect(keygenCalls, 1);
-    });
+    test(
+      'getOrCreateKeyPair is stable — same keypair, no regeneration',
+      () async {
+        final first = await svc.getOrCreateKeyPair();
+        final second = await svc.getOrCreateKeyPair();
+        expect(second.publicKey, equals(first.publicKey));
+        expect(second.secretKey, equals(first.secretKey));
+        expect(keygenCalls, 1);
+      },
+    );
 
     test('keypair survives a new service instance (same storage)', () async {
       final kp = await svc.getOrCreateKeyPair();
@@ -76,16 +78,18 @@ void main() {
       expect(decodePublicKeyHex(hex!), equals(kp.publicKey));
     });
 
-    test('deleteKeyPair removes it — next call generates a fresh one',
-        () async {
-      final first = await svc.getOrCreateKeyPair();
-      await svc.deleteKeyPair();
-      expect(await svc.hasKeyPair(), isFalse);
+    test(
+      'deleteKeyPair removes it — next call generates a fresh one',
+      () async {
+        final first = await svc.getOrCreateKeyPair();
+        await svc.deleteKeyPair();
+        expect(await svc.hasKeyPair(), isFalse);
 
-      final second = await svc.getOrCreateKeyPair();
-      expect(keygenCalls, 2);
-      expect(second.publicKey, isNot(equals(first.publicKey)));
-    });
+        final second = await svc.getOrCreateKeyPair();
+        expect(keygenCalls, 2);
+        expect(second.publicKey, isNot(equals(first.publicKey)));
+      },
+    );
 
     test('a corrupted stored value is regenerated, not returned', () async {
       inMemoryData['latch_share_pk'] = 'deadbeef'; // too short
@@ -96,12 +100,14 @@ void main() {
       expect(inMemoryData['latch_share_pk'], hasLength(64));
     });
 
-    test('without a generator, first use throws instead of storing junk',
-        () async {
-      final bare = RecipientKeyService(storage: const FlutterSecureStorage());
-      expect(bare.getOrCreateKeyPair, throwsStateError);
-      expect(await bare.hasKeyPair(), isFalse);
-    });
+    test(
+      'without a generator, first use throws instead of storing junk',
+      () async {
+        final bare = RecipientKeyService(storage: const FlutterSecureStorage());
+        expect(bare.getOrCreateKeyPair, throwsStateError);
+        expect(await bare.hasKeyPair(), isFalse);
+      },
+    );
   });
 
   group('recipient address book', () {

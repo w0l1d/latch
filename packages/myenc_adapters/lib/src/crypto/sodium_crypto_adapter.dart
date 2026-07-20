@@ -20,8 +20,10 @@ class SodiumCryptoAdapter implements CryptoPort {
     required int outputLength,
   }) {
     // pwhash expects Int8List password and memlimit in bytes (our KdfParams stores KiB).
-    final pw = passphrase.buffer
-        .asInt8List(passphrase.offsetInBytes, passphrase.lengthInBytes);
+    final pw = passphrase.buffer.asInt8List(
+      passphrase.offsetInBytes,
+      passphrase.lengthInBytes,
+    );
     final key = _sodium.crypto.pwhash.call(
       outLen: outputLength,
       password: pw,
@@ -40,8 +42,7 @@ class SodiumCryptoAdapter implements CryptoPort {
   // Output: nonce (nonceBytes) + MAC (macBytes) + ciphertext.
   @override
   Uint8List secretboxSeal(Uint8List plaintext, Uint8List key) {
-    final nonce =
-        _sodium.randombytes.buf(_sodium.crypto.secretBox.nonceBytes);
+    final nonce = _sodium.randombytes.buf(_sodium.crypto.secretBox.nonceBytes);
     final secureKey = SecureKey.fromList(_sodium, key);
     try {
       final encrypted = _sodium.crypto.secretBox.easy(
@@ -88,7 +89,9 @@ class SodiumCryptoAdapter implements CryptoPort {
 
   @override
   StreamTransformer<Uint8List, Uint8List> createEncryptTransformer(
-      Uint8List key, int chunkSize) {
+    Uint8List key,
+    int chunkSize,
+  ) {
     // Copy the key into guarded memory NOW, before returning. The caller
     // (EnvelopeService) zeroizes its plaintext DEK immediately after this
     // returns; if the copy happened lazily inside fromBind() it would read
@@ -98,8 +101,10 @@ class SodiumCryptoAdapter implements CryptoPort {
       final controller = StreamController<Uint8List>(
         onCancel: () => secureKey.dispose(),
       );
-      final xformer = _sodium.crypto.secretStream
-          .createPushChunked(key: secureKey, chunkSize: chunkSize);
+      final xformer = _sodium.crypto.secretStream.createPushChunked(
+        key: secureKey,
+        chunkSize: chunkSize,
+      );
       // Reify as Stream<List<int>>: sodium's internal ChunkedStreamTransformer
       // is StreamTransformer<List<int>, _> and Dart's runtime variance check
       // rejects transform() on a stream reified as Stream<Uint8List>.
@@ -107,18 +112,20 @@ class SodiumCryptoAdapter implements CryptoPort {
           .bind(stream.map<List<int>>((c) => c))
           .map(Uint8List.fromList)
           .listen(
-        controller.add,
-        onError: controller.addError,
-        onDone: () => _disposeKey(secureKey, controller),
-        cancelOnError: true,
-      );
+            controller.add,
+            onError: controller.addError,
+            onDone: () => _disposeKey(secureKey, controller),
+            cancelOnError: true,
+          );
       return controller.stream;
     });
   }
 
   @override
   StreamTransformer<Uint8List, Uint8List> createDecryptTransformer(
-      Uint8List key, int chunkSize) {
+    Uint8List key,
+    int chunkSize,
+  ) {
     // Copy the key eagerly — see createEncryptTransformer. Decrypting with a
     // lazily-read (zeroed) key would fail authentication on the first chunk.
     final secureKey = SecureKey.fromList(_sodium, key);
@@ -135,25 +142,27 @@ class SodiumCryptoAdapter implements CryptoPort {
           .bind(stream.map<List<int>>((c) => c))
           .map(Uint8List.fromList)
           .listen(
-        controller.add,
-        onError: (Object e, StackTrace st) {
-          controller.addError(_mapDecryptError(e), st);
-        },
-        onDone: () => _disposeKey(secureKey, controller),
-        cancelOnError: true,
-      );
+            controller.add,
+            onError: (Object e, StackTrace st) {
+              controller.addError(_mapDecryptError(e), st);
+            },
+            onDone: () => _disposeKey(secureKey, controller),
+            cancelOnError: true,
+          );
       return controller.stream;
     });
   }
 
   static Object _mapDecryptError(Object e) => switch (e) {
-        StreamClosedEarlyException() =>
-          CorruptedFileError('missing FINAL tag — file may be truncated'),
-        InvalidHeaderException() =>
-          CorruptedFileError('invalid secretstream header'),
-        SodiumException() => CorruptedFileError('authentication failed'),
-        _ => e,
-      };
+    StreamClosedEarlyException() => CorruptedFileError(
+      'missing FINAL tag — file may be truncated',
+    ),
+    InvalidHeaderException() => CorruptedFileError(
+      'invalid secretstream header',
+    ),
+    SodiumException() => CorruptedFileError('authentication failed'),
+    _ => e,
+  };
 
   // --- X25519 sealed box (spec §3, wrap type 0x03) ---
 
@@ -167,7 +176,10 @@ class SodiumCryptoAdapter implements CryptoPort {
 
   @override
   Uint8List boxSealOpen(
-      Uint8List ciphertext, Uint8List publicKey, Uint8List secretKey) {
+    Uint8List ciphertext,
+    Uint8List publicKey,
+    Uint8List secretKey,
+  ) {
     // Create SecureKeys eagerly before any zeroize — the caller (DekWrap)
     // may zeroize the plain secret-key bytes after this returns, and a lazy
     // copy would read the already-zeroed array (same zero-key bug pattern

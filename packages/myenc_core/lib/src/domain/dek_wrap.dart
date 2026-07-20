@@ -38,7 +38,9 @@ class DekWrap {
     required int memlimit,
   }) {
     if (entry.type != WrapType.passphrase) {
-      throw CorruptedFileError('expected passphrase wrap entry, got ${entry.type}');
+      throw CorruptedFileError(
+        'expected passphrase wrap entry, got ${entry.type}',
+      );
     }
     final kek = crypto.argon2idDerive(
       passphrase: passphrase,
@@ -72,7 +74,8 @@ class DekWrap {
   }) {
     if (entry.type != WrapType.hardwareKey) {
       throw CorruptedFileError(
-          'expected hardware-key wrap entry, got ${entry.type}');
+        'expected hardware-key wrap entry, got ${entry.type}',
+      );
     }
     return crypto.secretboxOpen(entry.bytes, deviceKey);
   }
@@ -99,9 +102,13 @@ class DekWrap {
   }) {
     if (entry.type != WrapType.recipient) {
       throw CorruptedFileError(
-          'expected recipient wrap entry, got ${entry.type}');
+        'expected recipient wrap entry, got ${entry.type}',
+      );
     }
-    return crypto.boxSealOpen(entry.bytes, recipientPublicKey,
-        recipientSecretKey);
+    return crypto.boxSealOpen(
+      entry.bytes,
+      recipientPublicKey,
+      recipientSecretKey,
+    );
   }
 }

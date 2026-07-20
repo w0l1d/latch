@@ -36,13 +36,31 @@ final router = GoRouter(
     return complete ? '/home' : null;
   },
   routes: [
-    GoRoute(path: '/onboarding/welcome', builder: (ctx, st) => const WelcomeScreen()),
-    GoRoute(path: '/onboarding/how-it-works', builder: (ctx, st) => const HowItWorksScreen()),
-    GoRoute(path: '/onboarding/device-check', builder: (ctx, st) => const DeviceCheckScreen()),
-    GoRoute(path: '/onboarding/loss-moment', builder: (ctx, st) => const LossMomentScreen()),
-    GoRoute(path: '/onboarding/ready', builder: (ctx, st) => const ReadyScreen()),
+    GoRoute(
+      path: '/onboarding/welcome',
+      builder: (ctx, st) => const WelcomeScreen(),
+    ),
+    GoRoute(
+      path: '/onboarding/how-it-works',
+      builder: (ctx, st) => const HowItWorksScreen(),
+    ),
+    GoRoute(
+      path: '/onboarding/device-check',
+      builder: (ctx, st) => const DeviceCheckScreen(),
+    ),
+    GoRoute(
+      path: '/onboarding/loss-moment',
+      builder: (ctx, st) => const LossMomentScreen(),
+    ),
+    GoRoute(
+      path: '/onboarding/ready',
+      builder: (ctx, st) => const ReadyScreen(),
+    ),
     GoRoute(path: '/home', builder: (ctx, st) => const HomeScreen()),
-    GoRoute(path: '/encrypt/pick', builder: (ctx, st) => const EncryptPickScreen()),
+    GoRoute(
+      path: '/encrypt/pick',
+      builder: (ctx, st) => const EncryptPickScreen(),
+    ),
     GoRoute(
       path: '/encrypt/passphrase',
       builder: (ctx, state) {
@@ -57,9 +75,15 @@ final router = GoRouter(
         final extra = state.extra;
         final map = extra is Map<String, dynamic> ? extra : <String, dynamic>{};
         return EncryptOptionsScreen(
-          files: map['files'] is List<String> ? map['files'] as List<String> : [],
-          passphrase: map['passphrase'] is String ? map['passphrase'] as String : '',
-          keyIdHex: map['keyIdHex'] is String ? map['keyIdHex'] as String? : null,
+          files: map['files'] is List<String>
+              ? map['files'] as List<String>
+              : [],
+          passphrase: map['passphrase'] is String
+              ? map['passphrase'] as String
+              : '',
+          keyIdHex: map['keyIdHex'] is String
+              ? map['keyIdHex'] as String?
+              : null,
         );
       },
     ),
@@ -69,11 +93,21 @@ final router = GoRouter(
         final extra = state.extra;
         final map = extra is Map<String, dynamic> ? extra : <String, dynamic>{};
         return EncryptReviewScreen(
-          files: map['files'] is List<String> ? map['files'] as List<String> : [],
-          passphrase: map['passphrase'] is String ? map['passphrase'] as String : '',
-          deleteOriginals: map['deleteOriginals'] is bool ? map['deleteOriginals'] as bool : false,
-          outputDir: map['outputDir'] is String ? map['outputDir'] as String? : null,
-          keyIdHex: map['keyIdHex'] is String ? map['keyIdHex'] as String? : null,
+          files: map['files'] is List<String>
+              ? map['files'] as List<String>
+              : [],
+          passphrase: map['passphrase'] is String
+              ? map['passphrase'] as String
+              : '',
+          deleteOriginals: map['deleteOriginals'] is bool
+              ? map['deleteOriginals'] as bool
+              : false,
+          outputDir: map['outputDir'] is String
+              ? map['outputDir'] as String?
+              : null,
+          keyIdHex: map['keyIdHex'] is String
+              ? map['keyIdHex'] as String?
+              : null,
         );
       },
     ),
@@ -83,11 +117,21 @@ final router = GoRouter(
         final extra = state.extra;
         final map = extra is Map<String, dynamic> ? extra : <String, dynamic>{};
         return EncryptProgressScreen(
-          files: map['files'] is List<String> ? map['files'] as List<String> : [],
-          passphrase: map['passphrase'] is String ? map['passphrase'] as String : '',
-          deleteOriginals: map['deleteOriginals'] is bool ? map['deleteOriginals'] as bool : false,
-          outputDir: map['outputDir'] is String ? map['outputDir'] as String? : null,
-          keyIdHex: map['keyIdHex'] is String ? map['keyIdHex'] as String? : null,
+          files: map['files'] is List<String>
+              ? map['files'] as List<String>
+              : [],
+          passphrase: map['passphrase'] is String
+              ? map['passphrase'] as String
+              : '',
+          deleteOriginals: map['deleteOriginals'] is bool
+              ? map['deleteOriginals'] as bool
+              : false,
+          outputDir: map['outputDir'] is String
+              ? map['outputDir'] as String?
+              : null,
+          keyIdHex: map['keyIdHex'] is String
+              ? map['keyIdHex'] as String?
+              : null,
         );
       },
     ),
@@ -99,7 +143,10 @@ final router = GoRouter(
         return EncryptSuccessScreen(files: files);
       },
     ),
-    GoRoute(path: '/decrypt/pick', builder: (ctx, st) => const DecryptPickScreen()),
+    GoRoute(
+      path: '/decrypt/pick',
+      builder: (ctx, st) => const DecryptPickScreen(),
+    ),
     GoRoute(
       path: '/decrypt/passphrase',
       builder: (ctx, state) {
@@ -114,8 +161,12 @@ final router = GoRouter(
         final extra = state.extra;
         final map = extra is Map<String, dynamic> ? extra : <String, dynamic>{};
         return DecryptProgressScreen(
-          files: map['files'] is List<String> ? map['files'] as List<String> : [],
-          passphrase: map['passphrase'] is String ? map['passphrase'] as String : '',
+          files: map['files'] is List<String>
+              ? map['files'] as List<String>
+              : [],
+          passphrase: map['passphrase'] is String
+              ? map['passphrase'] as String
+              : '',
         );
       },
     ),
@@ -128,10 +179,25 @@ final router = GoRouter(
       },
     ),
     GoRoute(path: '/settings', builder: (ctx, st) => const SettingsScreen()),
-    GoRoute(path: '/settings/passphrase-storage', builder: (ctx, st) => const PassphraseStorageScreen()),
-    GoRoute(path: '/settings/change-passphrase', builder: (ctx, st) => const ChangePassphraseScreen()),
-    GoRoute(path: '/settings/secure-delete', builder: (ctx, st) => const SecureDeleteScreen()),
-    GoRoute(path: '/settings/sharing-keys', builder: (ctx, st) => const SharingKeysScreen()),
-    GoRoute(path: '/settings/add-recipient', builder: (ctx, st) => const AddRecipientScreen()),
+    GoRoute(
+      path: '/settings/passphrase-storage',
+      builder: (ctx, st) => const PassphraseStorageScreen(),
+    ),
+    GoRoute(
+      path: '/settings/change-passphrase',
+      builder: (ctx, st) => const ChangePassphraseScreen(),
+    ),
+    GoRoute(
+      path: '/settings/secure-delete',
+      builder: (ctx, st) => const SecureDeleteScreen(),
+    ),
+    GoRoute(
+      path: '/settings/sharing-keys',
+      builder: (ctx, st) => const SharingKeysScreen(),
+    ),
+    GoRoute(
+      path: '/settings/add-recipient',
+      builder: (ctx, st) => const AddRecipientScreen(),
+    ),
   ],
 );

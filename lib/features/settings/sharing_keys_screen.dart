@@ -53,9 +53,9 @@ class _SharingKeysScreenState extends State<SharingKeysScreen> {
     if (hex == null) return;
     await Clipboard.setData(ClipboardData(text: hex));
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Public key copied')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Public key copied')));
   }
 
   Future<void> _addRecipient() async {
@@ -101,8 +101,9 @@ class _SharingKeysScreenState extends State<SharingKeysScreen> {
                   return;
                 }
                 if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(hex)) {
-                  setDialogState(() =>
-                      validationError = 'A public key is 64 hex characters');
+                  setDialogState(
+                    () => validationError = 'A public key is 64 hex characters',
+                  );
                   return;
                 }
                 await AppCrypto.recipientKeys?.storeRecipient(label, hex);
@@ -163,9 +164,9 @@ class _SharingKeysScreenState extends State<SharingKeysScreen> {
             Text(
               'YOUR PUBLIC KEY',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    letterSpacing: 0.8,
-                    fontWeight: FontWeight.w600,
-                  ),
+                letterSpacing: 0.8,
+                fontWeight: FontWeight.w600,
+              ),
             ),
             const SizedBox(height: 8),
             Container(
@@ -178,41 +179,42 @@ class _SharingKeysScreenState extends State<SharingKeysScreen> {
               child: _keyError != null
                   ? Text(
                       _keyError!,
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodySmall
-                          ?.copyWith(color: LatchColors.danger),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: LatchColors.danger,
+                      ),
                     )
                   : _myPublicKeyHex == null
-                      ? const Center(
-                          child: Padding(
-                            padding: EdgeInsets.all(8),
-                            child: CircularProgressIndicator(
-                              strokeWidth: 3,
+                  ? const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(8),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 3,
+                          color: LatchColors.ink,
+                        ),
+                      ),
+                    )
+                  : Row(
+                      children: [
+                        Expanded(
+                          child: SelectableText(
+                            _myPublicKeyHex!,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontFamily: 'monospace',
                               color: LatchColors.ink,
                             ),
                           ),
-                        )
-                      : Row(
-                          children: [
-                            Expanded(
-                              child: SelectableText(
-                                _myPublicKeyHex!,
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  fontFamily: 'monospace',
-                                  color: LatchColors.ink,
-                                ),
-                              ),
-                            ),
-                            IconButton(
-                              onPressed: _copyKey,
-                              tooltip: 'Copy public key',
-                              icon: const Icon(Icons.copy_outlined,
-                                  color: LatchColors.ink),
-                            ),
-                          ],
                         ),
+                        IconButton(
+                          onPressed: _copyKey,
+                          tooltip: 'Copy public key',
+                          icon: const Icon(
+                            Icons.copy_outlined,
+                            color: LatchColors.ink,
+                          ),
+                        ),
+                      ],
+                    ),
             ),
             const SizedBox(height: 8),
             Text(
@@ -228,9 +230,9 @@ class _SharingKeysScreenState extends State<SharingKeysScreen> {
                   child: Text(
                     'RECIPIENTS',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          letterSpacing: 0.8,
-                          fontWeight: FontWeight.w600,
-                        ),
+                      letterSpacing: 0.8,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
                 TextButton.icon(
@@ -256,20 +258,23 @@ class _SharingKeysScreenState extends State<SharingKeysScreen> {
               ..._recipients.map(
                 (r) => ListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: Text(r.label,
-                      style: Theme.of(context).textTheme.bodyLarge),
+                  title: Text(
+                    r.label,
+                    style: Theme.of(context).textTheme.bodyLarge,
+                  ),
                   subtitle: Text(
                     '${r.publicKeyHex.substring(0, 16)}…',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(fontFamily: 'monospace'),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
                   ),
                   trailing: IconButton(
                     onPressed: () => _deleteRecipient(r),
                     tooltip: 'Remove ${r.label}',
-                    icon: const Icon(Icons.delete_outline,
-                        color: LatchColors.muted),
+                    icon: const Icon(
+                      Icons.delete_outline,
+                      color: LatchColors.muted,
+                    ),
                   ),
                 ),
               ),

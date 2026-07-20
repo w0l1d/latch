@@ -11,9 +11,9 @@ void main() {
     calls.clear();
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(SafBridge.channel, (call) async {
-      calls.add(call);
-      return null;
-    });
+          calls.add(call);
+          return null;
+        });
   });
 
   tearDown(() {
@@ -69,37 +69,42 @@ void main() {
       expect(SafBridge.canWriteBack('/cache/g.latch'), isFalse);
     });
 
-    test('realDirectoryFor resolves the parent folder and caches it',
-        () async {
+    test('realDirectoryFor resolves the parent folder and caches it', () async {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(SafBridge.channel, (call) async {
-        calls.add(call);
-        return '/storage/emulated/0/Documents/report.pdf';
-      });
+            calls.add(call);
+            return '/storage/emulated/0/Documents/report.pdf';
+          });
       SafBridge.rememberUri('/cache/h.pdf', 'content://provider/doc/6');
 
-      expect(await SafBridge.realDirectoryFor('/cache/h.pdf'),
-          '/storage/emulated/0/Documents');
+      expect(
+        await SafBridge.realDirectoryFor('/cache/h.pdf'),
+        '/storage/emulated/0/Documents',
+      );
       expect(calls.single.method, 'resolvePath');
       expect(calls.single.arguments, {'uri': 'content://provider/doc/6'});
 
       // Second lookup answers from the cache — no extra platform call.
-      expect(await SafBridge.realDirectoryFor('/cache/h.pdf'),
-          '/storage/emulated/0/Documents');
+      expect(
+        await SafBridge.realDirectoryFor('/cache/h.pdf'),
+        '/storage/emulated/0/Documents',
+      );
       expect(calls, hasLength(1));
     });
 
-    test('realDirectoryFor is null without a uri or when resolution fails',
-        () async {
-      expect(await SafBridge.realDirectoryFor('/cache/unregistered'), isNull);
-      expect(calls, isEmpty);
+    test(
+      'realDirectoryFor is null without a uri or when resolution fails',
+      () async {
+        expect(await SafBridge.realDirectoryFor('/cache/unregistered'), isNull);
+        expect(calls, isEmpty);
 
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(SafBridge.channel, (call) async {
-        throw PlatformException(code: 'saf_error');
-      });
-      SafBridge.rememberUri('/cache/i.pdf', 'content://provider/doc/7');
-      expect(await SafBridge.realDirectoryFor('/cache/i.pdf'), isNull);
-    });
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(SafBridge.channel, (call) async {
+              throw PlatformException(code: 'saf_error');
+            });
+        SafBridge.rememberUri('/cache/i.pdf', 'content://provider/doc/7');
+        expect(await SafBridge.realDirectoryFor('/cache/i.pdf'), isNull);
+      },
+    );
   });
 }

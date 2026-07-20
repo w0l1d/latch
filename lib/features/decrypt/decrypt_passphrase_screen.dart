@@ -12,7 +12,8 @@ class DecryptPassphraseScreen extends StatefulWidget {
   const DecryptPassphraseScreen({super.key, required this.files});
 
   @override
-  State<DecryptPassphraseScreen> createState() => _DecryptPassphraseScreenState();
+  State<DecryptPassphraseScreen> createState() =>
+      _DecryptPassphraseScreenState();
 }
 
 class _DecryptPassphraseScreenState extends State<DecryptPassphraseScreen> {
@@ -78,8 +79,10 @@ class _DecryptPassphraseScreenState extends State<DecryptPassphraseScreen> {
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-              content: Text(
-                  'Quick unlock cancelled — type the passphrase instead.')),
+            content: Text(
+              'Quick unlock cancelled — type the passphrase instead.',
+            ),
+          ),
         );
       }
     } finally {
@@ -96,10 +99,7 @@ class _DecryptPassphraseScreenState extends State<DecryptPassphraseScreen> {
   void _submit() {
     context.push(
       '/decrypt/progress',
-      extra: {
-        'files': widget.files,
-        'passphrase': _controller.text,
-      },
+      extra: {'files': widget.files, 'passphrase': _controller.text},
     );
   }
 
@@ -108,7 +108,11 @@ class _DecryptPassphraseScreenState extends State<DecryptPassphraseScreen> {
     return Scaffold(
       appBar: AppBar(
         leading: BackButton(onPressed: () => context.pop()),
-        title: Text(widget.files.length > 1 ? 'Open ${widget.files.length} files' : 'Open this file'),
+        title: Text(
+          widget.files.length > 1
+              ? 'Open ${widget.files.length} files'
+              : 'Open this file',
+        ),
       ),
       body: SafeArea(
         child: Padding(
@@ -124,7 +128,10 @@ class _DecryptPassphraseScreenState extends State<DecryptPassphraseScreen> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.insert_drive_file_outlined, color: LatchColors.ink),
+                    const Icon(
+                      Icons.insert_drive_file_outlined,
+                      color: LatchColors.ink,
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
@@ -154,8 +161,10 @@ class _DecryptPassphraseScreenState extends State<DecryptPassphraseScreen> {
                   hintText: 'Passphrase',
                   suffixIcon: TextButton(
                     onPressed: () => setState(() => _obscure = !_obscure),
-                    child: Text(_obscure ? 'show' : 'hide',
-                        style: const TextStyle(color: LatchColors.subtle)),
+                    child: Text(
+                      _obscure ? 'show' : 'hide',
+                      style: const TextStyle(color: LatchColors.subtle),
+                    ),
                   ),
                 ),
                 style: const TextStyle(fontSize: 17, letterSpacing: 1.5),
@@ -167,36 +176,46 @@ class _DecryptPassphraseScreenState extends State<DecryptPassphraseScreen> {
                   label: 'Use quick unlock instead',
                   child: GestureDetector(
                     onTap: _quickUnlocking ? null : _quickUnlock,
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: LatchColors.border, width: 1.5),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 24,
-                          height: 24,
-                          decoration: BoxDecoration(
-                            border: Border.all(color: LatchColors.muted, width: 1.5),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Icon(
-                            _quickUnlocking ? Icons.lock_outline : Icons.fingerprint,
-                            size: 14,
-                            color: LatchColors.muted,
-                          ),
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: LatchColors.border,
+                          width: 1.5,
                         ),
-                        const SizedBox(width: 10),
-                        Text(
-                          _quickUnlocking ? 'Unlocking…' : 'Use quick unlock instead',
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                      ],
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: LatchColors.muted,
+                                width: 1.5,
+                              ),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Icon(
+                              _quickUnlocking
+                                  ? Icons.lock_outline
+                                  : Icons.fingerprint,
+                              size: 14,
+                              color: LatchColors.muted,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Text(
+                            _quickUnlocking
+                                ? 'Unlocking…'
+                                : 'Use quick unlock instead',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
                 ),
               const Spacer(),
               LatchPrimaryButton(

@@ -29,8 +29,7 @@ class _FakeLocalAuth extends Fake implements LocalAuthentication {
     bool biometricOnly = false,
     bool sensitiveTransaction = true,
     bool persistAcrossBackgrounding = false,
-  }) async =>
-      _nextResult;
+  }) async => _nextResult;
 }
 
 void main() {
@@ -40,8 +39,9 @@ void main() {
 
   setUp(() {
     inMemoryData = {};
-    FlutterSecureStoragePlatform.instance =
-        TestFlutterSecureStoragePlatform(inMemoryData);
+    FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform(
+      inMemoryData,
+    );
     fakeAuth = _FakeLocalAuth();
     svc = PassphraseStorageService(
       storage: const FlutterSecureStorage(),

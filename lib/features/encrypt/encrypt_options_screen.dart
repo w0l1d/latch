@@ -12,8 +12,12 @@ class EncryptOptionsScreen extends StatefulWidget {
   final String passphrase;
   final String? keyIdHex;
 
-  const EncryptOptionsScreen(
-      {super.key, required this.files, required this.passphrase, this.keyIdHex});
+  const EncryptOptionsScreen({
+    super.key,
+    required this.files,
+    required this.passphrase,
+    this.keyIdHex,
+  });
 
   @override
   State<EncryptOptionsScreen> createState() => _EncryptOptionsScreenState();
@@ -90,8 +94,10 @@ class _EncryptOptionsScreenState extends State<EncryptOptionsScreen> {
               const SizedBox(height: 20),
               Align(
                 alignment: Alignment.centerLeft,
-                child: Text('Where to save',
-                    style: Theme.of(context).textTheme.bodyMedium),
+                child: Text(
+                  'Where to save',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
               ),
               const SizedBox(height: 8),
               _OutputFolderRow(
@@ -111,7 +117,11 @@ class _EncryptOptionsScreenState extends State<EncryptOptionsScreen> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.info_outline, color: LatchColors.caution, size: 18),
+                    const Icon(
+                      Icons.info_outline,
+                      color: LatchColors.caution,
+                      size: 18,
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -169,40 +179,54 @@ class _OutputFolderRow extends StatelessWidget {
       child: GestureDetector(
         onTap: onChoose,
         child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          border: Border.all(color: LatchColors.border, width: 1.5),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Row(
-          children: [
-            Icon(dir == null ? Icons.folder_outlined : Icons.folder_special_outlined,
-                color: LatchColors.ink),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(dir == null ? 'Same folder as each original' : p.basename(dir),
-                      style: Theme.of(context).textTheme.bodyLarge),
-                  const SizedBox(height: 2),
-                  Text(dir ?? 'Tap to choose a different folder',
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            border: Border.all(color: LatchColors.border, width: 1.5),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                dir == null
+                    ? Icons.folder_outlined
+                    : Icons.folder_special_outlined,
+                color: LatchColors.ink,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      dir == null
+                          ? 'Same folder as each original'
+                          : p.basename(dir),
+                      style: Theme.of(context).textTheme.bodyLarge,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      dir ?? 'Tap to choose a different folder',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall),
-                ],
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
               ),
-            ),
-            if (!isDefault)
-              IconButton(
-                icon: const Icon(Icons.close, size: 18, color: LatchColors.muted),
-                tooltip: 'Reset to default folder',
-                onPressed: onClear,
-              ),
-          ],
+              if (!isDefault)
+                IconButton(
+                  icon: const Icon(
+                    Icons.close,
+                    size: 18,
+                    color: LatchColors.muted,
+                  ),
+                  tooltip: 'Reset to default folder',
+                  onPressed: onClear,
+                ),
+            ],
+          ),
         ),
       ),
-    ),
     );
   }
 }
@@ -237,42 +261,45 @@ class _OptionCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(14),
           ),
           child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 24,
-              height: 24,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: selected ? LatchColors.ink : LatchColors.border,
-                  width: 2,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: selected ? LatchColors.ink : LatchColors.border,
+                    width: 2,
+                  ),
+                ),
+                child: selected
+                    ? const Center(
+                        child: CircleAvatar(
+                          radius: 5,
+                          backgroundColor: LatchColors.ink,
+                        ),
+                      )
+                    : null,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: Theme.of(context).textTheme.bodyLarge),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
                 ),
               ),
-              child: selected
-                  ? const Center(
-                      child: CircleAvatar(
-                        radius: 5,
-                        backgroundColor: LatchColors.ink,
-                      ),
-                    )
-                  : null,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: Theme.of(context).textTheme.bodyLarge),
-                  const SizedBox(height: 4),
-                  Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
-                ],
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
-    ),
     );
   }
 }

@@ -29,14 +29,18 @@ class MyencCodec {
     buf.setUint8(o++, h.version);
     buf.setUint8(o++, h.flags);
     buf.setUint8(o++, h.kdfId);
-    buf.setUint16(o, _saltLength, Endian.big); o += 2;
+    buf.setUint16(o, _saltLength, Endian.big);
+    o += 2;
     for (int i = 0; i < _saltLength; i++) {
       buf.setUint8(o++, h.salt[i]);
     }
-    buf.setUint32(o, h.opslimit, Endian.big); o += 4;
-    buf.setUint32(o, h.memlimit, Endian.big); o += 4;
+    buf.setUint32(o, h.opslimit, Endian.big);
+    o += 4;
+    buf.setUint32(o, h.memlimit, Endian.big);
+    o += 4;
     buf.setUint8(o++, h.cipherId);
-    buf.setUint32(o, h.chunkSize, Endian.big); o += 4;
+    buf.setUint32(o, h.chunkSize, Endian.big);
+    o += 4;
     for (int i = 0; i < _keyIdLength; i++) {
       buf.setUint8(o++, h.keyIdHint[i]);
     }
@@ -44,7 +48,8 @@ class MyencCodec {
 
     for (final w in h.wraps) {
       buf.setUint8(o++, w.type.code);
-      buf.setUint16(o, w.bytes.length, Endian.big); o += 2;
+      buf.setUint16(o, w.bytes.length, Endian.big);
+      o += 2;
       for (final b in w.bytes) {
         buf.setUint8(o++, b);
       }
@@ -53,7 +58,8 @@ class MyencCodec {
     // Encrypted filename (only when flags bit0 = 1).
     if (h.filenameEncrypted && h.encryptedFilename != null) {
       final ef = h.encryptedFilename!;
-      buf.setUint16(o, ef.length, Endian.big); o += 2;
+      buf.setUint16(o, ef.length, Endian.big);
+      o += 2;
       for (final b in ef) {
         buf.setUint8(o++, b);
       }
@@ -69,7 +75,8 @@ class MyencCodec {
   // Decodes a header from the start of [bytes].
   // Returns (header, bytesConsumed) so the caller knows where the body starts.
   static (FileHeader, int) decodeHeader(Uint8List bytes) {
-    if (bytes.length < 56) throw CorruptedFileError('file too short for header');
+    if (bytes.length < 56)
+      throw CorruptedFileError('file too short for header');
     final buf = ByteData.sublistView(bytes);
     int o = 0;
 
@@ -78,25 +85,35 @@ class MyencCodec {
     }
 
     final version = buf.getUint8(o++);
-    if (version > FileHeader.supportedVersion) throw VersionTooNewError(version);
+    if (version > FileHeader.supportedVersion)
+      throw VersionTooNewError(version);
     final flags = buf.getUint8(o++);
     if (flags & ~FileHeader.knownFlagsMask != 0) {
       throw CorruptedFileError('unknown flag bits $flags');
     }
     final kdfId = buf.getUint8(o++);
-    if (kdfId != FileHeader.kdfArgon2id) throw CorruptedFileError('unsupported KDF $kdfId');
+    if (kdfId != FileHeader.kdfArgon2id)
+      throw CorruptedFileError('unsupported KDF $kdfId');
 
-    final saltLen = buf.getUint16(o, Endian.big); o += 2;
-    if (saltLen != _saltLength) throw CorruptedFileError('unexpected salt length $saltLen');
-    if (o + saltLen > bytes.length) throw CorruptedFileError('file too short for salt');
-    final salt = Uint8List.fromList(bytes.sublist(o, o + saltLen)); o += saltLen;
+    final saltLen = buf.getUint16(o, Endian.big);
+    o += 2;
+    if (saltLen != _saltLength)
+      throw CorruptedFileError('unexpected salt length $saltLen');
+    if (o + saltLen > bytes.length)
+      throw CorruptedFileError('file too short for salt');
+    final salt = Uint8List.fromList(bytes.sublist(o, o + saltLen));
+    o += saltLen;
 
-    final opslimit = buf.getUint32(o, Endian.big); o += 4;
-    final memlimit = buf.getUint32(o, Endian.big); o += 4;
-    if (opslimit < FileHeader.minOpslimit || opslimit > FileHeader.maxOpslimit) {
+    final opslimit = buf.getUint32(o, Endian.big);
+    o += 4;
+    final memlimit = buf.getUint32(o, Endian.big);
+    o += 4;
+    if (opslimit < FileHeader.minOpslimit ||
+        opslimit > FileHeader.maxOpslimit) {
       throw CorruptedFileError('opslimit $opslimit out of range');
     }
-    if (memlimit < FileHeader.minMemlimitKib || memlimit > FileHeader.maxMemlimitKib) {
+    if (memlimit < FileHeader.minMemlimitKib ||
+        memlimit > FileHeader.maxMemlimitKib) {
       throw CorruptedFileError('memlimit $memlimit out of range');
     }
     final cipherId = buf.getUint8(o++);
@@ -104,22 +121,29 @@ class MyencCodec {
       throw CorruptedFileError('unsupported cipher $cipherId');
     }
 
-    final chunkSize = buf.getUint32(o, Endian.big); o += 4;
-    if (chunkSize < FileHeader.minChunkSize || chunkSize > FileHeader.maxChunkSize) {
+    final chunkSize = buf.getUint32(o, Endian.big);
+    o += 4;
+    if (chunkSize < FileHeader.minChunkSize ||
+        chunkSize > FileHeader.maxChunkSize) {
       throw CorruptedFileError('chunk size $chunkSize out of range');
     }
 
-    if (o + _keyIdLength > bytes.length) throw CorruptedFileError('file too short for key-id');
-    final keyIdHint = Uint8List.fromList(bytes.sublist(o, o + _keyIdLength)); o += _keyIdLength;
+    if (o + _keyIdLength > bytes.length)
+      throw CorruptedFileError('file too short for key-id');
+    final keyIdHint = Uint8List.fromList(bytes.sublist(o, o + _keyIdLength));
+    o += _keyIdLength;
 
     final wrapCount = buf.getUint8(o++);
     final wraps = <WrapEntry>[];
     for (int i = 0; i < wrapCount; i++) {
       if (o + 3 > bytes.length) throw CorruptedFileError('truncated wrap list');
       final typeCode = buf.getUint8(o++);
-      final wrapLen = buf.getUint16(o, Endian.big); o += 2;
-      if (o + wrapLen > bytes.length) throw CorruptedFileError('truncated wrap data');
-      final wrapData = Uint8List.fromList(bytes.sublist(o, o + wrapLen)); o += wrapLen;
+      final wrapLen = buf.getUint16(o, Endian.big);
+      o += 2;
+      if (o + wrapLen > bytes.length)
+        throw CorruptedFileError('truncated wrap data');
+      final wrapData = Uint8List.fromList(bytes.sublist(o, o + wrapLen));
+      o += wrapLen;
       final wrapType = WrapType.fromCode(typeCode);
       if (wrapType == null) {
         throw CorruptedFileError('unknown wrap type $typeCode');
@@ -133,7 +157,8 @@ class MyencCodec {
       if (o + 2 > bytes.length) {
         throw CorruptedFileError('truncated enc-filename length');
       }
-      final encFilenameLen = buf.getUint16(o, Endian.big); o += 2;
+      final encFilenameLen = buf.getUint16(o, Endian.big);
+      o += 2;
       if (o + encFilenameLen > bytes.length) {
         throw CorruptedFileError('truncated enc-filename data');
       }

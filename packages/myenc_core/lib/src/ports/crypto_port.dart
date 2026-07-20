@@ -25,13 +25,17 @@ abstract interface class CryptoPort {
   // Output: secretstream header (24B) followed by encrypted chunks.
   // Plaintext is buffered to [chunkSize]-byte blocks; last block carries FINAL tag.
   StreamTransformer<Uint8List, Uint8List> createEncryptTransformer(
-      Uint8List key, int chunkSize);
+    Uint8List key,
+    int chunkSize,
+  );
 
   // Input: secretstream header (24B) followed by encrypted chunks.
   // Output: plaintext chunks.
   // Throws CorruptedFileError on authentication failure or missing FINAL tag.
   StreamTransformer<Uint8List, Uint8List> createDecryptTransformer(
-      Uint8List key, int chunkSize);
+    Uint8List key,
+    int chunkSize,
+  );
 
   // --- X25519 sealed box (spec §3, wrap type 0x03) ---
 
@@ -43,6 +47,9 @@ abstract interface class CryptoPort {
   /// Opens a sealed box produced by [boxSeal].
   /// Throws [WrongPassphraseError] on authentication failure, consistent with
   /// [secretboxOpen] so callers can distinguish "wrong key" from corruption.
-  Uint8List boxSealOpen(Uint8List ciphertext, Uint8List publicKey,
-      Uint8List secretKey);
+  Uint8List boxSealOpen(
+    Uint8List ciphertext,
+    Uint8List publicKey,
+    Uint8List secretKey,
+  );
 }

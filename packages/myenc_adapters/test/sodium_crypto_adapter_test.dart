@@ -99,20 +99,22 @@ void main() {
     test('throws WrongPassphraseError for wrong key', () {
       final key = adapter.randomBytes(32);
       final wrongKey = adapter.randomBytes(32);
-      final sealed = adapter.secretboxSeal(
-          utf8.encode('secret'), key);
-      expect(() => adapter.secretboxOpen(sealed, wrongKey),
-          throwsA(isA<WrongPassphraseError>()));
+      final sealed = adapter.secretboxSeal(utf8.encode('secret'), key);
+      expect(
+        () => adapter.secretboxOpen(sealed, wrongKey),
+        throwsA(isA<WrongPassphraseError>()),
+      );
     });
 
     test('throws WrongPassphraseError for tampered ciphertext', () {
       final key = adapter.randomBytes(32);
-      final sealed = adapter.secretboxSeal(
-          utf8.encode('secret'), key);
+      final sealed = adapter.secretboxSeal(utf8.encode('secret'), key);
       final tampered = Uint8List.fromList(sealed);
       tampered[tampered.length - 1] ^= 0xFF;
-      expect(() => adapter.secretboxOpen(tampered, key),
-          throwsA(isA<WrongPassphraseError>()));
+      expect(
+        () => adapter.secretboxOpen(tampered, key),
+        throwsA(isA<WrongPassphraseError>()),
+      );
     });
   });
 
@@ -135,11 +137,15 @@ void main() {
       final plain = utf8.encode('Hello sodium adapter!');
 
       final encrypted = await collectStream(
-          streamOf(plain).transform(
-              adapter.createEncryptTransformer(key, chunkSize)));
+        streamOf(
+          plain,
+        ).transform(adapter.createEncryptTransformer(key, chunkSize)),
+      );
       final decrypted = await collectStream(
-          streamOf(encrypted).transform(
-              adapter.createDecryptTransformer(key, chunkSize)));
+        streamOf(
+          encrypted,
+        ).transform(adapter.createDecryptTransformer(key, chunkSize)),
+      );
       expect(decrypted, equals(plain));
     });
 
@@ -149,25 +155,31 @@ void main() {
 
       final empty = Stream<Uint8List>.empty();
       final encrypted = await collectStream(
-          empty.transform(adapter.createEncryptTransformer(key, chunkSize)));
+        empty.transform(adapter.createEncryptTransformer(key, chunkSize)),
+      );
       final decrypted = await collectStream(
-          streamOf(encrypted).transform(
-              adapter.createDecryptTransformer(key, chunkSize)));
+        streamOf(
+          encrypted,
+        ).transform(adapter.createDecryptTransformer(key, chunkSize)),
+      );
       expect(decrypted, isEmpty);
     });
 
     test('round-trips multi-chunk plaintext', () async {
       final key = adapter.randomBytes(32);
       const chunkSize = 256;
-      final plain =
-          Uint8List.fromList(List.generate(1000, (i) => i & 0xFF));
+      final plain = Uint8List.fromList(List.generate(1000, (i) => i & 0xFF));
 
       final encrypted = await collectStream(
-          streamOf(plain).transform(
-              adapter.createEncryptTransformer(key, chunkSize)));
+        streamOf(
+          plain,
+        ).transform(adapter.createEncryptTransformer(key, chunkSize)),
+      );
       final decrypted = await collectStream(
-          streamOf(encrypted).transform(
-              adapter.createDecryptTransformer(key, chunkSize)));
+        streamOf(
+          encrypted,
+        ).transform(adapter.createDecryptTransformer(key, chunkSize)),
+      );
       expect(decrypted, equals(plain));
     });
 
@@ -176,89 +188,116 @@ void main() {
     // transformer MUST copy the key eagerly. If it copies lazily (at bind time)
     // it reads the zeroed array and encrypts under an all-zero key — the body
     // would then be readable without the passphrase.
-    test('zeroizing the key after creating the transformer does not weaken it',
-        () async {
-      final key = adapter.randomBytes(32);
-      final realKey = Uint8List.fromList(key);
-      const chunkSize = 64;
-      final plain = Uint8List.fromList(List.generate(90, (i) => i & 0xFF));
+    test(
+      'zeroizing the key after creating the transformer does not weaken it',
+      () async {
+        final key = adapter.randomBytes(32);
+        final realKey = Uint8List.fromList(key);
+        const chunkSize = 64;
+        final plain = Uint8List.fromList(List.generate(90, (i) => i & 0xFF));
 
-      final enc = adapter.createEncryptTransformer(key, chunkSize);
-      key.fillRange(0, key.length, 0); // caller zeroizes right away
-      final encrypted =
-          await collectStream(streamOf(plain).transform(enc));
+        final enc = adapter.createEncryptTransformer(key, chunkSize);
+        key.fillRange(0, key.length, 0); // caller zeroizes right away
+        final encrypted = await collectStream(streamOf(plain).transform(enc));
 
-      // The real key must decrypt it…
-      final decrypted = await collectStream(streamOf(encrypted)
-          .transform(adapter.createDecryptTransformer(
-              Uint8List.fromList(realKey), chunkSize)));
-      expect(decrypted, equals(plain));
+        // The real key must decrypt it…
+        final decrypted = await collectStream(
+          streamOf(encrypted).transform(
+            adapter.createDecryptTransformer(
+              Uint8List.fromList(realKey),
+              chunkSize,
+            ),
+          ),
+        );
+        expect(decrypted, equals(plain));
 
-      // …and an all-zero key must NOT (proves the body isn't zero-keyed).
-      await expectLater(
-        collectStream(streamOf(encrypted)
-            .transform(adapter.createDecryptTransformer(Uint8List(32), chunkSize))),
-        throwsA(isA<CorruptedFileError>()),
-      );
-    });
+        // …and an all-zero key must NOT (proves the body isn't zero-keyed).
+        await expectLater(
+          collectStream(
+            streamOf(encrypted).transform(
+              adapter.createDecryptTransformer(Uint8List(32), chunkSize),
+            ),
+          ),
+          throwsA(isA<CorruptedFileError>()),
+        );
+      },
+    );
 
     test('secretstreamHeaderBytes is 24', () {
       expect(adapter.secretstreamHeaderBytes, 24);
     });
 
-    test('encrypt transformer output starts with 24-byte secretstream header',
-        () async {
-      final key = adapter.randomBytes(32);
-      const chunkSize = 65536;
-      final plain = Uint8List.fromList([1, 2, 3]);
+    test(
+      'encrypt transformer output starts with 24-byte secretstream header',
+      () async {
+        final key = adapter.randomBytes(32);
+        const chunkSize = 65536;
+        final plain = Uint8List.fromList([1, 2, 3]);
 
-      final encrypted = await collectStream(
-          streamOf(plain).transform(
-              adapter.createEncryptTransformer(key, chunkSize)));
-      expect(encrypted.length,
-          greaterThanOrEqualTo(adapter.secretstreamHeaderBytes));
-    });
-
-    test('decrypt transformer throws CorruptedFileError on tampered body',
-        () async {
-      final key = adapter.randomBytes(32);
-      const chunkSize = 65536;
-      final plain = utf8.encode('tamper test');
-
-      final encrypted = await collectStream(
-          streamOf(plain).transform(
-              adapter.createEncryptTransformer(key, chunkSize)));
-
-      // Flip a bit in the body (after the 24-byte header)
-      final tampered = Uint8List.fromList(encrypted);
-      tampered[adapter.secretstreamHeaderBytes + 5] ^= 0xFF;
-
-      expect(
-        () => collectStream(streamOf(tampered)
-            .transform(adapter.createDecryptTransformer(key, chunkSize))),
-        throwsA(isA<CorruptedFileError>()),
-      );
-    });
+        final encrypted = await collectStream(
+          streamOf(
+            plain,
+          ).transform(adapter.createEncryptTransformer(key, chunkSize)),
+        );
+        expect(
+          encrypted.length,
+          greaterThanOrEqualTo(adapter.secretstreamHeaderBytes),
+        );
+      },
+    );
 
     test(
-        'decrypt transformer throws CorruptedFileError when truncated (no FINAL)',
-        () async {
-      final key = adapter.randomBytes(32);
-      const chunkSize = 256;
-      final plain =
-          Uint8List.fromList(List.generate(512, (i) => i & 0xFF));
+      'decrypt transformer throws CorruptedFileError on tampered body',
+      () async {
+        final key = adapter.randomBytes(32);
+        const chunkSize = 65536;
+        final plain = utf8.encode('tamper test');
 
-      final encrypted = await collectStream(
-          streamOf(plain).transform(
-              adapter.createEncryptTransformer(key, chunkSize)));
-      // Truncate to just the header — no encrypted body at all
-      final truncated = encrypted.sublist(0, adapter.secretstreamHeaderBytes);
+        final encrypted = await collectStream(
+          streamOf(
+            plain,
+          ).transform(adapter.createEncryptTransformer(key, chunkSize)),
+        );
 
-      expect(
-        () => collectStream(streamOf(truncated)
-            .transform(adapter.createDecryptTransformer(key, chunkSize))),
-        throwsA(isA<CorruptedFileError>()),
-      );
-    });
+        // Flip a bit in the body (after the 24-byte header)
+        final tampered = Uint8List.fromList(encrypted);
+        tampered[adapter.secretstreamHeaderBytes + 5] ^= 0xFF;
+
+        expect(
+          () => collectStream(
+            streamOf(
+              tampered,
+            ).transform(adapter.createDecryptTransformer(key, chunkSize)),
+          ),
+          throwsA(isA<CorruptedFileError>()),
+        );
+      },
+    );
+
+    test(
+      'decrypt transformer throws CorruptedFileError when truncated (no FINAL)',
+      () async {
+        final key = adapter.randomBytes(32);
+        const chunkSize = 256;
+        final plain = Uint8List.fromList(List.generate(512, (i) => i & 0xFF));
+
+        final encrypted = await collectStream(
+          streamOf(
+            plain,
+          ).transform(adapter.createEncryptTransformer(key, chunkSize)),
+        );
+        // Truncate to just the header — no encrypted body at all
+        final truncated = encrypted.sublist(0, adapter.secretstreamHeaderBytes);
+
+        expect(
+          () => collectStream(
+            streamOf(
+              truncated,
+            ).transform(adapter.createDecryptTransformer(key, chunkSize)),
+          ),
+          throwsA(isA<CorruptedFileError>()),
+        );
+      },
+    );
   });
 }

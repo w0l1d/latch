@@ -39,7 +39,10 @@ class EncryptReviewScreen extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           child: Column(
             children: [
-              _ReviewRow(label: 'Files', value: '${files.length} · ${files.join(', ')}'),
+              _ReviewRow(
+                label: 'Files',
+                value: '${files.length} · ${files.join(', ')}',
+              ),
               _Divider(),
               _ReviewRow(
                 label: 'Passphrase',
@@ -72,7 +75,8 @@ class EncryptReviewScreen extends StatelessWidget {
               ),
               const Spacer(),
               LatchPrimaryButton(
-                label: 'Lock ${files.length} file${files.length == 1 ? '' : 's'}',
+                label:
+                    'Lock ${files.length} file${files.length == 1 ? '' : 's'}',
                 onPressed: () => context.push(
                   '/encrypt/progress',
                   extra: {

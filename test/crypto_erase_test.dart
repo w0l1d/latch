@@ -8,21 +8,21 @@ import 'package:latch/core/crypto_erase.dart';
 /// header boundary). Key-id must be 16 bytes, wraps list non-empty,
 /// secretstream header 24 bytes.
 Uint8List _validHeader() {
-  return MyencCodec.encodeHeader(FileHeader(
-    version: 1,
-    flags: 0,
-    kdfId: FileHeader.kdfArgon2id,
-    salt: Uint8List.fromList(List.generate(16, (i) => i)),
-    opslimit: 3,
-    memlimit: 65536,
-    cipherId: FileHeader.cipherXchacha20Poly1305,
-    chunkSize: 65536,
-    keyIdHint: Uint8List(16),
-    wraps: [
-      WrapEntry(type: WrapType.passphrase, bytes: Uint8List(72)),
-    ],
-    secretstreamHeader: Uint8List(24),
-  ));
+  return MyencCodec.encodeHeader(
+    FileHeader(
+      version: 1,
+      flags: 0,
+      kdfId: FileHeader.kdfArgon2id,
+      salt: Uint8List.fromList(List.generate(16, (i) => i)),
+      opslimit: 3,
+      memlimit: 65536,
+      cipherId: FileHeader.cipherXchacha20Poly1305,
+      chunkSize: 65536,
+      keyIdHint: Uint8List(16),
+      wraps: [WrapEntry(type: WrapType.passphrase, bytes: Uint8List(72))],
+      secretstreamHeader: Uint8List(24),
+    ),
+  );
 }
 
 void main() {

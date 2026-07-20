@@ -17,7 +17,7 @@ class DeviceKeyService {
   final FlutterSecureStorage _storage;
 
   DeviceKeyService({FlutterSecureStorage? storage})
-      : _storage = storage ?? const FlutterSecureStorage();
+    : _storage = storage ?? const FlutterSecureStorage();
 
   /// Returns the device-bound key, creating it if it doesn't exist.
   /// The key is 32 random bytes stored as hex in platform secure storage.
@@ -28,7 +28,8 @@ class DeviceKeyService {
     }
     final rng = Random.secure();
     final key = Uint8List.fromList(
-        List.generate(_keyLength, (_) => rng.nextInt(256)));
+      List.generate(_keyLength, (_) => rng.nextInt(256)),
+    );
     await _storage.write(key: _keyTag, value: _hexEncode(key));
     return key;
   }

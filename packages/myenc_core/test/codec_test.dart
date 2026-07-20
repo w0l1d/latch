@@ -16,7 +16,9 @@ void main() {
         chunkSize: FileHeader.defaultChunkSize,
         keyIdHint: Uint8List.fromList(List.generate(16, (i) => i + 16)),
         wraps: wraps,
-        secretstreamHeader: Uint8List.fromList(List.generate(24, (i) => i + 100)),
+        secretstreamHeader: Uint8List.fromList(
+          List.generate(24, (i) => i + 100),
+        ),
       );
     }
 
@@ -41,9 +43,9 @@ void main() {
 
     test('round-trips a header with one passphrase wrap', () {
       final wrapBytes = Uint8List.fromList(List.generate(48, (i) => i));
-      final h = makeHeader(wraps: [
-        WrapEntry(type: WrapType.passphrase, bytes: wrapBytes),
-      ]);
+      final h = makeHeader(
+        wraps: [WrapEntry(type: WrapType.passphrase, bytes: wrapBytes)],
+      );
       final encoded = MyencCodec.encodeHeader(h);
       final (decoded, consumed) = MyencCodec.decodeHeader(encoded);
 
@@ -54,10 +56,12 @@ void main() {
     });
 
     test('round-trips a header with multiple wraps', () {
-      final h = makeHeader(wraps: [
-        WrapEntry(type: WrapType.passphrase, bytes: Uint8List(48)),
-        WrapEntry(type: WrapType.hardwareKey, bytes: Uint8List(32)),
-      ]);
+      final h = makeHeader(
+        wraps: [
+          WrapEntry(type: WrapType.passphrase, bytes: Uint8List(48)),
+          WrapEntry(type: WrapType.hardwareKey, bytes: Uint8List(32)),
+        ],
+      );
       final (decoded, _) = MyencCodec.decodeHeader(MyencCodec.encodeHeader(h));
       expect(decoded.wraps.length, 2);
       expect(decoded.wraps[1].type, WrapType.hardwareKey);
@@ -181,7 +185,19 @@ void main() {
       // We need a wrap to test unknown type — write wrap count=1
       encoded[55] = 0x01;
       // type=0xFF, length=8, 8 zero data bytes
-      final extra = Uint8List.fromList([0xFF, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+      final extra = Uint8List.fromList([
+        0xFF,
+        0x00,
+        0x08,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+      ]);
       final modified = Uint8List.fromList([...encoded, ...extra]);
       expect(
         () => MyencCodec.decodeHeader(modified),
@@ -285,7 +301,8 @@ void main() {
       final rng = List.generate(256, (i) => i); // deterministic
       for (final len in [0, 1, 5, 10, 30, 55, 56, 80, 128, 256, 512, 1024]) {
         final garbage = Uint8List.fromList(
-            List.generate(len, (i) => rng[(i * 7 + 13) % 256]));
+          List.generate(len, (i) => rng[(i * 7 + 13) % 256]),
+        );
         try {
           MyencCodec.decodeHeader(garbage);
           // If decodeHeader succeeds, the file must be at least 56 bytes.
@@ -300,22 +317,22 @@ void main() {
 
     test('truncation sweep — every prefix of a valid header fails closed', () {
       final encName = Uint8List(4);
-      final valid = MyencCodec.encodeHeader(FileHeader(
-        version: FileHeader.supportedVersion,
-        flags: 0x01,
-        kdfId: FileHeader.kdfArgon2id,
-        salt: Uint8List(16),
-        opslimit: 3,
-        memlimit: 65536,
-        cipherId: FileHeader.cipherXchacha20Poly1305,
-        chunkSize: FileHeader.defaultChunkSize,
-        keyIdHint: Uint8List(16),
-        wraps: [
-          WrapEntry(type: WrapType.passphrase, bytes: Uint8List(48)),
-        ],
-        secretstreamHeader: Uint8List(24),
-        encryptedFilename: encName,
-      ));
+      final valid = MyencCodec.encodeHeader(
+        FileHeader(
+          version: FileHeader.supportedVersion,
+          flags: 0x01,
+          kdfId: FileHeader.kdfArgon2id,
+          salt: Uint8List(16),
+          opslimit: 3,
+          memlimit: 65536,
+          cipherId: FileHeader.cipherXchacha20Poly1305,
+          chunkSize: FileHeader.defaultChunkSize,
+          keyIdHint: Uint8List(16),
+          wraps: [WrapEntry(type: WrapType.passphrase, bytes: Uint8List(48))],
+          secretstreamHeader: Uint8List(24),
+          encryptedFilename: encName,
+        ),
+      );
       for (int cut = 0; cut < valid.length; cut++) {
         final truncated = valid.sublist(0, cut);
         try {
@@ -330,19 +347,21 @@ void main() {
     });
 
     test('single-byte mutations of valid header never crash', () {
-      final valid = MyencCodec.encodeHeader(FileHeader(
-        version: FileHeader.supportedVersion,
-        flags: 0x00,
-        kdfId: FileHeader.kdfArgon2id,
-        salt: Uint8List(16),
-        opslimit: 3,
-        memlimit: 65536,
-        cipherId: FileHeader.cipherXchacha20Poly1305,
-        chunkSize: FileHeader.defaultChunkSize,
-        keyIdHint: Uint8List(16),
-        wraps: const [],
-        secretstreamHeader: Uint8List(24),
-      ));
+      final valid = MyencCodec.encodeHeader(
+        FileHeader(
+          version: FileHeader.supportedVersion,
+          flags: 0x00,
+          kdfId: FileHeader.kdfArgon2id,
+          salt: Uint8List(16),
+          opslimit: 3,
+          memlimit: 65536,
+          cipherId: FileHeader.cipherXchacha20Poly1305,
+          chunkSize: FileHeader.defaultChunkSize,
+          keyIdHint: Uint8List(16),
+          wraps: const [],
+          secretstreamHeader: Uint8List(24),
+        ),
+      );
       for (int pos = 0; pos < valid.length; pos++) {
         final mutated = Uint8List.fromList(valid);
         mutated[pos] ^= 0xFF; // flip all bits at this position
@@ -357,19 +376,21 @@ void main() {
     });
 
     test('oversized declared field (saltLen) throws CorruptedFileError', () {
-      final valid = MyencCodec.encodeHeader(FileHeader(
-        version: FileHeader.supportedVersion,
-        flags: 0,
-        kdfId: FileHeader.kdfArgon2id,
-        salt: Uint8List(16),
-        opslimit: 3,
-        memlimit: 65536,
-        cipherId: FileHeader.cipherXchacha20Poly1305,
-        chunkSize: FileHeader.defaultChunkSize,
-        keyIdHint: Uint8List(16),
-        wraps: const [],
-        secretstreamHeader: Uint8List(24),
-      ));
+      final valid = MyencCodec.encodeHeader(
+        FileHeader(
+          version: FileHeader.supportedVersion,
+          flags: 0,
+          kdfId: FileHeader.kdfArgon2id,
+          salt: Uint8List(16),
+          opslimit: 3,
+          memlimit: 65536,
+          cipherId: FileHeader.cipherXchacha20Poly1305,
+          chunkSize: FileHeader.defaultChunkSize,
+          keyIdHint: Uint8List(16),
+          wraps: const [],
+          secretstreamHeader: Uint8List(24),
+        ),
+      );
       // Write saltLen = 0xFFFF (beyond buffer)
       final buf = ByteData.sublistView(valid);
       buf.setUint16(8, 0xFFFF, Endian.big);

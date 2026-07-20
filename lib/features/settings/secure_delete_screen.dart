@@ -61,8 +61,10 @@ class _SecureDeleteScreenState extends State<SecureDeleteScreen> {
     if (skipped > 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text(
-                '$skipped file${skipped == 1 ? '' : 's'} skipped — only .latch files can be shredded.')),
+          content: Text(
+            '$skipped file${skipped == 1 ? '' : 's'} skipped — only .latch files can be shredded.',
+          ),
+        ),
       );
     }
   }
@@ -77,8 +79,11 @@ class _SecureDeleteScreenState extends State<SecureDeleteScreen> {
           borderRadius: BorderRadius.circular(18),
           side: const BorderSide(color: LatchColors.danger, width: 2),
         ),
-        icon: const Icon(Icons.warning_amber_rounded,
-            color: LatchColors.danger, size: 32),
+        icon: const Icon(
+          Icons.warning_amber_rounded,
+          color: LatchColors.danger,
+          size: 32,
+        ),
         title: const Text(
           'Shred files?',
           style: TextStyle(
@@ -89,11 +94,11 @@ class _SecureDeleteScreenState extends State<SecureDeleteScreen> {
         content: Text(
           _files.length == 1
               ? 'This will permanently destroy '
-                  '${p.basename(_files.first)}. The encrypted body cannot be '
-                  'recovered even if the file is restored from flash.'
+                    '${p.basename(_files.first)}. The encrypted body cannot be '
+                    'recovered even if the file is restored from flash.'
               : 'This will permanently destroy ${_files.length} files. The '
-                  'encrypted bodies cannot be recovered even if the files are '
-                  'restored from flash.',
+                    'encrypted bodies cannot be recovered even if the files are '
+                    'restored from flash.',
           style: const TextStyle(color: Color(0xFF7A3128)),
         ),
         actions: [
@@ -153,28 +158,35 @@ class _SecureDeleteScreenState extends State<SecureDeleteScreen> {
     if (!mounted) return;
     // Phase 2: shred the cache copies so no readable header lingers there.
     final results = <BatchResult>[];
-    _sub = AppCrypto.secureDeleteFiles(
-      _files,
-      onFileResult: (path, ok, error, outPath) {
-        final safError = safFailures[path];
-        results.add(safError != null
-            ? BatchResult(path: path, ok: false, errorMessage: safError)
-            : BatchResult(
-                path: path, ok: ok, errorMessage: error, outPath: outPath));
-      },
-    ).listen(
-      (_) {},
-      onDone: () {
-        if (!mounted) return;
-        setState(() => _busy = false);
-        _showResults(results);
-      },
-      onError: (Object e) {
-        if (!mounted) return;
-        setState(() => _busy = false);
-        _showFatal(e.toString());
-      },
-    );
+    _sub =
+        AppCrypto.secureDeleteFiles(
+          _files,
+          onFileResult: (path, ok, error, outPath) {
+            final safError = safFailures[path];
+            results.add(
+              safError != null
+                  ? BatchResult(path: path, ok: false, errorMessage: safError)
+                  : BatchResult(
+                      path: path,
+                      ok: ok,
+                      errorMessage: error,
+                      outPath: outPath,
+                    ),
+            );
+          },
+        ).listen(
+          (_) {},
+          onDone: () {
+            if (!mounted) return;
+            setState(() => _busy = false);
+            _showResults(results);
+          },
+          onError: (Object e) {
+            if (!mounted) return;
+            setState(() => _busy = false);
+            _showFatal(e.toString());
+          },
+        );
   }
 
   void _showResults(List<BatchResult> results) {
@@ -186,8 +198,7 @@ class _SecureDeleteScreenState extends State<SecureDeleteScreen> {
         tone: LatchAlertTone.danger,
         icon: Icons.check_circle_outline,
         title: 'Files shredded',
-        message:
-            '$ok file${ok == 1 ? '' : 's'} crypto-erased and deleted.',
+        message: '$ok file${ok == 1 ? '' : 's'} crypto-erased and deleted.',
         buttonLabel: 'Done',
         onPressed: () {
           if (Navigator.of(context).canPop()) {
@@ -198,16 +209,14 @@ class _SecureDeleteScreenState extends State<SecureDeleteScreen> {
       );
       return;
     }
-    final listed = bad
-        .take(3)
-        .map((r) => p.basename(r.path))
-        .join(', ');
+    final listed = bad.take(3).map((r) => p.basename(r.path)).join(', ');
     showLatchAlert(
       context,
       tone: LatchAlertTone.danger,
       icon: Icons.error_outline,
       title: 'Some files failed',
-      message: 'Failed: $listed. '
+      message:
+          'Failed: $listed. '
           '${ok > 0 ? '$ok other file${ok == 1 ? ' was' : 's were'} shredded.' : 'No files were shredded.'}',
       buttonLabel: 'OK',
       onPressed: () => Navigator.pop(context),
@@ -233,90 +242,96 @@ class _SecureDeleteScreenState extends State<SecureDeleteScreen> {
       // block back navigation until the batch reports.
       canPop: !_busy,
       child: Scaffold(
-      appBar: AppBar(
-        leading: BackButton(onPressed: () {
-          if (!_busy) context.pop();
-        }),
-        title: const Text('Secure delete'),
-      ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Semantics(
-                button: true,
-                label: 'Choose .latch files to shred',
-                child: GestureDetector(
-                  onTap: _busy ? null : _pickFiles,
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: LatchColors.border, width: 1.5),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                    children: [
-                      const Icon(Icons.insert_drive_file_outlined,
-                          color: LatchColors.ink),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          _files.isEmpty
-                              ? 'Choose .latch files to shred'
-                              : _files.length == 1
+        appBar: AppBar(
+          leading: BackButton(
+            onPressed: () {
+              if (!_busy) context.pop();
+            },
+          ),
+          title: const Text('Secure delete'),
+        ),
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Semantics(
+                  button: true,
+                  label: 'Choose .latch files to shred',
+                  child: GestureDetector(
+                    onTap: _busy ? null : _pickFiles,
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: LatchColors.border,
+                          width: 1.5,
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.insert_drive_file_outlined,
+                            color: LatchColors.ink,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              _files.isEmpty
+                                  ? 'Choose .latch files to shred'
+                                  : _files.length == 1
                                   ? p.basename(_files.first)
                                   : '${_files.length} files selected',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: LatchColors.ink,
-                              ),
-                        ),
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(color: LatchColors.ink),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Text(
-                'Crypto-erase destroys the encryption key stored in each '
-                'file’s header, then deletes the file. The encrypted body '
-                'becomes permanent noise — even if a deleted file is recovered '
-                'from flash, its contents can never be decrypted.',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              const SizedBox(height: 10),
-              Text(
-                'This is the safest way to delete .latch files. '
-                'There is no undo.',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: LatchColors.danger,
-                    ),
-              ),
-              const Spacer(),
-              if (_busy)
-                const Center(
-                  child: Padding(
-                    padding: EdgeInsets.only(bottom: 16),
-                    child: CircularProgressIndicator(
-                      strokeWidth: 3,
-                      color: LatchColors.ink,
                     ),
                   ),
                 ),
-              LatchPrimaryButton(
-                label: 'Shred files',
-                onPressed: _ready ? _showConfirm : null,
-                backgroundColor: LatchColors.danger,
-              ),
-              const SizedBox(height: 8),
-            ],
+                const SizedBox(height: 20),
+                Text(
+                  'Crypto-erase destroys the encryption key stored in each '
+                  'file’s header, then deletes the file. The encrypted body '
+                  'becomes permanent noise — even if a deleted file is recovered '
+                  'from flash, its contents can never be decrypted.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'This is the safest way to delete .latch files. '
+                  'There is no undo.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: LatchColors.danger,
+                  ),
+                ),
+                const Spacer(),
+                if (_busy)
+                  const Center(
+                    child: Padding(
+                      padding: EdgeInsets.only(bottom: 16),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 3,
+                        color: LatchColors.ink,
+                      ),
+                    ),
+                  ),
+                LatchPrimaryButton(
+                  label: 'Shred files',
+                  onPressed: _ready ? _showConfirm : null,
+                  backgroundColor: LatchColors.danger,
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
           ),
         ),
       ),
-    ),
     );
   }
 }

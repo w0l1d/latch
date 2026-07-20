@@ -73,45 +73,55 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
       return;
     }
     if (!mounted) return;
-    _sub = AppCrypto.encryptFiles(
-      widget.files,
-      widget.passphrase,
-      deleteOriginals: widget.deleteOriginals,
-      outputDir: widget.outputDir,
-      keyIdHex: widget.keyIdHex,
-      deviceKey: deviceKey,
-      onFileResult: (path, ok, error, outPath) {
-        _results.add(BatchResult(path: path, ok: ok, errorMessage: error, outPath: outPath));
-        _doneCount++;
-      },
-    ).listen(
-      (prog) {
-        if (!mounted || _cancelled) return;
-        setState(() => _progress = prog);
-        if (_doneCount >= widget.files.length && !_reported) {
-          _reported = true;
-          _onDone();
-        }
-      },
-      onError: (Object e) {
-        if (!mounted || _cancelled) return;
-        _showFatalError(e);
-      },
-      onDone: () {
-        if (!mounted || _cancelled || _reported) return;
-        _reported = true;
-        if (_doneCount >= widget.files.length) {
-          // Normal completion where the terminal progress event was missed
-          // (defensive — the worker normally reports 1.0 after the last file).
-          _onDone();
-        } else {
-          // The worker stream ended without reporting every file. Without
-          // this the spinner runs forever with Cancel as the only way out.
-          _showError('Encryption stopped unexpectedly',
-              'Only $_doneCount of ${widget.files.length} files were processed.');
-        }
-      },
-    );
+    _sub =
+        AppCrypto.encryptFiles(
+          widget.files,
+          widget.passphrase,
+          deleteOriginals: widget.deleteOriginals,
+          outputDir: widget.outputDir,
+          keyIdHex: widget.keyIdHex,
+          deviceKey: deviceKey,
+          onFileResult: (path, ok, error, outPath) {
+            _results.add(
+              BatchResult(
+                path: path,
+                ok: ok,
+                errorMessage: error,
+                outPath: outPath,
+              ),
+            );
+            _doneCount++;
+          },
+        ).listen(
+          (prog) {
+            if (!mounted || _cancelled) return;
+            setState(() => _progress = prog);
+            if (_doneCount >= widget.files.length && !_reported) {
+              _reported = true;
+              _onDone();
+            }
+          },
+          onError: (Object e) {
+            if (!mounted || _cancelled) return;
+            _showFatalError(e);
+          },
+          onDone: () {
+            if (!mounted || _cancelled || _reported) return;
+            _reported = true;
+            if (_doneCount >= widget.files.length) {
+              // Normal completion where the terminal progress event was missed
+              // (defensive — the worker normally reports 1.0 after the last file).
+              _onDone();
+            } else {
+              // The worker stream ended without reporting every file. Without
+              // this the spinner runs forever with Cancel as the only way out.
+              _showError(
+                'Encryption stopped unexpectedly',
+                'Only $_doneCount of ${widget.files.length} files were processed.',
+              );
+            }
+          },
+        );
   }
 
   Future<void> _onDone() async {
@@ -148,9 +158,13 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
       }
     }
     if (failed > 0 && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
           content: Text(
-              '$failed original file${failed == 1 ? '' : 's'} could not be deleted — remove ${failed == 1 ? 'it' : 'them'} manually.')));
+            '$failed original file${failed == 1 ? '' : 's'} could not be deleted — remove ${failed == 1 ? 'it' : 'them'} manually.',
+          ),
+        ),
+      );
     }
   }
 
@@ -163,9 +177,13 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
       .toList();
 
   void _showPartialSuccess(int ok, int bad) {
-    final listed = _results.where((r) => !r.ok).take(3).map((r) {
-      return '${p.basename(r.path)}: ${r.errorMessage ?? "error"}';
-    }).join('\n');
+    final listed = _results
+        .where((r) => !r.ok)
+        .take(3)
+        .map((r) {
+          return '${p.basename(r.path)}: ${r.errorMessage ?? "error"}';
+        })
+        .join('\n');
     final more = bad > 3 ? '\n… and ${bad - 3} more' : '';
     showLatchAlert(
       context,
@@ -241,7 +259,9 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
                 ),
                 const SizedBox(height: 28),
                 Text(
-                  fileCount > 1 ? 'Locking $fileCount files…' : 'Locking your file…',
+                  fileCount > 1
+                      ? 'Locking $fileCount files…'
+                      : 'Locking your file…',
                   style: Theme.of(context).textTheme.displayMedium,
                   textAlign: TextAlign.center,
                 ),

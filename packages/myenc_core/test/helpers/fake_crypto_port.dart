@@ -26,7 +26,8 @@ class FakeCryptoPort implements CryptoPort {
   }) {
     final out = Uint8List(outputLength);
     for (int i = 0; i < outputLength; i++) {
-      out[i] = passphrase[i % passphrase.length] ^
+      out[i] =
+          passphrase[i % passphrase.length] ^
           salt[i % salt.length] ^
           (i & 0xFF);
     }
@@ -69,7 +70,9 @@ class FakeCryptoPort implements CryptoPort {
 
   @override
   StreamTransformer<Uint8List, Uint8List> createEncryptTransformer(
-      Uint8List key, int chunkSize) {
+    Uint8List key,
+    int chunkSize,
+  ) {
     // Capture header deterministically at creation time (before binding).
     final header = randomBytes(secretstreamHeaderBytes);
     return _FakeEncryptTransformer(key, chunkSize, header);
@@ -77,7 +80,9 @@ class FakeCryptoPort implements CryptoPort {
 
   @override
   StreamTransformer<Uint8List, Uint8List> createDecryptTransformer(
-      Uint8List key, int chunkSize) {
+    Uint8List key,
+    int chunkSize,
+  ) {
     return _FakeDecryptTransformer(key, chunkSize);
   }
 
@@ -110,7 +115,10 @@ class FakeCryptoPort implements CryptoPort {
 
   @override
   Uint8List boxSealOpen(
-      Uint8List ciphertext, Uint8List publicKey, Uint8List secretKey) {
+    Uint8List ciphertext,
+    Uint8List publicKey,
+    Uint8List secretKey,
+  ) {
     if (ciphertext.length < 48) throw WrongPassphraseError();
     final macBytes = ciphertext.sublist(32, 48);
     final cipher = ciphertext.sublist(48);
@@ -159,7 +167,11 @@ final class _FakeEncryptTransformer
   }
 
   static Uint8List _encryptChunk(
-      Uint8List plain, bool isFinal, int idx, Uint8List key) {
+    Uint8List plain,
+    bool isFinal,
+    int idx,
+    Uint8List key,
+  ) {
     final cipher = Uint8List(plain.length);
     int xorAcc = 0;
     for (int i = 0; i < plain.length; i++) {
@@ -205,16 +217,23 @@ final class _FakeDecryptTransformer
         buf.removeRange(0, encChunkSize);
         final (:plain, :isFinal) = _decryptChunk(raw, idx++, _key);
         yield plain;
-        if (isFinal) { gotFinal = true; break; }
+        if (isFinal) {
+          gotFinal = true;
+          break;
+        }
       }
       if (gotFinal) break;
     }
 
     if (!gotFinal) {
-      if (!headerConsumed) throw CorruptedFileError('truncated: header missing');
+      if (!headerConsumed)
+        throw CorruptedFileError('truncated: header missing');
       if (buf.isEmpty) throw CorruptedFileError('empty ciphertext body');
-      final (:plain, :isFinal) =
-          _decryptChunk(Uint8List.fromList(buf), idx, _key);
+      final (:plain, :isFinal) = _decryptChunk(
+        Uint8List.fromList(buf),
+        idx,
+        _key,
+      );
       if (!isFinal) {
         throw CorruptedFileError('missing FINAL tag — file may be truncated');
       }
@@ -223,7 +242,10 @@ final class _FakeDecryptTransformer
   }
 
   static ({Uint8List plain, bool isFinal}) _decryptChunk(
-      Uint8List cipher, int idx, Uint8List key) {
+    Uint8List cipher,
+    int idx,
+    Uint8List key,
+  ) {
     if (cipher.length < 17) {
       throw CorruptedFileError('chunk too short (${cipher.length} bytes)');
     }

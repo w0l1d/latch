@@ -22,13 +22,17 @@ class BatchResult {
   /// failure; equals [path] for in-place operations (rewrap, shred).
   final String? outPath;
 
-  const BatchResult(
-      {required this.path, required this.ok, this.errorMessage, this.outPath});
+  const BatchResult({
+    required this.path,
+    required this.ok,
+    this.errorMessage,
+    this.outPath,
+  });
 }
 
 /// Per-file completion callback for batch operations.
-typedef FileResultCallback = void Function(
-    String path, bool ok, String? error, String? outPath);
+typedef FileResultCallback =
+    void Function(String path, bool ok, String? error, String? outPath);
 
 class AppCrypto {
   /// Lazy-initialized singleton — set by main() after the widget tree mounts
@@ -75,8 +79,12 @@ class AppCrypto {
     FileResultCallback? onFileResult,
   }) async* {
     final port = ReceivePort();
-    final isolate = await Isolate.spawn(latchWorker, port.sendPort,
-        onExit: port.sendPort, onError: port.sendPort);
+    final isolate = await Isolate.spawn(
+      latchWorker,
+      port.sendPort,
+      onExit: port.sendPort,
+      onError: port.sendPort,
+    );
     bool done = false;
     // Output file currently being written by the worker. If the batch is
     // torn down mid-write (cancel kills the isolate outright), its
@@ -130,8 +138,7 @@ class AppCrypto {
         // decrypt that temp holds partial plaintext.
         final orphan = inFlightOutPath;
         if (orphan != null) {
-          unawaited(
-              File('$orphan.tmp').delete().then((_) {}, onError: (_) {}));
+          unawaited(File('$orphan.tmp').delete().then((_) {}, onError: (_) {}));
         }
       }
     }
@@ -280,8 +287,12 @@ class AppCrypto {
   /// only initialized there). Used as RecipientKeyService's generator.
   static Future<ShareKeypair> generateShareKeypair() async {
     final port = ReceivePort();
-    final isolate = await Isolate.spawn(latchWorker, port.sendPort,
-        onExit: port.sendPort, onError: port.sendPort);
+    final isolate = await Isolate.spawn(
+      latchWorker,
+      port.sendPort,
+      onExit: port.sendPort,
+      onError: port.sendPort,
+    );
     bool done = false;
     ShareKeypair? result;
 
@@ -337,22 +348,28 @@ class AppCrypto {
     FileResultCallback? onFileResult,
   }) async* {
     if (files.isEmpty) return;
-    yield* _runBatch({'cmd': 'shred', 'files': files},
-        onFileResult: onFileResult);
+    yield* _runBatch({
+      'cmd': 'shred',
+      'files': files,
+    }, onFileResult: onFileResult);
   }
 
   /// Convenience: single-file decrypt with the batch API.
   /// Throws on failure (unlike [decryptFiles] which reports via callback).
   static Stream<double> decryptFile(String filePath, String passphrase) async* {
     String? error;
-    yield* decryptFiles([filePath], passphrase,
-        onFileResult: (path, ok, err, outPath) {
-      error = err;
-    });
+    yield* decryptFiles(
+      [filePath],
+      passphrase,
+      onFileResult: (path, ok, err, outPath) {
+        error = err;
+      },
+    );
     if (error != null) {
       if (error!.contains('WrongPassphraseError')) throw WrongPassphraseError();
       if (error!.contains('NotALatchFileError')) throw NotALatchFileError();
-      if (error!.contains('CorruptedFileError')) throw CorruptedFileError(error!);
+      if (error!.contains('CorruptedFileError'))
+        throw CorruptedFileError(error!);
       if (error!.contains('VersionTooNewError')) throw VersionTooNewError(0);
       throw Exception(error);
     }

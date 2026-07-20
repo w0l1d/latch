@@ -11,8 +11,9 @@ void main() {
 
   setUp(() {
     inMemoryData = {};
-    FlutterSecureStoragePlatform.instance =
-        TestFlutterSecureStoragePlatform(inMemoryData);
+    FlutterSecureStoragePlatform.instance = TestFlutterSecureStoragePlatform(
+      inMemoryData,
+    );
     svc = DeviceKeyService(storage: const FlutterSecureStorage());
   });
 
@@ -43,15 +44,18 @@ void main() {
       expect(await svc2.getOrCreateKey(), equals(key));
     });
 
-    test('deleteKey removes the key — next call generates a fresh one', () async {
-      final first = await svc.getOrCreateKey();
-      await svc.deleteKey();
-      expect(await svc.hasKey(), isFalse);
+    test(
+      'deleteKey removes the key — next call generates a fresh one',
+      () async {
+        final first = await svc.getOrCreateKey();
+        await svc.deleteKey();
+        expect(await svc.hasKey(), isFalse);
 
-      final second = await svc.getOrCreateKey();
-      expect(second, hasLength(32));
-      expect(second, isNot(equals(first)));
-    });
+        final second = await svc.getOrCreateKey();
+        expect(second, hasLength(32));
+        expect(second, isNot(equals(first)));
+      },
+    );
 
     test('a corrupted stored value is replaced, not returned', () async {
       inMemoryData['latch_device_key'] = 'deadbeef'; // too short

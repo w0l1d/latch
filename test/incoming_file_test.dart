@@ -22,25 +22,26 @@ GoRouter _testRouter() {
 }
 
 List<SharedMediaFile> _latchFile(String path) => [
-      SharedMediaFile(
-        path: path,
-        type: SharedMediaType.file,
-        mimeType: 'application/octet-stream',
-      ),
-    ];
+  SharedMediaFile(
+    path: path,
+    type: SharedMediaType.file,
+    mimeType: 'application/octet-stream',
+  ),
+];
 
 List<SharedMediaFile> _nonLatch() => [
-      SharedMediaFile(
-        path: 'photo.jpg',
-        type: SharedMediaType.image,
-        mimeType: 'image/jpeg',
-      ),
-    ];
+  SharedMediaFile(
+    path: 'photo.jpg',
+    type: SharedMediaType.image,
+    mimeType: 'image/jpeg',
+  ),
+];
 
 void main() {
   group('IncomingFileService', () {
-    testWidgets('routes .latch files from initial media to decrypt passphrase',
-        (tester) async {
+    testWidgets('routes .latch files from initial media to decrypt passphrase', (
+      tester,
+    ) async {
       final router = _testRouter();
       final controller = StreamController<List<SharedMediaFile>>();
 
@@ -49,9 +50,7 @@ void main() {
         mediaStream: controller.stream,
       );
 
-      await tester.pumpWidget(MaterialApp.router(
-        routerConfig: router,
-      ));
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
 
       final svc = IncomingFileService(router: router);
       await svc.handleInitialMedia();
@@ -70,9 +69,7 @@ void main() {
         mediaStream: controller.stream,
       );
 
-      await tester.pumpWidget(MaterialApp.router(
-        routerConfig: router,
-      ));
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
 
       final svc = IncomingFileService(router: router);
       await svc.handleInitialMedia();
@@ -90,9 +87,7 @@ void main() {
         mediaStream: controller.stream,
       );
 
-      await tester.pumpWidget(MaterialApp.router(
-        routerConfig: router,
-      ));
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
 
       final svc = IncomingFileService(router: router);
       await svc.handleInitialMedia();
@@ -106,8 +101,9 @@ void main() {
       expect(find.text('passphrase'), findsOneWidget);
     });
 
-    testWidgets(
-        'ignores generic octet-stream files that are not .latch', (tester) async {
+    testWidgets('ignores generic octet-stream files that are not .latch', (
+      tester,
+    ) async {
       final router = _testRouter();
       final controller = StreamController<List<SharedMediaFile>>();
 
@@ -122,9 +118,7 @@ void main() {
         mediaStream: controller.stream,
       );
 
-      await tester.pumpWidget(MaterialApp.router(
-        routerConfig: router,
-      ));
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
 
       final svc = IncomingFileService(router: router);
       await svc.handleInitialMedia();
@@ -133,8 +127,9 @@ void main() {
       expect(find.text('home'), findsOneWidget);
     });
 
-    testWidgets('ignores non-latch files from the media stream',
-        (tester) async {
+    testWidgets('ignores non-latch files from the media stream', (
+      tester,
+    ) async {
       final router = _testRouter();
       final controller = StreamController<List<SharedMediaFile>>();
 
@@ -143,9 +138,7 @@ void main() {
         mediaStream: controller.stream,
       );
 
-      await tester.pumpWidget(MaterialApp.router(
-        routerConfig: router,
-      ));
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
 
       final svc = IncomingFileService(router: router);
       await svc.handleInitialMedia();

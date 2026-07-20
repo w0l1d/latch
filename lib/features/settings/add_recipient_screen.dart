@@ -87,42 +87,53 @@ class _AddRecipientScreenState extends State<AddRecipientScreen> {
     if (skipped > 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text(
-                '$skipped file${skipped == 1 ? '' : 's'} skipped — only .latch files can be shared.')),
+          content: Text(
+            '$skipped file${skipped == 1 ? '' : 's'} skipped — only .latch files can be shared.',
+          ),
+        ),
       );
     }
   }
 
   void _run() {
-    final recipient =
-        _recipients.where((r) => r.label == _selectedLabel).firstOrNull;
+    final recipient = _recipients
+        .where((r) => r.label == _selectedLabel)
+        .firstOrNull;
     if (recipient == null) {
       setState(() => _selectedLabel = null);
       return;
     }
     setState(() => _busy = true);
     final results = <BatchResult>[];
-    _sub = AppCrypto.addRecipientFiles(
-      _files,
-      _passphraseController.text,
-      recipientPublicKey: decodePublicKeyHex(recipient.publicKeyHex),
-      onFileResult: (path, ok, error, outPath) {
-        results.add(BatchResult(path: path, ok: ok, errorMessage: error, outPath: outPath));
-      },
-    ).listen(
-      (_) {},
-      onDone: () async {
-        await _writeBackOriginals(results);
-        if (!mounted) return;
-        setState(() => _busy = false);
-        _showResults(results, recipient.label);
-      },
-      onError: (Object e) {
-        if (!mounted) return;
-        setState(() => _busy = false);
-        _showFatal(e.toString());
-      },
-    );
+    _sub =
+        AppCrypto.addRecipientFiles(
+          _files,
+          _passphraseController.text,
+          recipientPublicKey: decodePublicKeyHex(recipient.publicKeyHex),
+          onFileResult: (path, ok, error, outPath) {
+            results.add(
+              BatchResult(
+                path: path,
+                ok: ok,
+                errorMessage: error,
+                outPath: outPath,
+              ),
+            );
+          },
+        ).listen(
+          (_) {},
+          onDone: () async {
+            await _writeBackOriginals(results);
+            if (!mounted) return;
+            setState(() => _busy = false);
+            _showResults(results, recipient.label);
+          },
+          onError: (Object e) {
+            if (!mounted) return;
+            setState(() => _busy = false);
+            _showFatal(e.toString());
+          },
+        );
   }
 
   /// On Android the batch modified cache copies — push each successful
@@ -202,132 +213,138 @@ class _AddRecipientScreenState extends State<AddRecipientScreen> {
       // block back navigation until the batch reports.
       canPop: !_busy,
       child: Scaffold(
-      appBar: AppBar(
-        leading: BackButton(onPressed: () {
-          if (!_busy) context.pop();
-        }),
-        title: const Text('Share with recipient'),
-      ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Semantics(
-                button: true,
-                label: 'Choose .latch files',
-                child: GestureDetector(
-                  onTap: _busy ? null : _pickFiles,
-                  child: Container(
+        appBar: AppBar(
+          leading: BackButton(
+            onPressed: () {
+              if (!_busy) context.pop();
+            },
+          ),
+          title: const Text('Share with recipient'),
+        ),
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Semantics(
+                  button: true,
+                  label: 'Choose .latch files',
+                  child: GestureDetector(
+                    onTap: _busy ? null : _pickFiles,
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: LatchColors.border,
+                          width: 1.5,
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.insert_drive_file_outlined,
+                            color: LatchColors.ink,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              _files.isEmpty
+                                  ? 'Choose .latch files'
+                                  : _files.length == 1
+                                  ? p.basename(_files.first)
+                                  : '${_files.length} files selected',
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(color: LatchColors.ink),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                TextField(
+                  controller: _passphraseController,
+                  obscureText: true,
+                  enabled: !_busy,
+                  onChanged: (_) => setState(() {}),
+                  decoration: const InputDecoration(hintText: 'Passphrase'),
+                  style: const TextStyle(fontSize: 17, letterSpacing: 1.5),
+                ),
+                const SizedBox(height: 12),
+                if (_recipients.isEmpty)
+                  Container(
+                    width: double.infinity,
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       border: Border.all(color: LatchColors.border, width: 1.5),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Row(
-                    children: [
-                      const Icon(Icons.insert_drive_file_outlined,
-                          color: LatchColors.ink),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          _files.isEmpty
-                              ? 'Choose .latch files'
-                              : _files.length == 1
-                                  ? p.basename(_files.first)
-                                  : '${_files.length} files selected',
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodyMedium
-                              ?.copyWith(color: LatchColors.ink),
+                    child: Text(
+                      'No recipients saved yet. Add one under '
+                      'Settings → Sharing first.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  )
+                else
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: LatchColors.border, width: 1.5),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: _selectedLabel,
+                        isExpanded: true,
+                        hint: const Text('Choose a recipient'),
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: LatchColors.ink,
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              TextField(
-                controller: _passphraseController,
-                obscureText: true,
-                enabled: !_busy,
-                onChanged: (_) => setState(() {}),
-                decoration: const InputDecoration(hintText: 'Passphrase'),
-                style: const TextStyle(fontSize: 17, letterSpacing: 1.5),
-              ),
-              const SizedBox(height: 12),
-              if (_recipients.isEmpty)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: LatchColors.border, width: 1.5),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    'No recipients saved yet. Add one under '
-                    'Settings → Sharing first.',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                )
-              else
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: LatchColors.border, width: 1.5),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: _selectedLabel,
-                      isExpanded: true,
-                      hint: const Text('Choose a recipient'),
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodyMedium
-                          ?.copyWith(color: LatchColors.ink),
-                      items: _recipients
-                          .map((r) => DropdownMenuItem(
+                        items: _recipients
+                            .map(
+                              (r) => DropdownMenuItem(
                                 value: r.label,
                                 child: Text(r.label),
-                              ))
-                          .toList(),
-                      onChanged: _busy
-                          ? null
-                          : (v) => setState(() => _selectedLabel = v),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: _busy
+                            ? null
+                            : (v) => setState(() => _selectedLabel = v),
+                      ),
                     ),
                   ),
+                const SizedBox(height: 12),
+                Text(
+                  'This adds a lock for the recipient — the file also still '
+                  'opens with the passphrase. Contents are not rewritten, so '
+                  'this is instant even for large files.',
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
-              const SizedBox(height: 12),
-              Text(
-                'This adds a lock for the recipient — the file also still '
-                'opens with the passphrase. Contents are not rewritten, so '
-                'this is instant even for large files.',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              const Spacer(),
-              if (_busy)
-                const Center(
-                  child: Padding(
-                    padding: EdgeInsets.only(bottom: 16),
-                    child: CircularProgressIndicator(
-                      strokeWidth: 3,
-                      color: LatchColors.ink,
+                const Spacer(),
+                if (_busy)
+                  const Center(
+                    child: Padding(
+                      padding: EdgeInsets.only(bottom: 16),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 3,
+                        color: LatchColors.ink,
+                      ),
                     ),
                   ),
+                LatchPrimaryButton(
+                  label: 'Share files',
+                  onPressed: _ready ? _run : null,
                 ),
-              LatchPrimaryButton(
-                label: 'Share files',
-                onPressed: _ready ? _run : null,
-              ),
-              const SizedBox(height: 8),
-            ],
+                const SizedBox(height: 8),
+              ],
+            ),
           ),
         ),
       ),
-    ),
     );
   }
 }

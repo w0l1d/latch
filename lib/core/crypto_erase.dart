@@ -31,7 +31,8 @@ class CryptoErase {
     Uint8List peek;
     try {
       peek = Uint8List.fromList(
-          await raf.read(len < _peekBytes ? len : _peekBytes));
+        await raf.read(len < _peekBytes ? len : _peekBytes),
+      );
     } finally {
       await raf.close();
     }

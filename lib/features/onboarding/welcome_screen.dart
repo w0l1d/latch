@@ -25,9 +25,9 @@ class WelcomeScreen extends StatelessWidget {
               const SizedBox(height: 18),
               Text(
                 'Encrypt files right here on your phone. No account, no cloud — nothing leaves this device.',
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: LatchColors.muted,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyLarge?.copyWith(color: LatchColors.muted),
                 textAlign: TextAlign.center,
               ),
               const Spacer(),

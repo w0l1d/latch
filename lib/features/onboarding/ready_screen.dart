@@ -23,7 +23,11 @@ class ReadyScreen extends StatelessWidget {
                   shape: BoxShape.circle,
                   border: Border.all(color: LatchColors.safe, width: 3),
                 ),
-                child: const Icon(Icons.check, color: LatchColors.safe, size: 32),
+                child: const Icon(
+                  Icons.check,
+                  color: LatchColors.safe,
+                  size: 32,
+                ),
               ),
               const SizedBox(height: 28),
               Text(
@@ -34,9 +38,9 @@ class ReadyScreen extends StatelessWidget {
               const SizedBox(height: 16),
               Text(
                 'No passphrase is saved yet — you\'ll choose one when you lock your first file.',
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: LatchColors.muted,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyLarge?.copyWith(color: LatchColors.muted),
                 textAlign: TextAlign.center,
               ),
               const Spacer(),

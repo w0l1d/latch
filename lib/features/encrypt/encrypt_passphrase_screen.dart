@@ -13,7 +13,8 @@ class EncryptPassphraseScreen extends StatefulWidget {
   const EncryptPassphraseScreen({super.key, required this.files});
 
   @override
-  State<EncryptPassphraseScreen> createState() => _EncryptPassphraseScreenState();
+  State<EncryptPassphraseScreen> createState() =>
+      _EncryptPassphraseScreenState();
 }
 
 class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
@@ -30,7 +31,9 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
     super.initState();
     _controller.addListener(() {
       setState(() {
-        _strength = _controller.text.isEmpty ? null : CryptoStub.evaluate(_controller.text);
+        _strength = _controller.text.isEmpty
+            ? null
+            : CryptoStub.evaluate(_controller.text);
       });
     });
     _checkAuth();
@@ -59,7 +62,11 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
     if (entries.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No saved passphrases yet. Save one on this screen first.')),
+          const SnackBar(
+            content: Text(
+              'No saved passphrases yet. Save one on this screen first.',
+            ),
+          ),
         );
       }
       return;
@@ -73,8 +80,10 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
           children: [
             const Padding(
               padding: EdgeInsets.all(16),
-              child: Text('Pick a saved passphrase',
-                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+              child: Text(
+                'Pick a saved passphrase',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+              ),
             ),
             // Flexible + ListView: a long vault list scrolls inside the
             // sheet instead of overflowing it.
@@ -82,13 +91,18 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
               child: ListView(
                 shrinkWrap: true,
                 children: entries
-                    .map((e) => ListTile(
-                          leading: const Icon(Icons.vpn_key_outlined),
-                          title: Text(_displayLabel(e.label),
-                              maxLines: 1, overflow: TextOverflow.ellipsis),
-                          subtitle: Text('Saved ${_friendlyDate(e.createdAt)}'),
-                          onTap: () => Navigator.pop(ctx, e.label),
-                        ))
+                    .map(
+                      (e) => ListTile(
+                        leading: const Icon(Icons.vpn_key_outlined),
+                        title: Text(
+                          _displayLabel(e.label),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        subtitle: Text('Saved ${_friendlyDate(e.createdAt)}'),
+                        onTap: () => Navigator.pop(ctx, e.label),
+                      ),
+                    )
                     .toList(),
               ),
             ),
@@ -115,8 +129,10 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content: Text(
-                'Could not unlock the saved passphrase — authentication was cancelled or failed.')),
+          content: Text(
+            'Could not unlock the saved passphrase — authentication was cancelled or failed.',
+          ),
+        ),
       );
     }
   }
@@ -140,8 +156,18 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
   /// leak what the user encrypts.
   static String _autoName() {
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     final now = DateTime.now();
     final hh = now.hour.toString().padLeft(2, '0');
@@ -177,8 +203,10 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-                content: Text(
-                    'Could not save the passphrase — continuing without quick unlock.')),
+              content: Text(
+                'Could not save the passphrase — continuing without quick unlock.',
+              ),
+            ),
           );
         }
       }
@@ -204,11 +232,16 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
 
   Color get _strengthColor {
     switch (_strength?.strength) {
-      case PassphraseStrength.weak: return LatchColors.danger;
-      case PassphraseStrength.fair: return LatchColors.caution;
-      case PassphraseStrength.strong: return LatchColors.safe;
-      case PassphraseStrength.veryStrong: return LatchColors.safe;
-      default: return LatchColors.border;
+      case PassphraseStrength.weak:
+        return LatchColors.danger;
+      case PassphraseStrength.fair:
+        return LatchColors.caution;
+      case PassphraseStrength.strong:
+        return LatchColors.safe;
+      case PassphraseStrength.veryStrong:
+        return LatchColors.safe;
+      default:
+        return LatchColors.border;
     }
   }
 
@@ -225,7 +258,10 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _SourceChips(selected: _selectedChip, onSelected: _onChipSelected),
+              _SourceChips(
+                selected: _selectedChip,
+                onSelected: _onChipSelected,
+              ),
               const SizedBox(height: 20),
               if (_selectedChip == 2)
                 AutofillGroup(
@@ -238,8 +274,10 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
                       hintText: 'Enter passphrase',
                       suffixIcon: TextButton(
                         onPressed: () => setState(() => _obscure = !_obscure),
-                        child: Text(_obscure ? 'show' : 'hide',
-                            style: const TextStyle(color: LatchColors.subtle)),
+                        child: Text(
+                          _obscure ? 'show' : 'hide',
+                          style: const TextStyle(color: LatchColors.subtle),
+                        ),
                       ),
                     ),
                     style: const TextStyle(fontSize: 17, letterSpacing: 1.5),
@@ -254,8 +292,10 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
                     hintText: 'Enter passphrase',
                     suffixIcon: TextButton(
                       onPressed: () => setState(() => _obscure = !_obscure),
-                      child: Text(_obscure ? 'show' : 'hide',
-                          style: const TextStyle(color: LatchColors.subtle)),
+                      child: Text(
+                        _obscure ? 'show' : 'hide',
+                        style: const TextStyle(color: LatchColors.subtle),
+                      ),
                     ),
                   ),
                   style: const TextStyle(fontSize: 17, letterSpacing: 1.5),
@@ -276,41 +316,44 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
                   label: 'Save for quick unlock',
                   child: GestureDetector(
                     onTap: _toggleSave,
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: _saveForQuickUnlock ? LatchColors.ink : LatchColors.border,
-                        width: _saveForQuickUnlock ? 2.5 : 1.5,
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          _saveForQuickUnlock
-                              ? Icons.fingerprint
-                              : Icons.fingerprint_outlined,
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        border: Border.all(
                           color: _saveForQuickUnlock
                               ? LatchColors.ink
-                              : LatchColors.muted,
-                          size: 20,
+                              : LatchColors.border,
+                          width: _saveForQuickUnlock ? 2.5 : 1.5,
                         ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            'Save for quick unlock',
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: _saveForQuickUnlock
-                                  ? LatchColors.ink
-                                  : LatchColors.muted,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            _saveForQuickUnlock
+                                ? Icons.fingerprint
+                                : Icons.fingerprint_outlined,
+                            color: _saveForQuickUnlock
+                                ? LatchColors.ink
+                                : LatchColors.muted,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Save for quick unlock',
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(
+                                    color: _saveForQuickUnlock
+                                        ? LatchColors.ink
+                                        : LatchColors.muted,
+                                  ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
-                ),
                 ),
               if (_canSave && _saveForQuickUnlock) ...[
                 const SizedBox(height: 10),
@@ -331,7 +374,9 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
               const Spacer(),
               LatchPrimaryButton(
                 label: 'Continue',
-                onPressed: _controller.text.isNotEmpty ? _storeAndContinue : null,
+                onPressed: _controller.text.isNotEmpty
+                    ? _storeAndContinue
+                    : null,
               ),
               const SizedBox(height: 8),
             ],
@@ -361,25 +406,25 @@ class _SourceChips extends StatelessWidget {
           child: GestureDetector(
             onTap: () => onSelected(i),
             child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-            decoration: BoxDecoration(
-              color: active ? LatchColors.ink : Colors.transparent,
-              border: Border.all(
-                color: active ? LatchColors.ink : LatchColors.border,
-                width: 2,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              decoration: BoxDecoration(
+                color: active ? LatchColors.ink : Colors.transparent,
+                border: Border.all(
+                  color: active ? LatchColors.ink : LatchColors.border,
+                  width: 2,
+                ),
+                borderRadius: BorderRadius.circular(20),
               ),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              _labels[i],
-              style: TextStyle(
-                fontSize: 13,
-                color: active ? Colors.white : LatchColors.muted,
-                fontWeight: FontWeight.w500,
+              child: Text(
+                _labels[i],
+                style: TextStyle(
+                  fontSize: 13,
+                  color: active ? Colors.white : LatchColors.muted,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
           ),
-        ),
         );
       }),
     );

@@ -14,7 +14,8 @@ class PassphraseStorageScreen extends StatefulWidget {
   const PassphraseStorageScreen({super.key});
 
   @override
-  State<PassphraseStorageScreen> createState() => _PassphraseStorageScreenState();
+  State<PassphraseStorageScreen> createState() =>
+      _PassphraseStorageScreenState();
 }
 
 class _PassphraseStorageScreenState extends State<PassphraseStorageScreen> {
@@ -108,7 +109,10 @@ class _PassphraseStorageScreenState extends State<PassphraseStorageScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete', style: TextStyle(color: LatchColors.danger)),
+            child: const Text(
+              'Delete',
+              style: TextStyle(color: LatchColors.danger),
+            ),
           ),
         ],
       ),
@@ -117,7 +121,9 @@ class _PassphraseStorageScreenState extends State<PassphraseStorageScreen> {
 
   void _showSnack(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   /// Entry labels are file paths when saved from a single-file encrypt —
@@ -155,15 +161,16 @@ class _PassphraseStorageScreenState extends State<PassphraseStorageScreen> {
                 title: 'Use my password manager',
                 subtitle: 'The app stores nothing; your manager holds it.',
                 selected: _mode == _StorageMode.passwordManager,
-                onTap: () => setState(() => _mode = _StorageMode.passwordManager),
+                onTap: () =>
+                    setState(() => _mode = _StorageMode.passwordManager),
               ),
               const SizedBox(height: 24),
               Text(
                 'STORED ON THIS DEVICE',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      letterSpacing: 0.8,
-                      fontWeight: FontWeight.w600,
-                    ),
+                  letterSpacing: 0.8,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               const SizedBox(height: 8),
               if (_entries.isEmpty)
@@ -175,15 +182,21 @@ class _PassphraseStorageScreenState extends State<PassphraseStorageScreen> {
                 ..._entries.map(
                   (e) => ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.vpn_key_outlined,
-                        color: LatchColors.muted),
-                    title: Text(_entryLabel(e),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodyMedium),
+                    leading: const Icon(
+                      Icons.vpn_key_outlined,
+                      color: LatchColors.muted,
+                    ),
+                    title: Text(
+                      _entryLabel(e),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
                     trailing: IconButton(
-                      icon: const Icon(Icons.delete_outline,
-                          color: LatchColors.danger),
+                      icon: const Icon(
+                        Icons.delete_outline,
+                        color: LatchColors.danger,
+                      ),
                       tooltip: 'Delete stored passphrase',
                       onPressed: () => _deleteEntry(e),
                     ),
@@ -209,7 +222,12 @@ class _ModeCard extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
 
-  const _ModeCard({required this.title, required this.subtitle, required this.selected, required this.onTap});
+  const _ModeCard({
+    required this.title,
+    required this.subtitle,
+    required this.selected,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -219,48 +237,56 @@ class _ModeCard extends StatelessWidget {
       child: GestureDetector(
         onTap: onTap,
         child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          border: Border.all(
-            color: selected ? LatchColors.ink : LatchColors.border,
-            width: selected ? 2.5 : 1.5,
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: selected ? LatchColors.ink : LatchColors.border,
+              width: selected ? 2.5 : 1.5,
+            ),
+            borderRadius: BorderRadius.circular(14),
           ),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 24,
-              height: 24,
-              margin: const EdgeInsets.only(top: 1),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: selected ? LatchColors.ink : LatchColors.border,
-                  width: 2,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 24,
+                height: 24,
+                margin: const EdgeInsets.only(top: 1),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: selected ? LatchColors.ink : LatchColors.border,
+                    width: 2,
+                  ),
+                ),
+                child: selected
+                    ? const Center(
+                        child: CircleAvatar(
+                          radius: 5,
+                          backgroundColor: LatchColors.ink,
+                        ),
+                      )
+                    : null,
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: Theme.of(context).textTheme.bodyLarge),
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
                 ),
               ),
-              child: selected
-                  ? const Center(child: CircleAvatar(radius: 5, backgroundColor: LatchColors.ink))
-                  : null,
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: Theme.of(context).textTheme.bodyLarge),
-                  const SizedBox(height: 3),
-                  Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
-                ],
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
-    ),
     );
   }
 }

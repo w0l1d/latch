@@ -52,8 +52,9 @@ class FileIoDart implements FileIoPort {
   String withSuffix(String path, String suffix) => '$path$suffix';
 
   @override
-  String withoutSuffix(String path, String suffix) =>
-      path.endsWith(suffix) ? path.substring(0, path.length - suffix.length) : path;
+  String withoutSuffix(String path, String suffix) => path.endsWith(suffix)
+      ? path.substring(0, path.length - suffix.length)
+      : path;
 
   @override
   String resolveOutputPath(String defaultPath, String? outputDir) {

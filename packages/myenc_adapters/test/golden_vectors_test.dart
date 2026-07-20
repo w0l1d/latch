@@ -48,9 +48,9 @@ void main() {
 
   group('KDF golden vectors (argon2-cffi ↔ libsodium)', () {
     test('argon2idDerive reproduces every independent KEK', () {
-      final cases = (jsonDecode(_golden('golden_kdf.json').readAsStringSync())
-          as List)
-          .cast<Map<String, dynamic>>();
+      final cases =
+          (jsonDecode(_golden('golden_kdf.json').readAsStringSync()) as List)
+              .cast<Map<String, dynamic>>();
       expect(cases, isNotEmpty);
       for (final c in cases) {
         final kek = adapter.argon2idDerive(
@@ -60,8 +60,11 @@ void main() {
           memlimit: c['memlimit_kib'] as int,
           outputLength: 32,
         );
-        expect(_bytesHex(kek), c['kek_hex'],
-            reason: 'KEK mismatch for salt ${c['salt_hex']}');
+        expect(
+          _bytesHex(kek),
+          c['kek_hex'],
+          reason: 'KEK mismatch for salt ${c['salt_hex']}',
+        );
       }
     });
   });
@@ -72,8 +75,9 @@ void main() {
 
     setUp(() {
       latch = _golden('golden_v1.latch').readAsBytesSync();
-      meta = jsonDecode(_golden('golden_v1.json').readAsStringSync())
-          as Map<String, dynamic>;
+      meta =
+          jsonDecode(_golden('golden_v1.json').readAsStringSync())
+              as Map<String, dynamic>;
     });
 
     test('header decodes to the independently-written field values', () {
@@ -92,10 +96,12 @@ void main() {
     });
 
     test('decrypts to the expected plaintext', () async {
-      final plain = await _collect(EnvelopeService(adapter).decrypt(
-        ciphertext: Stream.value(latch),
-        passphrase: utf8.encode(meta['passphrase'] as String),
-      ));
+      final plain = await _collect(
+        EnvelopeService(adapter).decrypt(
+          ciphertext: Stream.value(latch),
+          passphrase: utf8.encode(meta['passphrase'] as String),
+        ),
+      );
       expect(_bytesHex(Uint8List.fromList(plain)), meta['plaintext_hex']);
     });
 
@@ -110,44 +116,55 @@ void main() {
         memlimit: hdr.memlimit,
       );
       final name = EnvelopeService.decryptFilename(
-        crypto: adapter, header: hdr, dek: dek);
+        crypto: adapter,
+        header: hdr,
+        dek: dek,
+      );
       expect(name, isNotNull);
       expect(utf8.decode(name!), meta['filename']);
     });
 
     test('wrong passphrase is rejected', () {
       expect(
-        () => _collect(EnvelopeService(adapter).decrypt(
-          ciphertext: Stream.value(latch),
-          passphrase: utf8.encode(meta['wrong_passphrase'] as String),
-        )),
+        () => _collect(
+          EnvelopeService(adapter).decrypt(
+            ciphertext: Stream.value(latch),
+            passphrase: utf8.encode(meta['wrong_passphrase'] as String),
+          ),
+        ),
         throwsA(isA<WrongPassphraseError>()),
       );
     });
 
     test('changePassphrase re-wraps the golden fixture (real sodium)', () async {
       final rewrapped = Uint8List.fromList(
-        await _collect(EnvelopeService(adapter).changePassphrase(
-          ciphertext: Stream.value(latch),
-          oldPassphrase: utf8.encode(meta['passphrase'] as String),
-          newPassphrase: utf8.encode('a completely new passphrase'),
-          params: const KdfParams(opslimit: 2, memlimit: 65536),
-        )),
+        await _collect(
+          EnvelopeService(adapter).changePassphrase(
+            ciphertext: Stream.value(latch),
+            oldPassphrase: utf8.encode(meta['passphrase'] as String),
+            newPassphrase: utf8.encode('a completely new passphrase'),
+            params: const KdfParams(opslimit: 2, memlimit: 65536),
+          ),
+        ),
       );
 
       // New passphrase decrypts to the original plaintext…
-      final plain = await _collect(EnvelopeService(adapter).decrypt(
-        ciphertext: Stream.value(rewrapped),
-        passphrase: utf8.encode('a completely new passphrase'),
-      ));
+      final plain = await _collect(
+        EnvelopeService(adapter).decrypt(
+          ciphertext: Stream.value(rewrapped),
+          passphrase: utf8.encode('a completely new passphrase'),
+        ),
+      );
       expect(_bytesHex(Uint8List.fromList(plain)), meta['plaintext_hex']);
 
       // …the old passphrase no longer opens it…
       expect(
-        () => _collect(EnvelopeService(adapter).decrypt(
-          ciphertext: Stream.value(rewrapped),
-          passphrase: utf8.encode(meta['passphrase'] as String),
-        )),
+        () => _collect(
+          EnvelopeService(adapter).decrypt(
+            ciphertext: Stream.value(rewrapped),
+            passphrase: utf8.encode(meta['passphrase'] as String),
+          ),
+        ),
         throwsA(isA<WrongPassphraseError>()),
       );
 
@@ -162,7 +179,10 @@ void main() {
         memlimit: hdr.memlimit,
       );
       final name = EnvelopeService.decryptFilename(
-          crypto: adapter, header: hdr, dek: dek);
+        crypto: adapter,
+        header: hdr,
+        dek: dek,
+      );
       expect(utf8.decode(name!), meta['filename']);
     });
 
@@ -170,10 +190,12 @@ void main() {
       final tampered = Uint8List.fromList(latch);
       tampered[tampered.length - 1] ^= 0x01; // last byte of the FINAL tag/MAC
       expect(
-        () => _collect(EnvelopeService(adapter).decrypt(
-          ciphertext: Stream.value(tampered),
-          passphrase: utf8.encode(meta['passphrase'] as String),
-        )),
+        () => _collect(
+          EnvelopeService(adapter).decrypt(
+            ciphertext: Stream.value(tampered),
+            passphrase: utf8.encode(meta['passphrase'] as String),
+          ),
+        ),
         throwsA(isA<CorruptedFileError>()),
       );
     });

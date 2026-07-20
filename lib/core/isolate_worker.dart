@@ -75,8 +75,21 @@ Future<void> _encryptBatch(
     final path = files[i];
 
     try {
-      final outPath = await _encryptOne(crypto, io, svc, path, passphrase, params,
-          deleteOriginals, outputDir, keyIdHint, deviceKey, i, files.length, mainPort);
+      final outPath = await _encryptOne(
+        crypto,
+        io,
+        svc,
+        path,
+        passphrase,
+        params,
+        deleteOriginals,
+        outputDir,
+        keyIdHint,
+        deviceKey,
+        i,
+        files.length,
+        mainPort,
+      );
       mainPort.send({
         'type': 'file_done',
         'path': path,
@@ -126,7 +139,8 @@ Future<String> _encryptOne(
   }
 
   final outPath = io.resolveNameCollision(
-      io.resolveOutputPath('$path.latch', outputDir));
+    io.resolveOutputPath('$path.latch', outputDir),
+  );
   // Announce the output before writing so the main isolate can remove the
   // in-flight <outPath>.tmp if the batch is cancelled mid-write.
   mainPort.send({'type': 'file_start', 'outPath': outPath});
@@ -143,8 +157,9 @@ Future<String> _encryptOne(
       deviceKey: deviceKey,
     )) {
       sink.add(chunk);
-      final fileFrac =
-          totalBytes > 0 ? (readBytes / totalBytes).clamp(0.0, 1.0) : 1.0;
+      final fileFrac = totalBytes > 0
+          ? (readBytes / totalBytes).clamp(0.0, 1.0)
+          : 1.0;
       final overall = (index + fileFrac) / total;
       final pct = (overall * 100).round();
       if (pct != lastPct) {
@@ -200,7 +215,13 @@ Future<void> _rewrapBatch(
           keyIdHint: keyIdHint,
         ),
       );
-      mainPort.send({'type': 'file_done', 'path': path, 'ok': true, 'error': null, 'outPath': path});
+      mainPort.send({
+        'type': 'file_done',
+        'path': path,
+        'ok': true,
+        'error': null,
+        'outPath': path,
+      });
     } catch (e) {
       mainPort.send({
         'type': 'file_done',
@@ -256,7 +277,13 @@ Future<void> _addRecipientBatch(
           recipientPublicKey: recipientPublicKey,
         ),
       );
-      mainPort.send({'type': 'file_done', 'path': path, 'ok': true, 'error': null, 'outPath': path});
+      mainPort.send({
+        'type': 'file_done',
+        'path': path,
+        'ok': true,
+        'error': null,
+        'outPath': path,
+      });
     } catch (e) {
       mainPort.send({
         'type': 'file_done',
@@ -270,17 +297,20 @@ Future<void> _addRecipientBatch(
   }
 }
 
-Future<void> _shredBatch(
-  Map<String, dynamic> task,
-  SendPort mainPort,
-) async {
+Future<void> _shredBatch(Map<String, dynamic> task, SendPort mainPort) async {
   final files = (task['files'] as List).cast<String>();
 
   for (int i = 0; i < files.length; i++) {
     final path = files[i];
     try {
       await CryptoErase.eraseAndDelete(path);
-      mainPort.send({'type': 'file_done', 'path': path, 'ok': true, 'error': null, 'outPath': path});
+      mainPort.send({
+        'type': 'file_done',
+        'path': path,
+        'ok': true,
+        'error': null,
+        'outPath': path,
+      });
     } catch (e) {
       mainPort.send({
         'type': 'file_done',
@@ -312,8 +342,20 @@ Future<void> _decryptBatch(
     final path = files[i];
 
     try {
-      final outPath = await _decryptOne(crypto, io, svc, path, passphrase, outputDir,
-          deviceKey, recipientPublicKey, recipientSecretKey, i, files.length, mainPort);
+      final outPath = await _decryptOne(
+        crypto,
+        io,
+        svc,
+        path,
+        passphrase,
+        outputDir,
+        deviceKey,
+        recipientPublicKey,
+        recipientSecretKey,
+        i,
+        files.length,
+        mainPort,
+      );
       mainPort.send({
         'type': 'file_done',
         'path': path,
@@ -362,7 +404,8 @@ Future<String> _decryptOne(
   }
 
   final outPath = io.resolveNameCollision(
-      io.resolveOutputPath(io.withoutSuffix(path, '.latch'), outputDir));
+    io.resolveOutputPath(io.withoutSuffix(path, '.latch'), outputDir),
+  );
   // Announce the output before writing so the main isolate can remove the
   // in-flight <outPath>.tmp (partial plaintext!) if the batch is cancelled.
   mainPort.send({'type': 'file_start', 'outPath': outPath});
@@ -379,8 +422,9 @@ Future<String> _decryptOne(
       recipientSecretKey: recipientSecretKey,
     )) {
       sink.add(chunk);
-      final progress =
-          totalBytes > 0 ? (readBytes / totalBytes).clamp(0.0, 0.98) : 0.5;
+      final progress = totalBytes > 0
+          ? (readBytes / totalBytes).clamp(0.0, 0.98)
+          : 0.5;
       final overall = (index + progress) / total;
       final pct = (overall * 100).round();
       if (pct != lastPct) {

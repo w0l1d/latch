@@ -72,25 +72,29 @@ class _DeviceCheckScreenState extends State<DeviceCheckScreen> {
     final pwhash = sodium.crypto.pwhash;
 
     // Warm-up pass (JIT / caching effects)
-    pwhash.call(
-      outLen: 32,
-      password: Int8List.fromList(testPw),
-      salt: testSalt,
-      opsLimit: ops,
-      memLimit: mem * 1024,
-      alg: CryptoPwhashAlgorithm.argon2id13,
-    ).dispose();
+    pwhash
+        .call(
+          outLen: 32,
+          password: Int8List.fromList(testPw),
+          salt: testSalt,
+          opsLimit: ops,
+          memLimit: mem * 1024,
+          alg: CryptoPwhashAlgorithm.argon2id13,
+        )
+        .dispose();
 
     for (int attempt = 0; attempt < 8; attempt++) {
       final sw = Stopwatch()..start();
-      pwhash.call(
-        outLen: 32,
-        password: Int8List.fromList(testPw),
-        salt: testSalt,
-        opsLimit: ops,
-        memLimit: mem * 1024,
-        alg: CryptoPwhashAlgorithm.argon2id13,
-      ).dispose();
+      pwhash
+          .call(
+            outLen: 32,
+            password: Int8List.fromList(testPw),
+            salt: testSalt,
+            opsLimit: ops,
+            memLimit: mem * 1024,
+            alg: CryptoPwhashAlgorithm.argon2id13,
+          )
+          .dispose();
       sw.stop();
 
       if (!mounted) break;
@@ -134,9 +138,9 @@ class _DeviceCheckScreenState extends State<DeviceCheckScreen> {
               const SizedBox(height: 20),
               Text(
                 'A quick one-time check so encryption runs smoothly on your device.',
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: LatchColors.muted,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyLarge?.copyWith(color: LatchColors.muted),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 12),

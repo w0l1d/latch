@@ -182,10 +182,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _SectionHeader('Encryption'),
           // The .latch v1 format has exactly one cipher — state it instead of
           // offering a selector that couldn't change anything.
-          _InfoTile(
-            title: 'Cipher',
-            value: 'XChaCha20-Poly1305',
-          ),
+          _InfoTile(title: 'Cipher', value: 'XChaCha20-Poly1305'),
           _SelectTile(
             title: 'KDF cost',
             value: _kdfCost,
@@ -215,15 +212,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
             value: Platform.isAndroid
                 ? 'Same folder as the original, or Downloads — changeable per encrypt'
                 : Platform.isIOS
-                    ? 'Latch folder in Files — changeable per encrypt'
-                    : 'Next to each original — changeable per encrypt',
+                ? 'Latch folder in Files — changeable per encrypt'
+                : 'Next to each original — changeable per encrypt',
           ),
           _SectionHeader('About'),
           _InfoTile(title: 'Version', value: _version),
-          _InfoTile(
-            title: 'File format',
-            value: '.latch (v1)',
-          ),
+          _InfoTile(title: 'File format', value: '.latch (v1)'),
           const SizedBox(height: 32),
         ],
       ),
@@ -256,7 +250,12 @@ class _SwitchTile extends StatelessWidget {
   final bool value;
   final ValueChanged<bool>? onChanged;
 
-  const _SwitchTile({required this.title, required this.subtitle, required this.value, required this.onChanged});
+  const _SwitchTile({
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.onChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -276,7 +275,11 @@ class _NavTile extends StatelessWidget {
   final String subtitle;
   final VoidCallback onTap;
 
-  const _NavTile({required this.title, required this.subtitle, required this.onTap});
+  const _NavTile({
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -312,7 +315,12 @@ class _SelectTile extends StatelessWidget {
   final List<String> options;
   final ValueChanged<String>? onChanged;
 
-  const _SelectTile({required this.title, required this.value, required this.options, required this.onChanged});
+  const _SelectTile({
+    required this.title,
+    required this.value,
+    required this.options,
+    required this.onChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -322,8 +330,14 @@ class _SelectTile extends StatelessWidget {
         value: value,
         underline: const SizedBox(),
         style: Theme.of(context).textTheme.bodyMedium,
-        items: options.map((o) => DropdownMenuItem(value: o, child: Text(o))).toList(),
-        onChanged: onChanged != null ? (v) { if (v != null) onChanged!(v); } : null,
+        items: options
+            .map((o) => DropdownMenuItem(value: o, child: Text(o)))
+            .toList(),
+        onChanged: onChanged != null
+            ? (v) {
+                if (v != null) onChanged!(v);
+              }
+            : null,
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 20),
     );

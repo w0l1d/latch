@@ -41,7 +41,11 @@ class EncryptSuccessScreen extends StatelessWidget {
                     color: LatchColors.safeLight,
                     border: Border.all(color: LatchColors.safe, width: 3),
                   ),
-                  child: const Icon(Icons.check, color: LatchColors.safe, size: 32),
+                  child: const Icon(
+                    Icons.check,
+                    color: LatchColors.safe,
+                    size: 32,
+                  ),
                 ),
                 const SizedBox(height: 20),
                 Text(

@@ -30,7 +30,9 @@ class LatchAlert extends StatelessWidget {
   Widget build(BuildContext context) {
     final accent = _danger ? LatchColors.danger : LatchColors.caution;
     final bg = _danger ? LatchColors.dangerLight : LatchColors.cautionLight;
-    final bodyColor = _danger ? const Color(0xFF7A3128) : const Color(0xFF5C3D1A);
+    final bodyColor = _danger
+        ? const Color(0xFF7A3128)
+        : const Color(0xFF5C3D1A);
 
     return AlertDialog(
       backgroundColor: bg,
@@ -55,7 +57,8 @@ class LatchAlert extends StatelessWidget {
             style: _danger
                 ? ElevatedButton.styleFrom(
                     backgroundColor: LatchColors.danger,
-                    foregroundColor: Colors.white)
+                    foregroundColor: Colors.white,
+                  )
                 : null,
             child: Text(buttonLabel),
           ),

@@ -40,10 +40,8 @@ class RecipientKeyService {
   /// AppCrypto.generateShareKeypair by main(), faked in tests.
   final Future<ShareKeypair> Function()? keygen;
 
-  RecipientKeyService({
-    FlutterSecureStorage? storage,
-    this.keygen,
-  }) : _storage = storage ?? const FlutterSecureStorage();
+  RecipientKeyService({FlutterSecureStorage? storage, this.keygen})
+    : _storage = storage ?? const FlutterSecureStorage();
 
   // ---- my keypair -----------------------------------------------------------
 
@@ -62,7 +60,8 @@ class RecipientKeyService {
     final generate = keygen;
     if (generate == null) {
       throw StateError(
-          'RecipientKeyService has no keypair generator configured');
+        'RecipientKeyService has no keypair generator configured',
+      );
     }
     final kp = await generate();
     await _storage.write(key: _pkTag, value: _hexEncode(kp.publicKey));
@@ -105,8 +104,11 @@ class RecipientKeyService {
   Future<void> storeRecipient(String label, String publicKeyHex) async {
     final normalized = publicKeyHex.trim().toLowerCase();
     if (!_hexKeyPattern.hasMatch(normalized)) {
-      throw ArgumentError.value(publicKeyHex, 'publicKeyHex',
-          'must be 64 hex characters (a 32-byte X25519 public key)');
+      throw ArgumentError.value(
+        publicKeyHex,
+        'publicKeyHex',
+        'must be 64 hex characters (a 32-byte X25519 public key)',
+      );
     }
     final meta = await _readMeta();
     meta.removeWhere((m) => m['label'] == label);

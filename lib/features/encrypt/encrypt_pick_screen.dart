@@ -49,9 +49,11 @@ class _EncryptPickScreenState extends State<EncryptPickScreen> {
     return Scaffold(
       appBar: AppBar(
         leading: BackButton(onPressed: () => context.pop()),
-        title: Text(_files.isEmpty
-            ? 'Encrypt files'
-            : '${_files.length} file${_files.length == 1 ? '' : 's'} selected'),
+        title: Text(
+          _files.isEmpty
+              ? 'Encrypt files'
+              : '${_files.length} file${_files.length == 1 ? '' : 's'} selected',
+        ),
       ),
       body: SafeArea(
         child: Padding(
@@ -66,42 +68,57 @@ class _EncryptPickScreenState extends State<EncryptPickScreen> {
                     child: GestureDetector(
                       onTap: _picking ? null : _pickFiles,
                       child: Container(
-                      decoration: BoxDecoration(
-                        border: Border.all(color: LatchColors.border, width: 2),
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                      child: Center(
-                        child: _picking
-                            ? const CircularProgressIndicator(color: LatchColors.ink)
-                            : Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Container(
-                                    width: 52,
-                                    height: 52,
-                                    decoration: BoxDecoration(
-                                      border: Border.all(color: LatchColors.border, width: 2),
-                                      borderRadius: BorderRadius.circular(12),
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                            color: LatchColors.border,
+                            width: 2,
+                          ),
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: Center(
+                          child: _picking
+                              ? const CircularProgressIndicator(
+                                  color: LatchColors.ink,
+                                )
+                              : Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      width: 52,
+                                      height: 52,
+                                      decoration: BoxDecoration(
+                                        border: Border.all(
+                                          color: LatchColors.border,
+                                          width: 2,
+                                        ),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: const Icon(
+                                        Icons.add,
+                                        color: LatchColors.muted,
+                                        size: 28,
+                                      ),
                                     ),
-                                    child: const Icon(Icons.add, color: LatchColors.muted, size: 28),
-                                  ),
-                                  const SizedBox(height: 14),
-                                  Text(
-                                    'Choose files to lock',
-                                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                                      color: LatchColors.muted,
+                                    const SizedBox(height: 14),
+                                    Text(
+                                      'Choose files to lock',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .headlineMedium
+                                          ?.copyWith(color: LatchColors.muted),
                                     ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    'Opens your phone\'s file picker.',
-                                    style: Theme.of(context).textTheme.bodySmall,
-                                  ),
-                                ],
-                              ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      'Opens your phone\'s file picker.',
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.bodySmall,
+                                    ),
+                                  ],
+                                ),
+                        ),
                       ),
                     ),
-                  ),
                   ),
                 )
               else ...[
@@ -129,9 +146,15 @@ class _EncryptPickScreenState extends State<EncryptPickScreen> {
                           ? const SizedBox(
                               height: 18,
                               width: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: LatchColors.ink),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: LatchColors.ink,
+                              ),
                             )
-                          : Text('+ Add more', style: Theme.of(context).textTheme.bodyMedium),
+                          : Text(
+                              '+ Add more',
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
                     ),
                   ),
                 ),
@@ -141,7 +164,10 @@ class _EncryptPickScreenState extends State<EncryptPickScreen> {
                 label: 'Set a passphrase',
                 onPressed: _files.isEmpty
                     ? null
-                    : () => context.push('/encrypt/passphrase', extra: List<String>.from(_files)),
+                    : () => context.push(
+                        '/encrypt/passphrase',
+                        extra: List<String>.from(_files),
+                      ),
               ),
               const SizedBox(height: 8),
             ],

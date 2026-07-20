@@ -10,7 +10,8 @@ class FileHeader {
   // Decode-time bounds for untrusted header fields. These are format-level
   // sanity limits (DoS protection), not the security floor enforced at
   // encrypt time — a weak-but-well-formed file must still be decryptable.
-  static const int minChunkSize = 64; // prevents pathological DoS (1-byte chunks)
+  static const int minChunkSize =
+      64; // prevents pathological DoS (1-byte chunks)
   static const int maxChunkSize = 16 * 1024 * 1024; // 16 MiB
   static const int minOpslimit = 1; // libsodium argon2id13 minimum
   static const int maxOpslimit = 64;
@@ -36,6 +37,7 @@ class FileHeader {
   final Uint8List keyIdHint;
   final List<WrapEntry> wraps;
   final Uint8List secretstreamHeader;
+
   /// Present only when [filenameEncrypted] is true (flags bit0 = 1).
   /// Encrypted with the DEK via secretbox.
   final Uint8List? encryptedFilename;

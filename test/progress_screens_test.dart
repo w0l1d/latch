@@ -55,45 +55,53 @@ void main() {
   }
 
   testWidgets(
-      'encrypt progress with an empty file list shows an error, not an eternal spinner',
-      (tester) async {
-    final router = await pumpProgress(
-      tester,
-      const EncryptProgressScreen(
-        files: [],
-        passphrase: 'x',
-        deleteOriginals: false,
-      ),
-    );
+    'encrypt progress with an empty file list shows an error, not an eternal spinner',
+    (tester) async {
+      final router = await pumpProgress(
+        tester,
+        const EncryptProgressScreen(
+          files: [],
+          passphrase: 'x',
+          deleteOriginals: false,
+        ),
+      );
 
-    expect(find.text('Nothing to lock'), findsOneWidget,
-        reason: 'an empty batch must fail visibly instead of spinning forever');
+      expect(
+        find.text('Nothing to lock'),
+        findsOneWidget,
+        reason: 'an empty batch must fail visibly instead of spinning forever',
+      );
 
-    // The escape hatch works: dialog button pops back to the previous screen.
-    await tester.tap(find.text('Go back'));
-    for (var i = 0; i < 10; i++) {
-      await tester.pump(const Duration(milliseconds: 50));
-    }
-    expect(find.text('previous screen'), findsOneWidget);
-    expect(router.state.matchedLocation, '/prev');
-  });
+      // The escape hatch works: dialog button pops back to the previous screen.
+      await tester.tap(find.text('Go back'));
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(find.text('previous screen'), findsOneWidget);
+      expect(router.state.matchedLocation, '/prev');
+    },
+  );
 
   testWidgets(
-      'decrypt progress with an empty file list shows an error, not an eternal spinner',
-      (tester) async {
-    final router = await pumpProgress(
-      tester,
-      const DecryptProgressScreen(files: [], passphrase: 'x'),
-    );
+    'decrypt progress with an empty file list shows an error, not an eternal spinner',
+    (tester) async {
+      final router = await pumpProgress(
+        tester,
+        const DecryptProgressScreen(files: [], passphrase: 'x'),
+      );
 
-    expect(find.text('Nothing to unlock'), findsOneWidget,
-        reason: 'an empty batch must fail visibly instead of spinning forever');
+      expect(
+        find.text('Nothing to unlock'),
+        findsOneWidget,
+        reason: 'an empty batch must fail visibly instead of spinning forever',
+      );
 
-    await tester.tap(find.text('Try again'));
-    for (var i = 0; i < 10; i++) {
-      await tester.pump(const Duration(milliseconds: 50));
-    }
-    expect(find.text('previous screen'), findsOneWidget);
-    expect(router.state.matchedLocation, '/prev');
-  });
+      await tester.tap(find.text('Try again'));
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(find.text('previous screen'), findsOneWidget);
+      expect(router.state.matchedLocation, '/prev');
+    },
+  );
 }

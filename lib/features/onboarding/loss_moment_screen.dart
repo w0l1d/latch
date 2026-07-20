@@ -51,9 +51,9 @@ class _LossMomentScreenState extends State<LossMomentScreen> {
               const SizedBox(height: 16),
               Text(
                 'If you forget your passphrase, your files stay locked — permanently. No one can recover them. That\'s the point.',
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: const Color(0xFF7A3128),
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyLarge?.copyWith(color: const Color(0xFF7A3128)),
               ),
               const SizedBox(height: 28),
               MergeSemantics(
@@ -62,10 +62,15 @@ class _LossMomentScreenState extends State<LossMomentScreen> {
                   children: [
                     Checkbox(
                       value: _acknowledged,
-                      onChanged: (v) => setState(() => _acknowledged = v ?? false),
-                      side: const BorderSide(color: LatchColors.danger, width: 2),
+                      onChanged: (v) =>
+                          setState(() => _acknowledged = v ?? false),
+                      side: const BorderSide(
+                        color: LatchColors.danger,
+                        width: 2,
+                      ),
                       fillColor: WidgetStateProperty.resolveWith((states) {
-                        if (states.contains(WidgetState.selected)) return LatchColors.danger;
+                        if (states.contains(WidgetState.selected))
+                          return LatchColors.danger;
                         return Colors.transparent;
                       }),
                     ),
@@ -75,9 +80,8 @@ class _LossMomentScreenState extends State<LossMomentScreen> {
                         padding: const EdgeInsets.only(top: 12),
                         child: Text(
                           'I understand there\'s no recovery.',
-                          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                            color: const Color(0xFF7A3128),
-                          ),
+                          style: Theme.of(context).textTheme.bodyLarge
+                              ?.copyWith(color: const Color(0xFF7A3128)),
                         ),
                       ),
                     ),
@@ -89,7 +93,9 @@ class _LossMomentScreenState extends State<LossMomentScreen> {
                 width: double.infinity,
                 height: 54,
                 child: ElevatedButton(
-                  onPressed: _acknowledged ? () => context.go('/onboarding/ready') : null,
+                  onPressed: _acknowledged
+                      ? () => context.go('/onboarding/ready')
+                      : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: LatchColors.danger,
                     foregroundColor: Colors.white,

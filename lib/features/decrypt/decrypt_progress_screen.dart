@@ -86,46 +86,56 @@ class _DecryptProgressScreenState extends State<DecryptProgressScreen> {
       return;
     }
     if (!mounted) return;
-    _sub = AppCrypto.decryptFiles(
-      widget.files,
-      widget.passphrase,
-      outputDir: outputDir,
-      deviceKey: deviceKey,
-      recipientPublicKey: recipientPk,
-      recipientSecretKey: recipientSk,
-      onFileResult: (path, ok, error, outPath) {
-        _results.add(BatchResult(path: path, ok: ok, errorMessage: error, outPath: outPath));
-        _doneCount++;
-      },
-    ).listen(
-      (prog) {
-        if (!mounted || _cancelled) return;
-        setState(() => _progress = prog);
-        if (_doneCount >= widget.files.length && !_reported) {
-          _reported = true;
-          _onDone();
-        }
-      },
-      onError: (Object e) {
-        if (!mounted || _cancelled) return;
-        // Fatal error (isolate crash, init failure) — not per-file.
-        _showError('Decryption failed', userMessageForError(e));
-      },
-      onDone: () {
-        if (!mounted || _cancelled || _reported) return;
-        _reported = true;
-        if (_doneCount >= widget.files.length) {
-          // Normal completion where the terminal progress event was missed
-          // (defensive — the worker normally reports 1.0 after the last file).
-          _onDone();
-        } else {
-          // The worker stream ended without reporting every file. Without
-          // this the spinner runs forever with Cancel as the only way out.
-          _showError('Decryption stopped unexpectedly',
-              'Only $_doneCount of ${widget.files.length} files were processed.');
-        }
-      },
-    );
+    _sub =
+        AppCrypto.decryptFiles(
+          widget.files,
+          widget.passphrase,
+          outputDir: outputDir,
+          deviceKey: deviceKey,
+          recipientPublicKey: recipientPk,
+          recipientSecretKey: recipientSk,
+          onFileResult: (path, ok, error, outPath) {
+            _results.add(
+              BatchResult(
+                path: path,
+                ok: ok,
+                errorMessage: error,
+                outPath: outPath,
+              ),
+            );
+            _doneCount++;
+          },
+        ).listen(
+          (prog) {
+            if (!mounted || _cancelled) return;
+            setState(() => _progress = prog);
+            if (_doneCount >= widget.files.length && !_reported) {
+              _reported = true;
+              _onDone();
+            }
+          },
+          onError: (Object e) {
+            if (!mounted || _cancelled) return;
+            // Fatal error (isolate crash, init failure) — not per-file.
+            _showError('Decryption failed', userMessageForError(e));
+          },
+          onDone: () {
+            if (!mounted || _cancelled || _reported) return;
+            _reported = true;
+            if (_doneCount >= widget.files.length) {
+              // Normal completion where the terminal progress event was missed
+              // (defensive — the worker normally reports 1.0 after the last file).
+              _onDone();
+            } else {
+              // The worker stream ended without reporting every file. Without
+              // this the spinner runs forever with Cancel as the only way out.
+              _showError(
+                'Decryption stopped unexpectedly',
+                'Only $_doneCount of ${widget.files.length} files were processed.',
+              );
+            }
+          },
+        );
   }
 
   void _onDone() {
@@ -144,19 +154,27 @@ class _DecryptProgressScreenState extends State<DecryptProgressScreen> {
       final first = _results.firstWhere((r) => !r.ok);
       final msg = first.errorMessage ?? '';
       if (msg.contains('WrongPassphraseError')) {
-        _showError('Wrong passphrase',
-            "That passphrase didn't open these files. Give it another try.");
+        _showError(
+          'Wrong passphrase',
+          "That passphrase didn't open these files. Give it another try.",
+        );
       } else if (msg.contains('NotALatchFileError')) {
-        _showError('Not a Latch file',
-            "This doesn't look like a file Latch created. Choose a file ending in .latch.");
+        _showError(
+          'Not a Latch file',
+          "This doesn't look like a file Latch created. Choose a file ending in .latch.",
+        );
       } else if (msg.contains('CorruptedFileError')) {
         _showTampered();
       } else if (msg.contains('VersionTooNewError')) {
-        _showError('File too new',
-            'A file was made with a newer version of Latch. Please update the app.');
+        _showError(
+          'File too new',
+          'A file was made with a newer version of Latch. Please update the app.',
+        );
       } else if (msg.contains('StorageFullError')) {
-        _showError('Not enough space',
-            'There is not enough free storage to write the decrypted file.');
+        _showError(
+          'Not enough space',
+          'There is not enough free storage to write the decrypted file.',
+        );
       } else {
         _showError('Decryption failed', userMessageForError(msg));
       }
@@ -172,10 +190,14 @@ class _DecryptProgressScreenState extends State<DecryptProgressScreen> {
       .toList();
 
   void _showPartialSuccess(int ok, int bad) {
-    final listed = _results.where((r) => !r.ok).take(3).map((r) {
-      final msg = userMessageForError(r.errorMessage ?? '');
-      return '${p.basename(r.path)}: $msg';
-    }).join('\n');
+    final listed = _results
+        .where((r) => !r.ok)
+        .take(3)
+        .map((r) {
+          final msg = userMessageForError(r.errorMessage ?? '');
+          return '${p.basename(r.path)}: $msg';
+        })
+        .join('\n');
     final more = bad > 3 ? '\n… and ${bad - 3} more' : '';
     showLatchAlert(
       context,
@@ -259,9 +281,7 @@ class _DecryptProgressScreenState extends State<DecryptProgressScreen> {
                 ),
                 const SizedBox(height: 28),
                 Text(
-                  fileCount > 1
-                      ? 'Opening $fileCount files…'
-                      : 'Opening file…',
+                  fileCount > 1 ? 'Opening $fileCount files…' : 'Opening file…',
                   style: Theme.of(context).textTheme.displayMedium,
                   textAlign: TextAlign.center,
                 ),

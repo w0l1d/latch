@@ -31,31 +31,37 @@ void main() {
     if (tmp.existsSync()) await tmp.delete(recursive: true);
   });
 
-  test('single-file encrypt: last result arrives before the final 1.0',
-      () async {
-    final src = File('${tmp.path}/note.txt')
-      ..writeAsBytesSync(Uint8List.fromList(List.generate(5000, (i) => i % 256)));
+  test(
+    'single-file encrypt: last result arrives before the final 1.0',
+    () async {
+      final src = File('${tmp.path}/note.txt')
+        ..writeAsBytesSync(
+          Uint8List.fromList(List.generate(5000, (i) => i % 256)),
+        );
 
-    final results = <bool>[];
-    var doneCountAtFinalProgress = -1;
+      final results = <bool>[];
+      var doneCountAtFinalProgress = -1;
 
-    await for (final prog in AppCrypto.encryptFiles(
-      [src.path],
-      'correct horse battery staple',
-      onFileResult: (_, ok, _, _) => results.add(ok),
-    )) {
-      if (prog >= 1.0) doneCountAtFinalProgress = results.length;
-    }
+      await for (final prog in AppCrypto.encryptFiles(
+        [src.path],
+        'correct horse battery staple',
+        onFileResult: (_, ok, _, _) => results.add(ok),
+      )) {
+        if (prog >= 1.0) doneCountAtFinalProgress = results.length;
+      }
 
-    // The invariant the progress screens depend on.
-    expect(doneCountAtFinalProgress, 1,
-        reason: 'file_done must precede the terminal progress 1.0');
-    expect(results, [true]);
-    expect(File('${src.path}.latch').existsSync(), isTrue);
-  });
+      // The invariant the progress screens depend on.
+      expect(
+        doneCountAtFinalProgress,
+        1,
+        reason: 'file_done must precede the terminal progress 1.0',
+      );
+      expect(results, [true]);
+      expect(File('${src.path}.latch').existsSync(), isTrue);
+    },
+  );
 
-  test('multi-file encrypt: all results arrive before the final 1.0',
-      () async {
+  test('multi-file encrypt: all results arrive before the final 1.0', () async {
     final paths = <String>[];
     for (var i = 0; i < 3; i++) {
       final f = File('${tmp.path}/f$i.bin')
@@ -79,8 +85,9 @@ void main() {
   });
 
   test('encrypt then decrypt round-trips the original bytes', () async {
-    final original =
-        Uint8List.fromList(List.generate(70000, (i) => (i * 7) % 256));
+    final original = Uint8List.fromList(
+      List.generate(70000, (i) => (i * 7) % 256),
+    );
     final src = File('${tmp.path}/big.dat')..writeAsBytesSync(original);
     const pass = 'round trip passphrase';
 
@@ -108,8 +115,9 @@ void main() {
   test('wrong passphrase reports a failed result, does not hang', () async {
     final src = File('${tmp.path}/secret.txt')
       ..writeAsBytesSync(Uint8List.fromList([1, 2, 3, 4]));
-    await AppCrypto.encryptFiles([src.path], 'the real passphrase')
-        .drain<void>();
+    await AppCrypto.encryptFiles([
+      src.path,
+    ], 'the real passphrase').drain<void>();
 
     final errors = <String?>[];
     await AppCrypto.decryptFiles(
@@ -138,12 +146,21 @@ void main() {
     expect(outPaths.length, 1);
     final reported = outPaths.single;
     expect(reported, isNotNull);
-    expect(File(reported!).existsSync(), isTrue,
-        reason: 'the UI shows this path — it must exist on disk');
-    expect(reported, startsWith(outDir.path),
-        reason: 'output must land in the chosen folder');
-    expect(reported, isNot('${src.path}.latch'),
-        reason: 'with an outputDir the naive input-derived path is wrong');
+    expect(
+      File(reported!).existsSync(),
+      isTrue,
+      reason: 'the UI shows this path — it must exist on disk',
+    );
+    expect(
+      reported,
+      startsWith(outDir.path),
+      reason: 'output must land in the chosen folder',
+    );
+    expect(
+      reported,
+      isNot('${src.path}.latch'),
+      reason: 'with an outputDir the naive input-derived path is wrong',
+    );
     // The naive path the old UI fabricated must NOT exist.
     expect(File('${src.path}.latch').existsSync(), isFalse);
   });
@@ -163,8 +180,11 @@ void main() {
     ).drain<void>();
 
     final reported = outPaths.single!;
-    expect(reported, isNot(squatter.path),
-        reason: 'must not claim the pre-existing file as its output');
+    expect(
+      reported,
+      isNot(squatter.path),
+      reason: 'must not claim the pre-existing file as its output',
+    );
     expect(File(reported).existsSync(), isTrue);
     // The squatter is untouched.
     expect(squatter.readAsBytesSync(), [0]);

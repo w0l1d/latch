@@ -11,7 +11,9 @@ class IncomingFileService {
   final GoRouter _router;
 
   IncomingFileService({ReceiveSharingIntent? plugin, required this._router})
-      : _plugin = plugin ?? ReceiveSharingIntent.instance; // ignore: prefer_initializing_formals
+    : _plugin =
+          plugin ??
+          ReceiveSharingIntent.instance; // ignore: prefer_initializing_formals
 
   /// Call once at startup — gates .latch files that arrived BEFORE the Dart
   /// engine was running (cold-start open).
@@ -38,13 +40,16 @@ class IncomingFileService {
   /// router is configured.
   void startListening() {
     _sub?.cancel();
-    _sub = _plugin.getMediaStream().listen((files) {
-      final latchFiles = _filterLatch(files);
-      if (latchFiles.isNotEmpty) _navigate(latchFiles);
-    }, onError: (_) {
-      // A malformed intent must not kill the stream subscription silently —
-      // ignore it and keep listening for the next share.
-    });
+    _sub = _plugin.getMediaStream().listen(
+      (files) {
+        final latchFiles = _filterLatch(files);
+        if (latchFiles.isNotEmpty) _navigate(latchFiles);
+      },
+      onError: (_) {
+        // A malformed intent must not kill the stream subscription silently —
+        // ignore it and keep listening for the next share.
+      },
+    );
   }
 
   void dispose() {

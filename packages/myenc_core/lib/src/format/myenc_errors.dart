@@ -24,7 +24,8 @@ final class VersionTooNewError extends LatchError {
   final int version;
   VersionTooNewError(this.version);
   @override
-  String toString() => 'VersionTooNewError: format version $version is not supported';
+  String toString() =>
+      'VersionTooNewError: format version $version is not supported';
 }
 
 final class StorageFullError extends LatchError {

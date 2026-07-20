@@ -39,8 +39,7 @@ class EnvelopeService {
       throw CorruptedFileError('key-id hint must be 16 bytes');
     }
     if (deviceKey != null && deviceKey.length != DekWrap.kekLength) {
-      throw CorruptedFileError(
-          'device key must be ${DekWrap.kekLength} bytes');
+      throw CorruptedFileError('device key must be ${DekWrap.kekLength} bytes');
     }
     final salt = _crypto.randomBytes(16);
     keyIdHint ??= _crypto.randomBytes(16);
@@ -57,8 +56,9 @@ class EnvelopeService {
 
     final wraps = <WrapEntry>[passphraseWrap];
     if (deviceKey != null) {
-      wraps.add(DekWrap.wrapDeviceKey(
-          crypto: _crypto, dek: dek, deviceKey: deviceKey));
+      wraps.add(
+        DekWrap.wrapDeviceKey(crypto: _crypto, dek: dek, deviceKey: deviceKey),
+      );
     }
 
     // Encrypt the filename with the DEK before zeroizing. Filenames are
@@ -78,9 +78,9 @@ class EnvelopeService {
     // Extract the secretstream header from the transformer's output so it can
     // be stored in the FileHeader, which must be emitted first.
     final encReader = _StreamReader(encryptedStream);
-    final ssHeader =
-        await encReader.readExact(_crypto.secretstreamHeaderBytes);
-    if (ssHeader == null) throw CorruptedFileError('encrypt produced no output');
+    final ssHeader = await encReader.readExact(_crypto.secretstreamHeaderBytes);
+    if (ssHeader == null)
+      throw CorruptedFileError('encrypt produced no output');
 
     final header = FileHeader(
       version: FileHeader.supportedVersion,
@@ -123,13 +123,19 @@ class EnvelopeService {
   }) async* {
     final reader = _StreamReader(ciphertext);
     final hdr = await _readHeader(reader);
-    final dek = _unwrapDek(hdr, passphrase,
-        deviceKey: deviceKey,
-        recipientPublicKey: recipientPublicKey,
-        recipientSecretKey: recipientSecretKey);
+    final dek = _unwrapDek(
+      hdr,
+      passphrase,
+      deviceKey: deviceKey,
+      recipientPublicKey: recipientPublicKey,
+      recipientSecretKey: recipientSecretKey,
+    );
 
     // Prepend the ss header to the body and decrypt.
-    final bodyWithHeader = _prependStream(hdr.secretstreamHeader, reader.remainingStream());
+    final bodyWithHeader = _prependStream(
+      hdr.secretstreamHeader,
+      reader.remainingStream(),
+    );
     final transformer = _crypto.createDecryptTransformer(dek, hdr.chunkSize);
     // DEK has been copied to guarded memory by SecureKey; zero the plain copy.
     dek.fillRange(0, dek.length, 0);
@@ -183,20 +189,22 @@ class EnvelopeService {
           if (w.type == WrapType.passphrase) newWrap else w,
       ];
 
-      yield MyencCodec.encodeHeader(FileHeader(
-        version: hdr.version,
-        flags: hdr.flags,
-        kdfId: hdr.kdfId,
-        salt: newSalt,
-        opslimit: params.opslimit,
-        memlimit: params.memlimit,
-        cipherId: hdr.cipherId,
-        chunkSize: hdr.chunkSize,
-        keyIdHint: keyIdHint ?? hdr.keyIdHint,
-        wraps: newWraps,
-        secretstreamHeader: hdr.secretstreamHeader,
-        encryptedFilename: hdr.encryptedFilename,
-      ));
+      yield MyencCodec.encodeHeader(
+        FileHeader(
+          version: hdr.version,
+          flags: hdr.flags,
+          kdfId: hdr.kdfId,
+          salt: newSalt,
+          opslimit: params.opslimit,
+          memlimit: params.memlimit,
+          cipherId: hdr.cipherId,
+          chunkSize: hdr.chunkSize,
+          keyIdHint: keyIdHint ?? hdr.keyIdHint,
+          wraps: newWraps,
+          secretstreamHeader: hdr.secretstreamHeader,
+          encryptedFilename: hdr.encryptedFilename,
+        ),
+      );
     } finally {
       dek.fillRange(0, dek.length, 0);
     }
@@ -222,7 +230,8 @@ class EnvelopeService {
   }) async* {
     if (recipientPublicKey.length != 32) {
       throw CorruptedFileError(
-          'recipient public key must be 32 bytes, got ${recipientPublicKey.length}');
+        'recipient public key must be 32 bytes, got ${recipientPublicKey.length}',
+      );
     }
     final reader = _StreamReader(ciphertext);
     final hdr = await _readHeader(reader);
@@ -238,20 +247,22 @@ class EnvelopeService {
       // Append the recipient wrap; every other wrap carries over verbatim.
       final newWraps = [...hdr.wraps, recipientWrap];
 
-      yield MyencCodec.encodeHeader(FileHeader(
-        version: hdr.version,
-        flags: hdr.flags,
-        kdfId: hdr.kdfId,
-        salt: hdr.salt,
-        opslimit: hdr.opslimit,
-        memlimit: hdr.memlimit,
-        cipherId: hdr.cipherId,
-        chunkSize: hdr.chunkSize,
-        keyIdHint: hdr.keyIdHint,
-        wraps: newWraps,
-        secretstreamHeader: hdr.secretstreamHeader,
-        encryptedFilename: hdr.encryptedFilename,
-      ));
+      yield MyencCodec.encodeHeader(
+        FileHeader(
+          version: hdr.version,
+          flags: hdr.flags,
+          kdfId: hdr.kdfId,
+          salt: hdr.salt,
+          opslimit: hdr.opslimit,
+          memlimit: hdr.memlimit,
+          cipherId: hdr.cipherId,
+          chunkSize: hdr.chunkSize,
+          keyIdHint: hdr.keyIdHint,
+          wraps: newWraps,
+          secretstreamHeader: hdr.secretstreamHeader,
+          encryptedFilename: hdr.encryptedFilename,
+        ),
+      );
     } finally {
       dek.fillRange(0, dek.length, 0);
     }
@@ -275,7 +286,8 @@ class EnvelopeService {
     for (int i = 0; i < wrapCount; i++) {
       final typeB = await reader.readExact(1);
       final lenB = await reader.readExact(2);
-      if (typeB == null || lenB == null) throw CorruptedFileError('truncated wrap list');
+      if (typeB == null || lenB == null)
+        throw CorruptedFileError('truncated wrap list');
       final wrapLen = (lenB[0] << 8) | lenB[1];
       final wrapData = await reader.readExact(wrapLen);
       if (wrapData == null) throw CorruptedFileError('truncated wrap data');
@@ -287,18 +299,22 @@ class EnvelopeService {
     // Encrypted filename (only when flags bit0 = 1).
     if ((flags & 0x01) != 0) {
       final encLenB = await reader.readExact(2);
-      if (encLenB == null) throw CorruptedFileError('truncated enc-filename length');
+      if (encLenB == null)
+        throw CorruptedFileError('truncated enc-filename length');
       final encFilenameLen = (encLenB[0] << 8) | encLenB[1];
       final encFilename = await reader.readExact(encFilenameLen);
-      if (encFilename == null) throw CorruptedFileError('truncated enc-filename data');
+      if (encFilename == null)
+        throw CorruptedFileError('truncated enc-filename data');
       wrapChunks.add(encLenB);
       wrapChunks.add(encFilename);
     }
 
     // Read the secretstream header.
-    final ssHeader =
-        await reader.readExact(FileHeader.secretstreamHeaderLength);
-    if (ssHeader == null) throw CorruptedFileError('truncated secretstream header');
+    final ssHeader = await reader.readExact(
+      FileHeader.secretstreamHeaderLength,
+    );
+    if (ssHeader == null)
+      throw CorruptedFileError('truncated secretstream header');
     wrapChunks.add(ssHeader);
 
     // Assemble the full header buffer and decode via MyencCodec (single parser).
@@ -318,11 +334,16 @@ class EnvelopeService {
   /// (device-bound recovery). If that also fails and a recipient keypair is
   /// provided, tries each recipient wrap (0x03) before rethrowing (UC-6).
   /// The caller owns the returned bytes and must zeroize them.
-  Uint8List _unwrapDek(FileHeader hdr, Uint8List passphrase,
-      {Uint8List? deviceKey,
-      Uint8List? recipientPublicKey,
-      Uint8List? recipientSecretKey}) {
-    final pw = hdr.wraps.where((w) => w.type == WrapType.passphrase).firstOrNull;
+  Uint8List _unwrapDek(
+    FileHeader hdr,
+    Uint8List passphrase, {
+    Uint8List? deviceKey,
+    Uint8List? recipientPublicKey,
+    Uint8List? recipientSecretKey,
+  }) {
+    final pw = hdr.wraps
+        .where((w) => w.type == WrapType.passphrase)
+        .firstOrNull;
     if (pw == null) throw CorruptedFileError('no passphrase wrap found');
     try {
       return DekWrap.unwrapPassphrase(
@@ -351,8 +372,7 @@ class EnvelopeService {
         }
       }
       if (recipientPublicKey != null && recipientSecretKey != null) {
-        for (final rw
-            in hdr.wraps.where((w) => w.type == WrapType.recipient)) {
+        for (final rw in hdr.wraps.where((w) => w.type == WrapType.recipient)) {
           try {
             return DekWrap.unwrapRecipient(
               crypto: _crypto,
@@ -381,7 +401,9 @@ class EnvelopeService {
   }
 
   static Stream<Uint8List> _prependStream(
-      Uint8List prefix, Stream<Uint8List> rest) async* {
+    Uint8List prefix,
+    Stream<Uint8List> rest,
+  ) async* {
     yield prefix;
     yield* rest;
   }
@@ -399,7 +421,10 @@ class _StreamReader {
   Future<Uint8List?> readExact(int n) async {
     while (_bufLen < n) {
       if (_done) return null;
-      if (!await _it.moveNext()) { _done = true; return null; }
+      if (!await _it.moveNext()) {
+        _done = true;
+        return null;
+      }
       _buf.add(_it.current);
       _bufLen += _it.current.length;
     }

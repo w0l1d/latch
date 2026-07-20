@@ -51,7 +51,11 @@ ThemeData buildTheme() {
         color: LatchColors.ink,
       ),
       bodyLarge: TextStyle(fontSize: 16, color: LatchColors.ink, height: 1.45),
-      bodyMedium: TextStyle(fontSize: 14, color: LatchColors.muted, height: 1.4),
+      bodyMedium: TextStyle(
+        fontSize: 14,
+        color: LatchColors.muted,
+        height: 1.4,
+      ),
       bodySmall: TextStyle(fontSize: 13, color: LatchColors.subtle),
     ),
     appBarTheme: const AppBarTheme(

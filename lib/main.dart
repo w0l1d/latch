@@ -12,19 +12,20 @@ Future<void> main() async {
   try {
     await AppCrypto.init();
   } catch (_) {
-    runApp(const MaterialApp(
-      home: Scaffold(
-        body: Center(
-          child: Text('The encryption engine failed to start.'),
+    runApp(
+      const MaterialApp(
+        home: Scaffold(
+          body: Center(child: Text('The encryption engine failed to start.')),
         ),
       ),
-    ));
+    );
     return;
   }
   AppCrypto.passphraseStorage = PassphraseStorageService();
   AppCrypto.deviceKeyService = DeviceKeyService();
-  AppCrypto.recipientKeys =
-      RecipientKeyService(keygen: AppCrypto.generateShareKeypair);
+  AppCrypto.recipientKeys = RecipientKeyService(
+    keygen: AppCrypto.generateShareKeypair,
+  );
   runApp(const LatchApp());
 }
 

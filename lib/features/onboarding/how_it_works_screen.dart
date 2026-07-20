@@ -15,12 +15,12 @@ class HowItWorksScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('How it works', style: Theme.of(context).textTheme.displayMedium),
-              const SizedBox(height: 36),
-              _Step(
-                number: '1',
-                text: 'One passphrase locks a file.',
+              Text(
+                'How it works',
+                style: Theme.of(context).textTheme.displayMedium,
               ),
+              const SizedBox(height: 36),
+              _Step(number: '1', text: 'One passphrase locks a file.'),
               const SizedBox(height: 24),
               _Step(
                 number: '2',

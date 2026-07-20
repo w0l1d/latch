@@ -67,8 +67,10 @@ class _ChangePassphraseScreenState extends State<ChangePassphraseScreen> {
     if (skipped > 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text(
-                '$skipped file${skipped == 1 ? '' : 's'} skipped — only .latch files can be changed here.')),
+          content: Text(
+            '$skipped file${skipped == 1 ? '' : 's'} skipped — only .latch files can be changed here.',
+          ),
+        ),
       );
     }
   }
@@ -76,27 +78,35 @@ class _ChangePassphraseScreenState extends State<ChangePassphraseScreen> {
   void _run() {
     setState(() => _busy = true);
     final results = <BatchResult>[];
-    _sub = AppCrypto.changePassphraseFiles(
-      _files,
-      _oldController.text,
-      _newController.text,
-      onFileResult: (path, ok, error, outPath) {
-        results.add(BatchResult(path: path, ok: ok, errorMessage: error, outPath: outPath));
-      },
-    ).listen(
-      (_) {},
-      onDone: () async {
-        await _writeBackOriginals(results);
-        if (!mounted) return;
-        setState(() => _busy = false);
-        _showResults(results);
-      },
-      onError: (Object e) {
-        if (!mounted) return;
-        setState(() => _busy = false);
-        _showFatal(e.toString());
-      },
-    );
+    _sub =
+        AppCrypto.changePassphraseFiles(
+          _files,
+          _oldController.text,
+          _newController.text,
+          onFileResult: (path, ok, error, outPath) {
+            results.add(
+              BatchResult(
+                path: path,
+                ok: ok,
+                errorMessage: error,
+                outPath: outPath,
+              ),
+            );
+          },
+        ).listen(
+          (_) {},
+          onDone: () async {
+            await _writeBackOriginals(results);
+            if (!mounted) return;
+            setState(() => _busy = false);
+            _showResults(results);
+          },
+          onError: (Object e) {
+            if (!mounted) return;
+            setState(() => _busy = false);
+            _showFatal(e.toString());
+          },
+        );
   }
 
   /// On Android the batch modified cache copies — push each successful
@@ -142,10 +152,7 @@ class _ChangePassphraseScreenState extends State<ChangePassphraseScreen> {
     }
     final first = bad.first.errorMessage ?? '';
     final wrongPass = first.contains('WrongPassphraseError');
-    final listed = bad
-        .take(3)
-        .map((r) => p.basename(r.path))
-        .join(', ');
+    final listed = bad.take(3).map((r) => p.basename(r.path)).join(', ');
     showLatchAlert(
       context,
       tone: LatchAlertTone.danger,
@@ -178,95 +185,103 @@ class _ChangePassphraseScreenState extends State<ChangePassphraseScreen> {
       // block back navigation until the batch reports.
       canPop: !_busy,
       child: Scaffold(
-      appBar: AppBar(
-        leading: BackButton(onPressed: () {
-          if (!_busy) context.pop();
-        }),
-        title: const Text('Change passphrase'),
-      ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Semantics(
-                button: true,
-                label: 'Choose .latch files',
-                child: GestureDetector(
-                  onTap: _busy ? null : _pickFiles,
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: LatchColors.border, width: 1.5),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                    children: [
-                      const Icon(Icons.insert_drive_file_outlined,
-                          color: LatchColors.ink),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          _files.isEmpty
-                              ? 'Choose .latch files'
-                              : _files.length == 1
+        appBar: AppBar(
+          leading: BackButton(
+            onPressed: () {
+              if (!_busy) context.pop();
+            },
+          ),
+          title: const Text('Change passphrase'),
+        ),
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Semantics(
+                  button: true,
+                  label: 'Choose .latch files',
+                  child: GestureDetector(
+                    onTap: _busy ? null : _pickFiles,
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: LatchColors.border,
+                          width: 1.5,
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.insert_drive_file_outlined,
+                            color: LatchColors.ink,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              _files.isEmpty
+                                  ? 'Choose .latch files'
+                                  : _files.length == 1
                                   ? p.basename(_files.first)
                                   : '${_files.length} files selected',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: LatchColors.ink,
-                              ),
-                        ),
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(color: LatchColors.ink),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              TextField(
-                controller: _oldController,
-                obscureText: true,
-                enabled: !_busy,
-                onChanged: (_) => setState(() {}),
-                decoration: const InputDecoration(hintText: 'Current passphrase'),
-                style: const TextStyle(fontSize: 17, letterSpacing: 1.5),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _newController,
-                obscureText: true,
-                enabled: !_busy,
-                onChanged: (_) => setState(() {}),
-                decoration: const InputDecoration(hintText: 'New passphrase'),
-                style: const TextStyle(fontSize: 17, letterSpacing: 1.5),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Only the lock changes — file contents are not rewritten, so this is instant even for large files. Files stay where they are.',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              const Spacer(),
-              if (_busy)
-                const Center(
-                  child: Padding(
-                    padding: EdgeInsets.only(bottom: 16),
-                    child: CircularProgressIndicator(
-                      strokeWidth: 3,
-                      color: LatchColors.ink,
                     ),
                   ),
                 ),
-              LatchPrimaryButton(
-                label: 'Change passphrase',
-                onPressed: _ready ? _run : null,
-              ),
-              const SizedBox(height: 8),
-            ],
+                const SizedBox(height: 20),
+                TextField(
+                  controller: _oldController,
+                  obscureText: true,
+                  enabled: !_busy,
+                  onChanged: (_) => setState(() {}),
+                  decoration: const InputDecoration(
+                    hintText: 'Current passphrase',
+                  ),
+                  style: const TextStyle(fontSize: 17, letterSpacing: 1.5),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _newController,
+                  obscureText: true,
+                  enabled: !_busy,
+                  onChanged: (_) => setState(() {}),
+                  decoration: const InputDecoration(hintText: 'New passphrase'),
+                  style: const TextStyle(fontSize: 17, letterSpacing: 1.5),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Only the lock changes — file contents are not rewritten, so this is instant even for large files. Files stay where they are.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const Spacer(),
+                if (_busy)
+                  const Center(
+                    child: Padding(
+                      padding: EdgeInsets.only(bottom: 16),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 3,
+                        color: LatchColors.ink,
+                      ),
+                    ),
+                  ),
+                LatchPrimaryButton(
+                  label: 'Change passphrase',
+                  onPressed: _ready ? _run : null,
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
           ),
         ),
       ),
-    ),
     );
   }
 }

@@ -29,8 +29,7 @@ class FakeLocalAuth extends Fake implements LocalAuthentication {
     bool biometricOnly = false,
     bool sensitiveTransaction = true,
     bool persistAcrossBackgrounding = false,
-  }) async =>
-      _nextResult;
+  }) async => _nextResult;
 }
 
 class FakeFilePicker extends FilePicker {
@@ -60,11 +59,13 @@ class FakeFilePicker extends FilePicker {
     if (_pickPaths.isEmpty) return null;
     return FilePickerResult(
       _pickPaths
-          .map((p) => PlatformFile(
-                path: p,
-                name: p.split('/').last,
-                size: File(p).existsSync() ? File(p).lengthSync() : 0,
-              ))
+          .map(
+            (p) => PlatformFile(
+              path: p,
+              name: p.split('/').last,
+              size: File(p).existsSync() ? File(p).lengthSync() : 0,
+            ),
+          )
           .toList(),
     );
   }
@@ -74,8 +75,7 @@ class FakeFilePicker extends FilePicker {
     String? dialogTitle,
     bool lockParentWindow = false,
     String? initialDirectory,
-  }) async =>
-      _pickDir;
+  }) async => _pickDir;
 
   @override
   Future<bool?> clearTemporaryFiles() async => true;
@@ -100,8 +100,7 @@ class FakePathProvider extends PathProviderPlatform {
   @override
   Future<List<String>?> getExternalStoragePaths({
     StorageDirectory? type,
-  }) async =>
-      [_docs];
+  }) async => [_docs];
   @override
   Future<String?> getDownloadsPath() async => _docs;
 }

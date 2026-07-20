@@ -36,8 +36,8 @@ class PassphraseStorageService {
   PassphraseStorageService({
     FlutterSecureStorage? storage,
     LocalAuthentication? auth,
-  })  : _storage = storage ?? const FlutterSecureStorage(),
-        _auth = auth ?? LocalAuthentication();
+  }) : _storage = storage ?? const FlutterSecureStorage(),
+       _auth = auth ?? LocalAuthentication();
 
   // ---- public API -----------------------------------------------------------
 
@@ -152,8 +152,10 @@ class PassphraseStorageService {
 
   static String _randomKeyIdHex() {
     final rng = Random.secure();
-    return List.generate(16, (_) => rng.nextInt(256).toRadixString(16).padLeft(2, '0'))
-        .join();
+    return List.generate(
+      16,
+      (_) => rng.nextInt(256).toRadixString(16).padLeft(2, '0'),
+    ).join();
   }
 
   Future<List<Map<String, dynamic>>> _readMeta() async {

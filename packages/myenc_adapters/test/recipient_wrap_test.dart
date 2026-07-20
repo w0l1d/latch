@@ -61,33 +61,44 @@ void main() {
       const params = KdfParams(opslimit: 2, memlimit: 65536);
 
       // Encrypt with passphrase only.
-      final original = Uint8List.fromList(await _collect(svc.encrypt(
-        plaintext: _stream(Uint8List.fromList(plain)),
-        passphrase: passphrase,
-        params: params,
-      )));
+      final original = Uint8List.fromList(
+        await _collect(
+          svc.encrypt(
+            plaintext: _stream(Uint8List.fromList(plain)),
+            passphrase: passphrase,
+            params: params,
+          ),
+        ),
+      );
 
       // Add a recipient wrap.
-      final updated = Uint8List.fromList(await _collect(svc.addRecipient(
-        ciphertext: _stream(original),
-        passphrase: passphrase,
-        recipientPublicKey: recipientPk,
-      )));
+      final updated = Uint8List.fromList(
+        await _collect(
+          svc.addRecipient(
+            ciphertext: _stream(original),
+            passphrase: passphrase,
+            recipientPublicKey: recipientPk,
+          ),
+        ),
+      );
 
       // Verify header has a recipient wrap of 80 bytes.
       final (hdr, _) = MyencCodec.decodeHeader(updated);
-      final recipientWraps =
-          hdr.wraps.where((w) => w.type == WrapType.recipient);
+      final recipientWraps = hdr.wraps.where(
+        (w) => w.type == WrapType.recipient,
+      );
       expect(recipientWraps, isNotEmpty);
       expect(recipientWraps.first.bytes.length, 80);
 
       // Decrypt with the recipient keypair.
-      final recovered = await _collect(svc.decrypt(
-        ciphertext: _stream(updated),
-        passphrase: utf8.encode('wrong'),
-        recipientPublicKey: recipientPk,
-        recipientSecretKey: recipientSk,
-      ));
+      final recovered = await _collect(
+        svc.decrypt(
+          ciphertext: _stream(updated),
+          passphrase: utf8.encode('wrong'),
+          recipientPublicKey: recipientPk,
+          recipientSecretKey: recipientSk,
+        ),
+      );
       expect(recovered, plain);
     });
 
@@ -100,26 +111,36 @@ void main() {
       final plain = utf8.encode('wrong key test');
       const params = KdfParams(opslimit: 2, memlimit: 65536);
 
-      final original = Uint8List.fromList(await _collect(svc.encrypt(
-        plaintext: _stream(Uint8List.fromList(plain)),
-        passphrase: passphrase,
-        params: params,
-      )));
+      final original = Uint8List.fromList(
+        await _collect(
+          svc.encrypt(
+            plaintext: _stream(Uint8List.fromList(plain)),
+            passphrase: passphrase,
+            params: params,
+          ),
+        ),
+      );
 
-      final updated = Uint8List.fromList(await _collect(svc.addRecipient(
-        ciphertext: _stream(original),
-        passphrase: passphrase,
-        recipientPublicKey: sealPk,
-      )));
+      final updated = Uint8List.fromList(
+        await _collect(
+          svc.addRecipient(
+            ciphertext: _stream(original),
+            passphrase: passphrase,
+            recipientPublicKey: sealPk,
+          ),
+        ),
+      );
 
       // Wrong secret key must fail.
       expect(
-        () => _collect(svc.decrypt(
-          ciphertext: _stream(updated),
-          passphrase: utf8.encode('wrong'),
-          recipientPublicKey: sealPk,
-          recipientSecretKey: wrongSk,
-        )),
+        () => _collect(
+          svc.decrypt(
+            ciphertext: _stream(updated),
+            passphrase: utf8.encode('wrong'),
+            recipientPublicKey: sealPk,
+            recipientSecretKey: wrongSk,
+          ),
+        ),
         throwsA(isA<WrongPassphraseError>()),
       );
     });
@@ -131,17 +152,25 @@ void main() {
       final plain = utf8.encode('body must not change');
       const params = KdfParams(opslimit: 2, memlimit: 65536);
 
-      final original = Uint8List.fromList(await _collect(svc.encrypt(
-        plaintext: _stream(Uint8List.fromList(plain)),
-        passphrase: passphrase,
-        params: params,
-      )));
+      final original = Uint8List.fromList(
+        await _collect(
+          svc.encrypt(
+            plaintext: _stream(Uint8List.fromList(plain)),
+            passphrase: passphrase,
+            params: params,
+          ),
+        ),
+      );
 
-      final updated = Uint8List.fromList(await _collect(svc.addRecipient(
-        ciphertext: _stream(original),
-        passphrase: passphrase,
-        recipientPublicKey: recipientPk,
-      )));
+      final updated = Uint8List.fromList(
+        await _collect(
+          svc.addRecipient(
+            ciphertext: _stream(original),
+            passphrase: passphrase,
+            recipientPublicKey: recipientPk,
+          ),
+        ),
+      );
 
       // Body bytes past the header must be identical.
       final (_, oldBodyStart) = MyencCodec.decodeHeader(original);
@@ -149,19 +178,20 @@ void main() {
       expect(updated.sublist(newBodyStart), original.sublist(oldBodyStart));
 
       // Also verify the original passphrase still works.
-      final recovered = await _collect(svc.decrypt(
-        ciphertext: _stream(updated),
-        passphrase: passphrase,
-      ));
+      final recovered = await _collect(
+        svc.decrypt(ciphertext: _stream(updated), passphrase: passphrase),
+      );
       expect(recovered, plain);
 
       // And the recipient keypair works.
-      final recovered2 = await _collect(svc.decrypt(
-        ciphertext: _stream(updated),
-        passphrase: utf8.encode('wrong'),
-        recipientPublicKey: recipientPk,
-        recipientSecretKey: recipientSk,
-      ));
+      final recovered2 = await _collect(
+        svc.decrypt(
+          ciphertext: _stream(updated),
+          passphrase: utf8.encode('wrong'),
+          recipientPublicKey: recipientPk,
+          recipientSecretKey: recipientSk,
+        ),
+      );
       expect(recovered2, plain);
     });
   });

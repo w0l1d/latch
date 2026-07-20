@@ -36,23 +36,28 @@ Uint8List _hex(String s) {
 }
 
 FileHeader _canonicalHeader() => FileHeader(
-      version: 1,
-      flags: 0x01,
-      kdfId: FileHeader.kdfArgon2id,
-      salt: Uint8List.fromList(List.generate(16, (i) => i)),
-      opslimit: 3,
-      memlimit: 65536,
-      cipherId: FileHeader.cipherXchacha20Poly1305,
-      chunkSize: 65536,
-      keyIdHint: Uint8List.fromList(List.generate(16, (i) => 0x10 + i)),
-      wraps: [
-        WrapEntry(type: WrapType.passphrase, bytes: Uint8List(72)..fillRange(0, 72, 0xAA)),
-        WrapEntry(type: WrapType.hardwareKey, bytes: Uint8List(72)..fillRange(0, 72, 0xBB)),
-      ],
-      secretstreamHeader:
-          Uint8List.fromList(List.generate(24, (i) => 0x20 + i)),
-      encryptedFilename: Uint8List(45)..fillRange(0, 45, 0xCC),
-    );
+  version: 1,
+  flags: 0x01,
+  kdfId: FileHeader.kdfArgon2id,
+  salt: Uint8List.fromList(List.generate(16, (i) => i)),
+  opslimit: 3,
+  memlimit: 65536,
+  cipherId: FileHeader.cipherXchacha20Poly1305,
+  chunkSize: 65536,
+  keyIdHint: Uint8List.fromList(List.generate(16, (i) => 0x10 + i)),
+  wraps: [
+    WrapEntry(
+      type: WrapType.passphrase,
+      bytes: Uint8List(72)..fillRange(0, 72, 0xAA),
+    ),
+    WrapEntry(
+      type: WrapType.hardwareKey,
+      bytes: Uint8List(72)..fillRange(0, 72, 0xBB),
+    ),
+  ],
+  secretstreamHeader: Uint8List.fromList(List.generate(24, (i) => 0x20 + i)),
+  encryptedFilename: Uint8List(45)..fillRange(0, 45, 0xCC),
+);
 
 void main() {
   group('format v1 freeze — frozen constants', () {
@@ -128,25 +133,31 @@ void main() {
     test('version 2 is rejected with VersionTooNewError', () {
       final bytes = _hex(_frozenHeaderHex);
       bytes[5] = 0x02;
-      expect(() => MyencCodec.decodeHeader(bytes),
-          throwsA(isA<VersionTooNewError>()));
+      expect(
+        () => MyencCodec.decodeHeader(bytes),
+        throwsA(isA<VersionTooNewError>()),
+      );
     });
 
     test('every reserved flag bit is rejected', () {
       for (var bit = 1; bit < 8; bit++) {
         final bytes = _hex(_frozenHeaderHex);
         bytes[6] = bytes[6] | (1 << bit);
-        expect(() => MyencCodec.decodeHeader(bytes),
-            throwsA(isA<CorruptedFileError>()),
-            reason: 'reserved flag bit $bit must be rejected');
+        expect(
+          () => MyencCodec.decodeHeader(bytes),
+          throwsA(isA<CorruptedFileError>()),
+          reason: 'reserved flag bit $bit must be rejected',
+        );
       }
     });
 
     test('wrap type codes above recipient are rejected', () {
       final bytes = _hex(_frozenHeaderHex);
       bytes[56] = 0x04; // first wrap's type byte
-      expect(() => MyencCodec.decodeHeader(bytes),
-          throwsA(isA<CorruptedFileError>()));
+      expect(
+        () => MyencCodec.decodeHeader(bytes),
+        throwsA(isA<CorruptedFileError>()),
+      );
     });
   });
 }

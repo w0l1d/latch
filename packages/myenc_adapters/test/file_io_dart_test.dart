@@ -75,18 +75,24 @@ void main() {
 
   group('resolveOutputPath', () {
     test('returns the default path unchanged when outputDir is null', () {
-      expect(io.resolveOutputPath('/src/report.pdf.latch', null),
-          '/src/report.pdf.latch');
+      expect(
+        io.resolveOutputPath('/src/report.pdf.latch', null),
+        '/src/report.pdf.latch',
+      );
     });
 
     test('redirects into the chosen folder, keeping the basename', () {
-      expect(io.resolveOutputPath('/src/report.pdf.latch', '/vault'),
-          p.join('/vault', 'report.pdf.latch'));
+      expect(
+        io.resolveOutputPath('/src/report.pdf.latch', '/vault'),
+        p.join('/vault', 'report.pdf.latch'),
+      );
     });
 
     test('works for a decrypted name (suffix already stripped)', () {
-      expect(io.resolveOutputPath('/src/report.pdf', '/out'),
-          p.join('/out', 'report.pdf'));
+      expect(
+        io.resolveOutputPath('/src/report.pdf', '/out'),
+        p.join('/out', 'report.pdf'),
+      );
     });
   });
 

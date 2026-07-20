@@ -68,8 +68,9 @@ class SafBridge {
     if (_realDirByPath.containsKey(path)) return _realDirByPath[path];
     String? dir;
     try {
-      final resolved =
-          await channel.invokeMethod<String>('resolvePath', {'uri': uri});
+      final resolved = await channel.invokeMethod<String>('resolvePath', {
+        'uri': uri,
+      });
       if (resolved != null) dir = p.dirname(resolved);
     } catch (_) {
       dir = null;
