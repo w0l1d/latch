@@ -129,9 +129,13 @@ jobs:
           echo "Creating tag $NEW_TAG (pubspec.yaml -> $NEW_PUBSPEC_VERSION)"
           git config --global user.email "actions@github.com"
           git config --global user.name "GitHub Actions"
-          git add pubspec.yaml
-          git commit -m "chore: bump version to ${NEW_PUBSPEC_VERSION} [skip ci]"
-          git push origin HEAD:main
+          if git diff --quiet -- pubspec.yaml; then
+            echo "pubspec.yaml already at $NEW_PUBSPEC_VERSION — no bump commit needed"
+          else
+            git add pubspec.yaml
+            git commit -m "chore: bump version to ${NEW_PUBSPEC_VERSION} [skip ci]"
+            git push origin HEAD:main
+          fi
           git tag -a "$NEW_TAG" -m "Release $NEW_TAG"
           git push origin "$NEW_TAG"
           echo "tag_name=$NEW_TAG" >> "$GITHUB_OUTPUT"
