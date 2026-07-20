@@ -1,0 +1,77 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build_and_release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.44.2
+          cache: true
+
+      - name: Pub get
+        run: flutter pub get
+
+      # Version scheme: tag (vX.Y.Z) sets the human-facing version name;
+      # build number is date + run-number so it's both readable and monotonic.
+      - name: Compute version
+        id: version
+        run: |
+          TAG_NAME="${GITHUB_REF_NAME}"
+          VERSION_NAME="${TAG_NAME#v}"
+          BUILD_NUMBER="$(date +%Y%m%d)$(printf '%02d' $((GITHUB_RUN_NUMBER % 100)))"
+          SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Build release APK
+        run: |
+          flutter build apk --release \
+            --build-name=${{ steps.version.outputs.version_name }} \
+            --build-number=${{ steps.version.outputs.build_number }}
+
+      - name: Stage APK
+        run: |
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk \
+             "dist/latch-${{ steps.version.outputs.version_name }}.apk"
+
+      - name: Compute SHA-256
+        id: sha
+        run: |
+          SHA256=$(sha256sum "dist/latch-${{ steps.version.outputs.version_name }}.apk" | awk '{print $1}')
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            "dist/latch-${{ steps.version.outputs.version_name }}.apk" \
+            --title "Latch ${GITHUB_REF_NAME}" \
+            --generate-notes
+
+      - name: Announce in Telegram
+        run: |
+          COMMIT_LINK="https://github.com/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}"
+          RELEASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${GITHUB_REF_NAME}"
+          CAPTION=$'🚀 Latch '"${GITHUB_REF_NAME}"$' (build '"${{ steps.version.outputs.build_number }}"$')\n\n🔖 Commit: '"${{ steps.version.outputs.short_sha }}"$'\n🔗 '"$COMMIT_LINK"$'\n📋 Release: '"$RELEASE_URL"$'\n🔐 SHA-256: '"${{ steps.sha.outputs.sha256 }}"
+
+          curl -s -F "chat_id=-1003694191301" \
+               -F "message_thread_id=54" \
+               -F "document=@dist/latch-${{ steps.version.outputs.version_name }}.apk" \
+               -F "caption=$CAPTION" \
+               "https://api.telegram.org/bot${{ secrets.BOTFATHER_TELEGRAM_BOT_TOKEN }}/sendDocument"
