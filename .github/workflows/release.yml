@@ -6,14 +6,33 @@ on:
     tags:
       - 'v*.*.*-*'
   workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump type for the new tag'
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+
+# Serializes runs per ref so two pushes to main close together can't both
+# read the same "latest tag" before either pushes its bump commit, which
+# would race and compute the same build number twice.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  # Auto-tags pushes to main (and manual runs) with the next vYYYY.MM.DD-N
-  # tag, bumping pubspec.yaml's version to match and committing that bump
-  # so the tagged commit's code carries the exact version being released.
-  # Direct tag pushes (e.g. `git push origin vYYYY.MM.DD-N`) skip this and
-  # go straight to build_and_release, which validates pubspec.yaml against
-  # the tag either way.
+  # Auto-tags pushes to main (and manual runs) with the next
+  # vMAJOR.MINOR.PATCH-YYYY.MM.DD.BUILD tag: the semver part signals how
+  # significant the release is (bumped via `bump`, default patch for plain
+  # pushes to main), the date+build part gives a monotonic, human-readable
+  # release timestamp. pubspec.yaml's version is bumped to the semver+build
+  # part (e.g. 1.4.2+7) and committed so the tagged commit's code carries
+  # the exact version being released. Direct tag pushes (e.g.
+  # `git push origin vMAJOR.MINOR.PATCH-YYYY.MM.DD.BUILD`) skip this and go
+  # straight to build_and_release, which validates pubspec.yaml against the
+  # tag either way. If there's no code change (ignoring pubspec.yaml) since
+  # the last release tag, no new tag is created and build_and_release is
+  # skipped — a Telegram notice is posted instead.
   auto_tag:
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
@@ -31,9 +50,11 @@ jobs:
       - name: Determine next tag and bump pubspec.yaml
         id: tag
         run: |
+          TAG_REGEX='^v[0-9]+\.[0-9]+\.[0-9]+-[0-9]{4}\.[0-9]{2}\.[0-9]{2}\.[0-9]+$'
+
           git fetch --tags -q
 
-          EXISTING_TAG=$(git tag --points-at HEAD | grep -E '^v[0-9]{4}\.[0-9]{2}\.[0-9]{2}-[0-9]+$' | head -1 || true)
+          EXISTING_TAG=$(git tag --points-at HEAD | grep -E "$TAG_REGEX" | head -1 || true)
           if [ -n "$EXISTING_TAG" ]; then
             echo "HEAD already tagged: $EXISTING_TAG"
             echo "tag_name=$EXISTING_TAG" >> "$GITHUB_OUTPUT"
@@ -42,34 +63,74 @@ jobs:
 
           CURRENT_DATE="$(date -u +'%Y.%m.%d')"
 
-          LATEST_BUILD=$(git tag --list 'v*.*.*-*' \
-            | grep -E '^v[0-9]{4}\.[0-9]{2}\.[0-9]{2}-[0-9]+$' \
-            | sed -E 's/^v[0-9]{4}\.[0-9]{2}\.[0-9]{2}-([0-9]+)$/\1/' \
+          MATCHING_TAGS=$(git tag --list 'v*.*.*-*' | grep -E "$TAG_REGEX" || true)
+
+          LATEST_BASE=$(echo "$MATCHING_TAGS" \
+            | sed -E 's/^v([0-9]+\.[0-9]+\.[0-9]+)-.*/\1/' \
+            | sort -V | tail -1)
+
+          LATEST_BUILD=$(echo "$MATCHING_TAGS" \
+            | sed -E 's/^v[0-9]+\.[0-9]+\.[0-9]+-[0-9]{4}\.[0-9]{2}\.[0-9]{2}\.([0-9]+)$/\1/' \
             | sort -n | tail -1)
+
+          # The tag with the highest build number is the most recent release,
+          # regardless of which semver component it bumped.
+          LATEST_TAG_FULL=$(echo "$MATCHING_TAGS" | while read -r t; do
+            [ -z "$t" ] && continue
+            b=$(echo "$t" | sed -E 's/^v[0-9]+\.[0-9]+\.[0-9]+-[0-9]{4}\.[0-9]{2}\.[0-9]{2}\.([0-9]+)$/\1/')
+            echo "$b $t"
+          done | sort -n | tail -1 | awk '{print $2}')
+
+          if [ -n "$LATEST_TAG_FULL" ]; then
+            CODE_DIFF=$(git diff --name-only "$LATEST_TAG_FULL" HEAD -- . ':!pubspec.yaml')
+            if [ -z "$CODE_DIFF" ]; then
+              echo "No code changes since $LATEST_TAG_FULL — skipping release"
+              MESSAGE=$'⏭️ Latch — release skipped\n\nNo code changes since '"$LATEST_TAG_FULL"$' (triggered by '"${{ github.event_name }}"$').'
+              curl -s -X POST \
+                -H "Content-Type: application/json" \
+                -d "{\"chat_id\": \"-1003694191301\", \"message_thread_id\": 54, \"text\": $(echo "$MESSAGE" | jq -Rs .)}" \
+                "https://api.telegram.org/bot${{ secrets.BOTFATHER_TELEGRAM_BOT_TOKEN }}/sendMessage" > /dev/null
+              exit 0
+            fi
+          fi
+
           if [ -z "$LATEST_BUILD" ]; then
             NEW_BUILD=1
           else
             NEW_BUILD=$((LATEST_BUILD + 1))
           fi
 
-          NEW_TAG="v${CURRENT_DATE}-${NEW_BUILD}"
+          if [ -z "$LATEST_BASE" ]; then
+            MAJOR=1; MINOR=0; PATCH=0
+          else
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$LATEST_BASE"
+            BUMP="${{ github.event.inputs.bump || 'patch' }}"
+            case "$BUMP" in
+              major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+              minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+              *) PATCH=$((PATCH + 1)) ;;
+            esac
+          fi
 
-          if ! [[ "$NEW_TAG" =~ ^v[0-9]{4}\.[0-9]{2}\.[0-9]{2}-[0-9]+$ ]]; then
-            echo "::error::Computed tag '$NEW_TAG' does not match required format vYYYY.MM.DD-N"
+          NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}-${CURRENT_DATE}.${NEW_BUILD}"
+
+          if ! [[ "$NEW_TAG" =~ $TAG_REGEX ]]; then
+            echo "::error::Computed tag '$NEW_TAG' does not match required format vMAJOR.MINOR.PATCH-YYYY.MM.DD.BUILD"
             exit 1
           fi
 
-          sed -i -E "s/^version: .*/version: ${CURRENT_DATE}+${NEW_BUILD}/" pubspec.yaml
-          grep -q "^version: ${CURRENT_DATE}+${NEW_BUILD}$" pubspec.yaml || {
+          NEW_PUBSPEC_VERSION="${MAJOR}.${MINOR}.${PATCH}+${NEW_BUILD}"
+          sed -i -E "s/^version: .*/version: ${NEW_PUBSPEC_VERSION}/" pubspec.yaml
+          grep -q "^version: ${NEW_PUBSPEC_VERSION}$" pubspec.yaml || {
             echo "::error::Failed to bump version in pubspec.yaml"
             exit 1
           }
 
-          echo "Creating tag $NEW_TAG"
+          echo "Creating tag $NEW_TAG (pubspec.yaml -> $NEW_PUBSPEC_VERSION)"
           git config --global user.email "actions@github.com"
           git config --global user.name "GitHub Actions"
           git add pubspec.yaml
-          git commit -m "chore: bump version to ${CURRENT_DATE}+${NEW_BUILD} [skip ci]"
+          git commit -m "chore: bump version to ${NEW_PUBSPEC_VERSION} [skip ci]"
           git push origin HEAD:main
           git tag -a "$NEW_TAG" -m "Release $NEW_TAG"
           git push origin "$NEW_TAG"
@@ -80,7 +141,7 @@ jobs:
     if: |
       always() &&
       (
-        needs.auto_tag.result == 'success' ||
+        (needs.auto_tag.result == 'success' && needs.auto_tag.outputs.tag_name != '') ||
         (needs.auto_tag.result == 'skipped' && github.ref_type == 'tag')
       )
     runs-on: ubuntu-latest
@@ -102,9 +163,11 @@ jobs:
       - name: Pub get
         run: flutter pub get
 
-      # Version scheme: tag (vYYYY.MM.DD-N) is the source of truth; pubspec.yaml
-      # must already carry the matching version (bumped by auto_tag, or by
-      # whoever pushed the tag directly) — validated below before building.
+      # Tag (vMAJOR.MINOR.PATCH-YYYY.MM.DD.BUILD) is the source of truth for
+      # the release; pubspec.yaml must already carry the matching semver+build
+      # (bumped by auto_tag, or by whoever pushed the tag directly) —
+      # validated below. The date is release metadata only, not tracked in
+      # code.
       - name: Compute version
         id: version
         run: |
@@ -113,16 +176,18 @@ jobs:
             TAG_NAME="${GITHUB_REF_NAME}"
           fi
 
-          if ! [[ "$TAG_NAME" =~ ^v([0-9]{4}\.[0-9]{2}\.[0-9]{2})-([0-9]+)$ ]]; then
-            echo "::error::Tag '$TAG_NAME' does not match required format vYYYY.MM.DD-N"
+          if ! [[ "$TAG_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-([0-9]{4}\.[0-9]{2}\.[0-9]{2})\.([0-9]+)$ ]]; then
+            echo "::error::Tag '$TAG_NAME' does not match required format vMAJOR.MINOR.PATCH-YYYY.MM.DD.BUILD"
             exit 1
           fi
           VERSION_NAME="${BASH_REMATCH[1]}"
-          BUILD_NUMBER="${BASH_REMATCH[2]}"
+          RELEASE_DATE="${BASH_REMATCH[2]}"
+          BUILD_NUMBER="${BASH_REMATCH[3]}"
 
           SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
           echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
           echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "release_date=$RELEASE_DATE" >> "$GITHUB_OUTPUT"
           echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
           echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
 
@@ -136,11 +201,10 @@ jobs:
           fi
           echo "pubspec.yaml version matches tag: $PUBSPEC_VERSION"
 
+      # No --build-name/--build-number flags: pubspec.yaml, already validated
+      # above, is the single source of truth Flutter reads for the build.
       - name: Build release APK
-        run: |
-          flutter build apk --release \
-            --build-name=${{ steps.version.outputs.version_name }} \
-            --build-number=${{ steps.version.outputs.build_number }}
+        run: flutter build apk --release
 
       - name: Validate built APK matches tag
         run: |
@@ -189,7 +253,7 @@ jobs:
         run: |
           COMMIT_LINK="https://github.com/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}"
           RELEASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${{ steps.version.outputs.tag_name }}"
-          CAPTION=$'🚀 Latch '"${{ steps.version.outputs.tag_name }}"$'\n\n🔖 Commit: '"${{ steps.version.outputs.short_sha }}"$'\n🔗 '"$COMMIT_LINK"$'\n📋 Release: '"$RELEASE_URL"$'\n🔐 SHA-256: '"${{ steps.sha.outputs.sha256 }}"
+          CAPTION=$'🚀 Latch '"${{ steps.version.outputs.tag_name }}"$' ('"${{ steps.version.outputs.release_date }}"$')\n\n🔖 Commit: '"${{ steps.version.outputs.short_sha }}"$'\n🔗 '"$COMMIT_LINK"$'\n📋 Release: '"$RELEASE_URL"$'\n🔐 SHA-256: '"${{ steps.sha.outputs.sha256 }}"
 
           curl -s -F "chat_id=-1003694191301" \
                -F "message_thread_id=54" \
