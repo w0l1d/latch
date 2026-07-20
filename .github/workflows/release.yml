@@ -2,11 +2,77 @@ name: Release
 
 on:
   push:
+    branches: [main]
     tags:
       - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump type for the new tag'
+        type: choice
+        options: [patch, minor, major]
+        default: patch
 
 jobs:
+  # Auto-tags pushes to main (and manual runs) with the next semver tag.
+  # Direct tag pushes (e.g. `git push origin vX.Y.Z`) skip this and go
+  # straight to build_and_release below.
+  auto_tag:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    outputs:
+      tag_name: ${{ steps.tag.outputs.tag_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine next tag
+        id: tag
+        run: |
+          git fetch --tags -q
+
+          EXISTING_TAG=$(git tag --points-at HEAD | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)
+          if [ -n "$EXISTING_TAG" ]; then
+            echo "HEAD already tagged: $EXISTING_TAG"
+            echo "tag_name=$EXISTING_TAG" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          LATEST_TAG=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -1)
+          if [ -z "$LATEST_TAG" ]; then
+            NEW_TAG="v1.0.0"
+          else
+            BASE="${LATEST_TAG#v}"
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE"
+            BUMP="${{ github.event.inputs.bump || 'patch' }}"
+            case "$BUMP" in
+              major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+              minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+              *) PATCH=$((PATCH + 1)) ;;
+            esac
+            NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
+          fi
+
+          echo "Creating tag $NEW_TAG"
+          git config --global user.email "actions@github.com"
+          git config --global user.name "GitHub Actions"
+          git tag -a "$NEW_TAG" -m "Release $NEW_TAG"
+          git push origin "$NEW_TAG"
+          echo "tag_name=$NEW_TAG" >> "$GITHUB_OUTPUT"
+
   build_and_release:
+    needs: auto_tag
+    if: |
+      always() &&
+      (
+        needs.auto_tag.result == 'success' ||
+        (needs.auto_tag.result == 'skipped' && github.ref_type == 'tag')
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -14,6 +80,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.auto_tag.outputs.tag_name || github.ref_name }}
 
       - uses: subosito/flutter-action@v2
         with:
@@ -29,10 +97,14 @@ jobs:
       - name: Compute version
         id: version
         run: |
-          TAG_NAME="${GITHUB_REF_NAME}"
+          TAG_NAME="${{ needs.auto_tag.outputs.tag_name }}"
+          if [ -z "$TAG_NAME" ]; then
+            TAG_NAME="${GITHUB_REF_NAME}"
+          fi
           VERSION_NAME="${TAG_NAME#v}"
           BUILD_NUMBER="$(date +%Y%m%d)$(printf '%02d' $((GITHUB_RUN_NUMBER % 100)))"
           SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+          echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
           echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
           echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
           echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
@@ -59,16 +131,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" \
+          gh release create "${{ steps.version.outputs.tag_name }}" \
             "dist/latch-${{ steps.version.outputs.version_name }}.apk" \
-            --title "Latch ${GITHUB_REF_NAME}" \
+            --title "Latch ${{ steps.version.outputs.tag_name }}" \
             --generate-notes
 
       - name: Announce in Telegram
         run: |
           COMMIT_LINK="https://github.com/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}"
-          RELEASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${GITHUB_REF_NAME}"
-          CAPTION=$'🚀 Latch '"${GITHUB_REF_NAME}"$' (build '"${{ steps.version.outputs.build_number }}"$')\n\n🔖 Commit: '"${{ steps.version.outputs.short_sha }}"$'\n🔗 '"$COMMIT_LINK"$'\n📋 Release: '"$RELEASE_URL"$'\n🔐 SHA-256: '"${{ steps.sha.outputs.sha256 }}"
+          RELEASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${{ steps.version.outputs.tag_name }}"
+          CAPTION=$'🚀 Latch '"${{ steps.version.outputs.tag_name }}"$' (build '"${{ steps.version.outputs.build_number }}"$')\n\n🔖 Commit: '"${{ steps.version.outputs.short_sha }}"$'\n🔗 '"$COMMIT_LINK"$'\n📋 Release: '"$RELEASE_URL"$'\n🔐 SHA-256: '"${{ steps.sha.outputs.sha256 }}"
 
           curl -s -F "chat_id=-1003694191301" \
                -F "message_thread_id=54" \
