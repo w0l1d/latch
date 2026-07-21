@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+#
+# Fast local gate: dart-format check on the staged Dart files, mirroring CI's
+# `dart format --set-exit-if-changed` so a formatting failure is caught here
+# instead of after a push. Kept deliberately quick (no analyze/tests) — those
+# run in the pre-push hook. Bypass in an emergency with: git commit --no-verify
+#
+# Enable once with: tool/setup-hooks.sh   (sets core.hooksPath=.githooks)
+
+files="$(git diff --cached --name-only --diff-filter=ACM -- '*.dart')"
+[ -z "$files" ] && exit 0
+
+echo "pre-commit: dart format check ($(echo "$files" | wc -l | tr -d ' ') staged Dart file(s))…"
+
+# NUL-separate to survive any odd characters; xargs -0 is available on macOS/Linux.
+if ! printf '%s' "$files" | tr '\n' '\0' | xargs -0 dart format --output=none --set-exit-if-changed; then
+  echo
+  echo "✗ Staged Dart files are not formatted. Fix with:"
+  echo "    dart format ."
+  echo "  then re-stage and commit again (or bypass with: git commit --no-verify)."
+  exit 1
+fi
+
+echo "pre-commit: OK"

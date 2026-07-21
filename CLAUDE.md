@@ -37,6 +37,8 @@ flutter test --plain-name "expr"          # single test by name
 
 - Flutter pinned to **3.44.2** in CI (`.github/workflows/`); `sdk: ^3.12.2`.
 - Local analyze config is `analysis_options.yaml` (includes `package:flutter_lints/flutter.yaml`).
+- **CI (`ci.yml`) fails on unformatted code** (`dart format --set-exit-if-changed`) before analyze/test. Run `dart format .` before committing, or enable the local hooks: `./tool/setup-hooks.sh` (pre-commit = format check, pre-push = full format+analyze+test mirror; `.githooks/`, wired via `core.hooksPath`).
+- **Releases are tag-driven, not push-driven** (`release.yml`): a plain push to `main` never releases. Cut one via the Release workflow's `workflow_dispatch` (bump `patch`/`minor`/`major`) or by pushing a `v*.*.*-*` tag; the version comes from the tag via `flutter build --build-name/--build-number`, so `pubspec.yaml` is never bumped/committed by CI.
 - Do **not** `apt install libsodium` or set `LD_LIBRARY_PATH` — `sodium` 4.x ships libsodium via Dart native assets and `flutter test` bundles it automatically. (Golden-vector regeneration in `tool/gen_golden_vectors.py` is the exception: it loads a *system* libsodium via `ctypes`.)
 
 ## Crypto runs in a background isolate

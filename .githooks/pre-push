@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+#
+# Full local mirror of the CI gate, run before code leaves your machine:
+# format check + analyze + the three package test suites — exactly what
+# ci.yml runs. Catches everything CI would, without the push round-trip.
+#
+# Skip the (slow) test suites but keep format+analyze:  LATCH_SKIP_TESTS=1 git push
+# Bypass the whole hook in an emergency:                 git push --no-verify
+#
+# Enable once with: tool/setup-hooks.sh   (sets core.hooksPath=.githooks)
+
+set -o pipefail
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+echo "pre-push: dart format check…"
+if ! dart format --output=none --set-exit-if-changed .; then
+  echo "✗ Formatting needed — run: dart format ."
+  exit 1
+fi
+
+for pkg in . packages/myenc_core packages/myenc_adapters; do
+  echo "pre-push: flutter analyze ($pkg)…"
+  if ! ( cd "$pkg" && flutter analyze --no-pub ); then
+    echo "✗ Analyzer issues in $pkg."
+    exit 1
+  fi
+done
+
+if [ "${LATCH_SKIP_TESTS:-0}" = "1" ]; then
+  echo "pre-push: LATCH_SKIP_TESTS=1 → skipping tests. OK"
+  exit 0
+fi
+
+for pkg in packages/myenc_core packages/myenc_adapters .; do
+  echo "pre-push: flutter test ($pkg)…"
+  if ! ( cd "$pkg" && flutter test ); then
+    echo "✗ Tests failed in $pkg."
+    exit 1
+  fi
+done
+
+echo "pre-push: OK"

@@ -113,6 +113,21 @@ flutter test test/foo_test.dart
 flutter test --plain-name "expr"
 ```
 
+### Git hooks (optional)
+
+Enable the repo's local hooks once per clone to catch format/analyze/test issues before they reach CI:
+
+```sh
+./tool/setup-hooks.sh    # sets core.hooksPath=.githooks
+```
+
+- **pre-commit** — `dart format` check on staged Dart files (fast).
+- **pre-push** — full CI mirror: format + analyze + all three test suites. Skip the slow tests with `LATCH_SKIP_TESTS=1 git push`; bypass any hook with `--no-verify`.
+
+### Releasing
+
+Releases are deliberate — pushing to `main` never cuts one. Trigger a release either by running the **Release** workflow from the Actions tab (choose `patch`/`minor`/`major`), or by pushing a `vMAJOR.MINOR.PATCH-YYYY.MM.DD.BUILD` tag. The version is derived from the tag at build time; nothing is committed back to `main`.
+
 ## Roadmap
 
 | Phase | Ships | Status |
