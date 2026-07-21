@@ -69,7 +69,12 @@ jobs:
           RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
           MESSAGE=$'🚨 *Latch — crypto regression*\n\nmyenc_adapters golden-vector tests failed on `'"${SHORT_SHA}"$'`.\n\n🔗 [Run]('"${RUN_URL}"$')'
-          curl -s -X POST \
+          RESPONSE=$(curl -sS -X POST \
             -H "Content-Type: application/json" \
             -d "{\"chat_id\": \"-1003694191301\", \"message_thread_id\": 53, \"text\": $(echo "$MESSAGE" | jq -Rs .), \"parse_mode\": \"Markdown\", \"disable_web_page_preview\": true}" \
-            "https://api.telegram.org/bot${{ secrets.BOTFATHER_TELEGRAM_BOT_TOKEN }}/sendMessage"
+            "https://api.telegram.org/bot${{ secrets.BOTFATHER_TELEGRAM_BOT_TOKEN }}/sendMessage")
+          echo "$RESPONSE"
+          if ! echo "$RESPONSE" | grep -q '"ok":true'; then
+            echo "::error::Telegram sendMessage failed: $RESPONSE"
+            exit 1
+          fi

@@ -207,10 +207,18 @@ jobs:
 
       # No --build-name/--build-number flags: pubspec.yaml, already validated
       # above, is the single source of truth Flutter reads for the build.
-      - name: Build release APK
-        run: flutter build apk --release
+      #
+      # Split per real-device ABI and drop x86_64 (emulator-only, never the
+      # target of a direct APK install): a single fat APK bundling all three
+      # ABIs' native libs (Flutter engine + AOT app code) ran ~54MB, over
+      # Telegram's ~50MB bot upload limit. Two per-ABI APKs come in at
+      # ~16-19MB each — smaller individual downloads for users too.
+      - name: Build release APKs
+        run: |
+          flutter build apk --release --split-per-abi \
+            --target-platform android-arm,android-arm64
 
-      - name: Validate built APK matches tag
+      - name: Validate built APKs match tag
         run: |
           AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt | sort -V | tail -1)
           if [ -z "$AAPT" ]; then
@@ -218,38 +226,52 @@ jobs:
             exit 1
           fi
 
-          APK_PATH="build/app/outputs/flutter-apk/app-release.apk"
-          BADGING=$("$AAPT" dump badging "$APK_PATH")
-          APK_VERSION_NAME=$(echo "$BADGING" | grep -oP "versionName='\K[^']+")
-          APK_VERSION_CODE=$(echo "$BADGING" | grep -oP "versionCode='\K[^']+")
-
           EXPECTED_VERSION_NAME="${{ steps.version.outputs.version_name }}"
-          EXPECTED_VERSION_CODE="${{ steps.version.outputs.build_number }}"
+          BASE_VERSION_CODE="${{ steps.version.outputs.build_number }}"
 
-          if [ "$APK_VERSION_NAME" != "$EXPECTED_VERSION_NAME" ] || [ "$APK_VERSION_CODE" != "$EXPECTED_VERSION_CODE" ]; then
-            echo "::error::Built APK reports $APK_VERSION_NAME ($APK_VERSION_CODE) but tag ${{ steps.version.outputs.tag_name }} expects $EXPECTED_VERSION_NAME ($EXPECTED_VERSION_CODE)"
-            exit 1
-          fi
-          echo "APK version validated: $APK_VERSION_NAME ($APK_VERSION_CODE)"
+          # flutter build --split-per-abi offsets each APK's versionCode by
+          # its Play Store multi-APK ABI code (armeabi-v7a=1, arm64-v8a=2)
+          # times 1000, so per-ABI APKs get distinct version codes.
+          declare -A ABI_OFFSET=([armeabi-v7a]=1 [arm64-v8a]=2)
 
-      - name: Stage APK
+          for ABI in armeabi-v7a arm64-v8a; do
+            APK_PATH="build/app/outputs/flutter-apk/app-${ABI}-release.apk"
+            BADGING=$("$AAPT" dump badging "$APK_PATH")
+            APK_VERSION_NAME=$(echo "$BADGING" | grep -oP "versionName='\K[^']+")
+            APK_VERSION_CODE=$(echo "$BADGING" | grep -oP "versionCode='\K[^']+")
+
+            EXPECTED_VERSION_CODE=$((ABI_OFFSET[$ABI] * 1000 + BASE_VERSION_CODE))
+
+            if [ "$APK_VERSION_NAME" != "$EXPECTED_VERSION_NAME" ] || [ "$APK_VERSION_CODE" != "$EXPECTED_VERSION_CODE" ]; then
+              echo "::error::$ABI APK reports $APK_VERSION_NAME ($APK_VERSION_CODE) but tag ${{ steps.version.outputs.tag_name }} expects $EXPECTED_VERSION_NAME ($EXPECTED_VERSION_CODE)"
+              exit 1
+            fi
+            echo "$ABI APK version validated: $APK_VERSION_NAME ($APK_VERSION_CODE)"
+          done
+
+      - name: Stage APKs
         run: |
           mkdir -p dist
-          cp build/app/outputs/flutter-apk/app-release.apk \
-             "dist/latch-${{ steps.version.outputs.tag_name }}.apk"
+          for ABI in armeabi-v7a arm64-v8a; do
+            cp "build/app/outputs/flutter-apk/app-${ABI}-release.apk" \
+               "dist/latch-${{ steps.version.outputs.tag_name }}-${ABI}.apk"
+          done
 
       - name: Compute SHA-256
         id: sha
         run: |
-          SHA256=$(sha256sum "dist/latch-${{ steps.version.outputs.tag_name }}.apk" | awk '{print $1}')
-          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+          {
+            echo "shas<<EOF"
+            sha256sum dist/*.apk | awk '{print $2, $1}' | sed 's#dist/##'
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "${{ steps.version.outputs.tag_name }}" \
-            "dist/latch-${{ steps.version.outputs.tag_name }}.apk" \
+            dist/*.apk \
             --title "Latch ${{ steps.version.outputs.tag_name }}" \
             --generate-notes
 
@@ -257,10 +279,20 @@ jobs:
         run: |
           COMMIT_LINK="https://github.com/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}"
           RELEASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${{ steps.version.outputs.tag_name }}"
-          CAPTION=$'🚀 Latch '"${{ steps.version.outputs.tag_name }}"$' ('"${{ steps.version.outputs.release_date }}"$')\n\n🔖 Commit: '"${{ steps.version.outputs.short_sha }}"$'\n🔗 '"$COMMIT_LINK"$'\n📋 Release: '"$RELEASE_URL"$'\n🔐 SHA-256: '"${{ steps.sha.outputs.sha256 }}"
+          CAPTION=$'🚀 Latch '"${{ steps.version.outputs.tag_name }}"$' ('"${{ steps.version.outputs.release_date }}"$')\n\n🔖 Commit: '"${{ steps.version.outputs.short_sha }}"$'\n🔗 '"$COMMIT_LINK"$'\n📋 Release: '"$RELEASE_URL"$'\n\nSHA-256:\n'"${{ steps.sha.outputs.shas }}"
 
-          curl -s -F "chat_id=-1003694191301" \
-               -F "message_thread_id=54" \
-               -F "document=@dist/latch-${{ steps.version.outputs.tag_name }}.apk" \
-               -F "caption=$CAPTION" \
-               "https://api.telegram.org/bot${{ secrets.BOTFATHER_TELEGRAM_BOT_TOKEN }}/sendDocument"
+          for ABI in arm64-v8a armeabi-v7a; do
+            APK="dist/latch-${{ steps.version.outputs.tag_name }}-${ABI}.apk"
+            RESPONSE=$(curl -sS -F "chat_id=-1003694191301" \
+                 -F "message_thread_id=54" \
+                 -F "document=@${APK}" \
+                 -F "caption=$CAPTION" \
+                 "https://api.telegram.org/bot${{ secrets.BOTFATHER_TELEGRAM_BOT_TOKEN }}/sendDocument")
+            echo "$RESPONSE"
+            if ! echo "$RESPONSE" | grep -q '"ok":true'; then
+              echo "::error::Telegram sendDocument failed for $APK: $RESPONSE"
+              exit 1
+            fi
+            # Only the first message needs the full caption; keep the rest terse.
+            CAPTION="📦 $(basename "$APK")"
+          done
