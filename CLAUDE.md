@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-> A detailed `AGENTS.md` already lives at the repo root. It is the source of truth for the `.latch` format freeze, testing gotchas, and the `sodium` native-assets flow — read it before non-trivial work. This file focuses on the runtime architecture and control flow that require reading several files to reconstruct, so you don't have to re-explore each session.
+> This is the single source of truth for agents. `AGENTS.md` at the repo root is a symlink to this file.
 
 ## What this is
 
@@ -14,11 +14,13 @@ Hexagonal architecture split across three independently-analyzed/tested packages
 
 - **`packages/myenc_core/`** — pure Dart, **no Flutter, no `dart:io`**. The auditable heart: `.latch` codec (`format/myenc_codec.dart`, `format/file_header.dart`), envelope service (`domain/envelope_service.dart`), DEK wrapping (`domain/dek_wrap.dart`), KDF params, typed errors (`format/myenc_errors.dart`), and the **ports** (`ports/crypto_port.dart`, `ports/file_io_port.dart`, `ports/secure_storage_port.dart`). If you find yourself importing Flutter or `dart:io` here, you are in the wrong package.
 - **`packages/myenc_adapters/`** — concrete port implementations: `SodiumCryptoAdapter` (libsodium via the `sodium` package) and `FileIoDart` (streaming `dart:io` file I/O). Depends on Flutter + `myenc_core`.
-- **`/` (repo root)** — the Flutter app. `lib/main.dart` boots `AppCrypto`, wires services, runs `LatchApp`.
+- **`/` (repo root)** — the Flutter app (`lib/`, `test/`, `android/`, `ios/`). `lib/main.dart` boots `AppCrypto`, wires services, runs `LatchApp`.
 
 `myenc_*` are **path dependencies** of the app — editing them changes the app build with no version bump.
 
 ## Commands
+
+The repo is three packages that must each be analyzed and tested independently — exactly what CI does. There is no single command that runs all three.
 
 ```sh
 flutter pub get                       # at root first; resolves path-deps too
@@ -33,7 +35,8 @@ flutter test test/foo_test.dart           # single file
 flutter test --plain-name "expr"          # single test by name
 ```
 
-- Flutter pinned to **3.44.2** in CI; `sdk: ^3.12.2`.
+- Flutter pinned to **3.44.2** in CI (`.github/workflows/`); `sdk: ^3.12.2`.
+- Local analyze config is `analysis_options.yaml` (includes `package:flutter_lints/flutter.yaml`).
 - Do **not** `apt install libsodium` or set `LD_LIBRARY_PATH` — `sodium` 4.x ships libsodium via Dart native assets and `flutter test` bundles it automatically. (Golden-vector regeneration in `tool/gen_golden_vectors.py` is the exception: it loads a *system* libsodium via `ctypes`.)
 
 ## Crypto runs in a background isolate
@@ -48,7 +51,7 @@ All heavy crypto (Argon2id KDF, secretstream) runs in a spawned isolate so the U
 Robustness invariants — preserve these when touching the isolate plumbing:
 - The worker's `onExit` and `onError` ports feed the **same** `ReceivePort`, so a worker killed under memory pressure surfaces as a stream error instead of hanging the caller forever (a `null` message = exited early; a `List` message = uncaught error).
 - On teardown before `done`, `_runBatch` kills the isolate immediately and sweeps the in-flight `<outPath>.tmp`. For decrypt that temp holds **partial plaintext**, so this cleanup is a security property, not just tidiness.
-- Progress screens depend on the "last per-file result arrives before the final `1.0`" ordering. This is pinned by `test/app_crypto_batch_test.dart` (plain `test()`, real isolate) because `testWidgets` runs under a fake clock and cannot reliably drive a real isolate — see AGENTS.md "Testing gotchas".
+- Progress screens depend on the "last per-file result arrives before the final `1.0`" ordering. This is pinned by `test/app_crypto_batch_test.dart` (plain `test()`, real isolate) because `testWidgets` runs under a fake clock and cannot reliably drive a real isolate — see "Testing gotchas" below.
 
 ## Output path resolution — where encrypted/decrypted files land
 
@@ -72,19 +75,51 @@ The native side (`android/.../MainActivity.kt`, `latch/saf` channel) implements 
 ## App-layer services (`lib/core/`)
 
 - `passphrase_storage_service.dart`, `device_key_service.dart`, `recipient_key_service.dart` — secure-storage-backed services set on `AppCrypto` static fields by `main()` after the tree mounts (platform channels must be live). Decrypt tries hardware-key wraps (device-bound recovery) and X25519 recipient wraps as fallbacks when the passphrase wrap fails.
-- `saf_bridge.dart` — Android Storage Access Framework bridge (content:// → real path).
+- `saf_bridge.dart` — Android Storage Access Framework bridge (content:// → real path, tree grants).
 - `incoming_file_service.dart` — files shared *into* the app (`receive_sharing_intent`).
 - `crypto_stub.dart` — pure heuristic passphrase strength (no real crypto).
 
-## Non-negotiable constraints
+## Testing gotchas (FakeAsync vs isolates)
 
-- **The `.latch` v1 wire format is FROZEN.** Do not change any byte. Two freeze guards exist (`packages/myenc_core/test/codec_freeze_test.dart` and the `packages/myenc_adapters/test/golden/` vectors) and neither is editable to make a test pass. To extend the format, bump the version byte; readers must fail closed on unknown versions. See `docs/FORMAT.md` (normative) and AGENTS.md.
+`testWidgets` runs under a fake clock. Anything needing the **real** Dart event loop hangs inside it and leaves a dangling ReceivePort that hangs teardown:
+
+- Spawning the crypto worker isolate (`AppCrypto.*Files().listen()`, i.e. the encrypt/decrypt **progress** screens) is not reliably drivable from `flutter test`. Crypto completion + the "last result before final 1.0" invariant the progress screens depend on are pinned instead by `test/app_crypto_batch_test.dart` (plain `test()`, real event loop, real isolate).
+- `await Directory.delete(recursive:)` and other real async file I/O in a `testWidgets` body also hang. Use the **sync** variants in widget tests: `Directory.systemTemp.createTempSync(...)`, `file.deleteSync(...)`.
+- In a `testWidgets`, do real-async/isolate work inside `tester.runAsync(() async {...})` so it runs on the real loop, then `pumpAndSettle()` for the resulting setState/navigation. See `test/e2e_flow_test.dart` (which drives every button/navigation screen but the progress screens).
+
+Importing a transitive platform interface (`*_platform_interface`) in tests is normal here; add it to root `dev_dependencies` to satisfy `depend_on_referenced_packages`.
+
+## The `.latch` format is FROZEN (v1)
+
+**Do not change any byte of the v1 wire layout.** `docs/FORMAT.md` is normative and frozen since 2026-07-12. If a test that pins the layout fails, the layout changed — that is a bug to *revert*, not a test to "fix".
+
+Two freeze guards, neither editable to make a test pass:
+
+- `packages/myenc_core/test/codec_freeze_test.dart` — pins the header byte layout against an independent Python-derived hex string.
+- `packages/myenc_adapters/test/golden/` (`golden_v1.latch` + `golden_v1.json` + `golden_kdf.json`) + `golden_vectors_test.dart` — end-to-end vectors produced by an **independent** reference implementation (`tool/gen_golden_vectors.py`, using `argon2-cffi` + libsodium via `ctypes`, never the Dart code).
+
+To legitimately extend the format, **bump the version byte**; readers must fail closed on unknown versions.
+
+## `sodium` package / native libs
+
+- `sodium` 4.x ships libsodium via **Dart native assets**. `flutter test` builds/bundles it automatically — do **not** `apt install libsodium` or set `LD_LIBRARY_PATH`; that breaks the native-assets flow (CI comment is explicit about this).
+- Regenerating golden vectors (`tool/gen_golden_vectors.py`) is the opposite case: it loads a system libsodium via `ctypes` from `/opt/homebrew/lib`, `/usr/local/lib`, or `anaconda3/lib`. Needs `argon2-cffi` installed. Regeneration produces a fresh self-consistent `.latch`+`.json` pair (secretstream header nonce is random); commit the pair together. Only regenerate when intentionally updating the fixture — the committed pair must keep decrypting.
+
+## Non-negotiable constraints & conventions
+
 - **Wrong-passphrase vs corrupt-file distinction:** a wrong passphrase fails fast at the DEK wrap *before* the body is touched; a corrupt/tampered file fails at a chunk tag and never emits partial plaintext. Preserve both when editing crypto code.
-- **Commits:** Conventional Commits with a scope (`feat(core):`, `fix(app):`, `build(android):`, `docs:`, plus scopeless `fix:`/`docs:`). **No Claude / Co-Authored-By attribution** in commits, files, or any output (repo owner convention).
+- **Forgotten passphrase = unrecoverable, by design.** There is no server and no recovery path. Don't add "recovery" features.
+- **Commits:** Conventional Commits with a scope, e.g. `feat(core):`, `feat(app):`, `fix(app):`, `build(android):`, `docs:`, `docs+test:`. Scopes in use: `app`, `core`, `encrypt`, `android`, plus scopeless `fix:`/`docs:`. Em-dash `—` is used in bodies. **No Claude / Co-Authored-By attribution** in commits, files, or any output (repo owner convention).
 
-## Docs worth reading before deeper work
+## Things to leave alone
 
-- `AGENTS.md` — format freeze, testing gotchas, sodium/native-assets specifics.
+- `bugreport-*.zip` at root is a captured Android bug report, not source.
+- `build/`, `*/build/`, `.dart_tool/`, `.idea/` artifacts — ignore.
+- `packages/myenc_core` must stay free of Flutter and `dart:io` imports. If you find yourself importing either there, you're in the wrong package.
+
+## Docs worth reading before non-trivial work
+
 - `project_spec.md` — full design spec, threat model, roadmap (§11); use-cases referenced in code as UC-N.
 - `docs/FORMAT.md` — normative frozen `.latch` v1 layout.
-- `docs/RELEASE_READINESS.md`, `ios_build_notes.md`.
+- `docs/RELEASE_READINESS.md` — accessibility / performance / store-compliance audit.
+- `ios_build_notes.md` — iOS not yet built; `file_picker` plist keys, pod install, signing notes.
