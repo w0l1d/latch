@@ -157,17 +157,20 @@ void main() {
       });
     });
 
-    test('rememberTreeGrant caches by folder and treeGrantForFolder reads it', () async {
-      SharedPreferences.setMockInitialValues({});
-      await SafBridge.rememberTreeGrant(
-        '/storage/x/Documents',
-        'content://tree/primary%3ADocuments',
-      );
-      expect(
-        SafBridge.treeGrantForFolder('/storage/x/Documents'),
-        'content://tree/primary%3ADocuments',
-      );
-      expect(SafBridge.treeGrantForFolder('/storage/x/Other'), isNull);
-    });
+    test(
+      'rememberTreeGrant caches by folder and treeGrantForFolder reads it',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        await SafBridge.rememberTreeGrant(
+          '/storage/x/Documents',
+          'content://tree/primary%3ADocuments',
+        );
+        expect(
+          SafBridge.treeGrantForFolder('/storage/x/Documents'),
+          'content://tree/primary%3ADocuments',
+        );
+        expect(SafBridge.treeGrantForFolder('/storage/x/Other'), isNull);
+      },
+    );
   });
 }

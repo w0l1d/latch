@@ -109,7 +109,10 @@ void main() {
       );
       expect(plan.byPath['/cache/ask.txt']!.treeUri, 'content://tree/ask');
       // Persisted for next time.
-      expect(SafBridge.treeGrantForFolder('/storage/e/Ask'), 'content://tree/ask');
+      expect(
+        SafBridge.treeGrantForFolder('/storage/e/Ask'),
+        'content://tree/ask',
+      );
     });
 
     test('a declined grant falls back to Downloads (null treeUri)', () async {
@@ -127,16 +130,19 @@ void main() {
       expect(plan.byPath['/cache/deny.txt']!.treeUri, isNull);
     });
 
-    test('a source with no filesystem folder falls back to Downloads', () async {
-      // No registered content URI → realDirectoryFor is null (cloud/media).
-      mockSaf((_) async => null);
-      final plan = await OutputPlanner.plan(
-        ['/cache/cloud-only.txt'],
-        requestGrant: (_) async => 'content://tree/should-not-be-used',
-        platformIsAndroid: true,
-      );
-      expect(plan.byPath['/cache/cloud-only.txt']!.treeUri, isNull);
-    });
+    test(
+      'a source with no filesystem folder falls back to Downloads',
+      () async {
+        // No registered content URI → realDirectoryFor is null (cloud/media).
+        mockSaf((_) async => null);
+        final plan = await OutputPlanner.plan(
+          ['/cache/cloud-only.txt'],
+          requestGrant: (_) async => 'content://tree/should-not-be-used',
+          platformIsAndroid: true,
+        );
+        expect(plan.byPath['/cache/cloud-only.txt']!.treeUri, isNull);
+      },
+    );
   });
 
   group('relocateStagedOutputs', () {
@@ -155,41 +161,47 @@ void main() {
       expect(out.single.fellBackToDownloads, isFalse);
     });
 
-    test('creates the output in a granted tree and deletes the staged temp', () async {
-      final staged = File(p.join(tmp.path, '0_a.txt.latch'))
-        ..writeAsBytesSync([1, 2, 3]);
-      MethodCall? seen;
-      mockSaf((call) async {
-        seen = call;
-        return {
-          'uri': 'content://doc/new',
-          'displayPath': '/storage/e/Docs/a.txt.latch',
-        };
-      });
+    test(
+      'creates the output in a granted tree and deletes the staged temp',
+      () async {
+        final staged = File(p.join(tmp.path, '0_a.txt.latch'))
+          ..writeAsBytesSync([1, 2, 3]);
+        MethodCall? seen;
+        mockSaf((call) async {
+          seen = call;
+          return {
+            'uri': 'content://doc/new',
+            'displayPath': '/storage/e/Docs/a.txt.latch',
+          };
+        });
 
-      final out = await relocateStagedOutputs(
-        [ok('/cache/a.txt', staged.path)],
-        OutputPlan(
-          stagingDir: tmp.path,
-          outputDir: tmp.path,
-          byPath: {'/cache/a.txt': const OutputTarget(treeUri: 'content://tree/docs')},
-        ),
-        displayNameFor: (s) => '${p.basename(s)}.latch',
-      );
+        final out = await relocateStagedOutputs(
+          [ok('/cache/a.txt', staged.path)],
+          OutputPlan(
+            stagingDir: tmp.path,
+            outputDir: tmp.path,
+            byPath: {
+              '/cache/a.txt': const OutputTarget(
+                treeUri: 'content://tree/docs',
+              ),
+            },
+          ),
+          displayNameFor: (s) => '${p.basename(s)}.latch',
+        );
 
-      expect(seen!.method, 'createInTree');
-      expect(seen!.arguments['displayName'], 'a.txt.latch');
-      expect(seen!.arguments['treeUri'], 'content://tree/docs');
-      expect(out.single.path, '/storage/e/Docs/a.txt.latch');
-      expect(out.single.fellBackToDownloads, isFalse);
-      expect(staged.existsSync(), isFalse, reason: 'staged temp is swept');
-    });
+        expect(seen!.method, 'createInTree');
+        expect(seen!.arguments['displayName'], 'a.txt.latch');
+        expect(seen!.arguments['treeUri'], 'content://tree/docs');
+        expect(out.single.path, '/storage/e/Docs/a.txt.latch');
+        expect(out.single.fellBackToDownloads, isFalse);
+        expect(staged.existsSync(), isFalse, reason: 'staged temp is swept');
+      },
+    );
 
     test('falls back to Downloads when there is no grant', () async {
       final staged = File(p.join(tmp.path, '0_note.txt'))
         ..writeAsBytesSync([9, 9, 9]);
-      final downloads = Directory(p.join(tmp.path, 'Download'))
-        ..createSync();
+      final downloads = Directory(p.join(tmp.path, 'Download'))..createSync();
       mockSaf((_) async => null);
 
       final out = await relocateStagedOutputs(
@@ -226,7 +238,9 @@ void main() {
         OutputPlan(
           stagingDir: tmp.path,
           outputDir: tmp.path,
-          byPath: {'/cache/x.txt': const OutputTarget(treeUri: 'content://tree/gone')},
+          byPath: {
+            '/cache/x.txt': const OutputTarget(treeUri: 'content://tree/gone'),
+          },
         ),
         displayNameFor: (s) => '${p.basename(s)}.latch',
         downloadsDir: () async => downloads.path,

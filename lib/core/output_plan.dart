@@ -82,7 +82,11 @@ class OutputPlanner {
       for (final f in files) {
         byPath[f] = OutputTarget(treeUri: explicitTreeUri);
       }
-      return OutputPlan(stagingDir: staging, outputDir: staging, byPath: byPath);
+      return OutputPlan(
+        stagingDir: staging,
+        outputDir: staging,
+        byPath: byPath,
+      );
     }
 
     // "Same folder as each original": resolve one grant per distinct folder.
