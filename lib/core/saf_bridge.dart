@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Bridge to Android's Storage Access Framework.
 ///
@@ -77,5 +79,87 @@ class SafBridge {
     }
     _realDirByPath[path] = dir;
     return dir;
+  }
+
+  // --- Folder (tree) grants: creating NEW output files beside originals ---
+  //
+  // The single-file picker only grants access to the picked document, not its
+  // folder, so the app can't create a sibling output there. ACTION_OPEN_-
+  // DOCUMENT_TREE grants a whole folder (a persistable "tree" URI) into which
+  // DocumentsContract.createDocument can write new files. Grants are cached by
+  // the folder path they were requested for so we don't re-prompt every batch.
+
+  static const _grantsPrefsKey = 'saf_tree_grants';
+  static final Map<String, String> _treeUriByFolder = {};
+
+  /// Prompt the user to grant a folder, seeding the picker at [initialPath].
+  /// Returns the granted tree URI, or null if they cancelled.
+  static Future<String?> pickTree({String? initialPath}) =>
+      channel.invokeMethod<String>('openTree', {'initialPath': initialPath});
+
+  /// Filesystem path a granted tree URI points at, or null when the provider
+  /// doesn't front a real folder. Best-effort: never throws.
+  static Future<String?> treeUriToPath(String treeUri) async {
+    try {
+      return await channel.invokeMethod<String>('treeUriToPath', {
+        'uri': treeUri,
+      });
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Create [displayName] inside the granted [treeUri] and copy [srcPath] into
+  /// it. Returns the created document's URI and a human-readable display path.
+  /// Throws (caller falls back to Downloads) when the grant is gone or the
+  /// write fails.
+  static Future<({String uri, String displayPath})> createInTree({
+    required String treeUri,
+    required String displayName,
+    required String srcPath,
+    String mimeType = 'application/octet-stream',
+  }) async {
+    final m = await channel.invokeMethod<Map>('createInTree', {
+      'treeUri': treeUri,
+      'displayName': displayName,
+      'mimeType': mimeType,
+      'srcPath': srcPath,
+    });
+    if (m == null) throw StateError('createInTree returned no result');
+    return (uri: m['uri'] as String, displayPath: m['displayPath'] as String);
+  }
+
+  /// The cached tree grant for [folderPath], if the user has granted it.
+  static String? treeGrantForFolder(String folderPath) =>
+      _treeUriByFolder[folderPath];
+
+  /// Remember (and persist) that [folderPath] outputs may be created in
+  /// [treeUri]. Persistence is best-effort so a prefs failure never blocks.
+  static Future<void> rememberTreeGrant(
+    String folderPath,
+    String treeUri,
+  ) async {
+    _treeUriByFolder[folderPath] = treeUri;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_grantsPrefsKey, jsonEncode(_treeUriByFolder));
+    } catch (_) {
+      // In-memory grant still works for this session.
+    }
+  }
+
+  /// Seed the in-memory grant registry from persisted prefs at startup.
+  static Future<void> loadTreeGrants() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_grantsPrefsKey);
+      if (raw == null) return;
+      final decoded = jsonDecode(raw) as Map<String, dynamic>;
+      decoded.forEach((k, v) {
+        if (v is String) _treeUriByFolder[k] = v;
+      });
+    } catch (_) {
+      // No persisted grants (or prefs unavailable) — start empty.
+    }
   }
 }

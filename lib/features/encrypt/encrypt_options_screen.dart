@@ -1,9 +1,11 @@
+import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/default_output.dart';
+import '../../core/saf_bridge.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/latch_button.dart';
 
@@ -25,8 +27,14 @@ class EncryptOptionsScreen extends StatefulWidget {
 
 class _EncryptOptionsScreenState extends State<EncryptOptionsScreen> {
   bool _deleteOriginals = false;
-  String? _outputDir; // null = beside each original
-  String? _defaultDir; // platform default (Downloads on Android)
+  String? _outputDir; // desktop/iOS picked folder; null = beside each original
+  String? _defaultDir; // platform default (null on Android = same as original)
+
+  // Android only: a folder grant the user chose for ALL files, and its display
+  // path. When set, output goes into this granted folder instead of each
+  // original's own folder.
+  String? _explicitTreeUri;
+  String? _explicitTreeLabel;
 
   @override
   void initState() {
@@ -36,11 +44,12 @@ class _EncryptOptionsScreenState extends State<EncryptOptionsScreen> {
 
   Future<void> _loadDefaults() async {
     final prefs = await SharedPreferences.getInstance();
-    // Locked files should land where the originals live. On Android that
-    // means resolving the picked files' real folder from their content://
-    // URIs (the picker only hands us cache copies) — with Downloads as the
-    // fallback when that folder isn't reachable under scoped storage.
-    final def = await DefaultOutput.directoryFor(widget.files);
+    // On Android the default is each original's own folder (resolved and
+    // granted at lock time). Off-Android we fall back to the platform default
+    // (null on desktop = beside each original; app documents on iOS).
+    final def = Platform.isAndroid
+        ? null
+        : await DefaultOutput.directoryFor(widget.files);
     if (!mounted) return;
     setState(() {
       _deleteOriginals = prefs.getBool('delete_originals') ?? false;
@@ -50,6 +59,29 @@ class _EncryptOptionsScreenState extends State<EncryptOptionsScreen> {
   }
 
   Future<void> _pickFolder() async {
+    if (Platform.isAndroid) {
+      // Grant a folder the app can create output files in (ACTION_OPEN_-
+      // DOCUMENT_TREE). The single-file picker can't grant this.
+      String? treeUri;
+      try {
+        treeUri = await SafBridge.pickTree();
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not open the folder picker: $e')),
+          );
+        }
+        return;
+      }
+      if (treeUri == null) return; // cancelled
+      final label = await SafBridge.treeUriToPath(treeUri);
+      if (!mounted) return;
+      setState(() {
+        _explicitTreeUri = treeUri;
+        _explicitTreeLabel = label;
+      });
+      return;
+    }
     final String? dir;
     try {
       dir = await FilePicker.platform.getDirectoryPath(
@@ -101,10 +133,23 @@ class _EncryptOptionsScreenState extends State<EncryptOptionsScreen> {
               ),
               const SizedBox(height: 8),
               _OutputFolderRow(
-                outputDir: _outputDir,
-                isDefault: _outputDir == _defaultDir,
+                title: _explicitTreeUri != null
+                    ? (_explicitTreeLabel == null
+                          ? 'Chosen folder'
+                          : p.basename(_explicitTreeLabel!))
+                    : (_outputDir == null
+                          ? 'Same folder as each original'
+                          : p.basename(_outputDir!)),
+                subtitle: _explicitTreeUri != null
+                    ? (_explicitTreeLabel ?? 'A folder you picked')
+                    : (_outputDir ?? 'Tap to choose a different folder'),
+                isCustom: _explicitTreeUri != null || _outputDir != _defaultDir,
                 onChoose: _pickFolder,
-                onClear: () => setState(() => _outputDir = _defaultDir),
+                onClear: () => setState(() {
+                  _outputDir = _defaultDir;
+                  _explicitTreeUri = null;
+                  _explicitTreeLabel = null;
+                }),
               ),
               const SizedBox(height: 16),
               Container(
@@ -144,6 +189,7 @@ class _EncryptOptionsScreenState extends State<EncryptOptionsScreen> {
                     'passphrase': widget.passphrase,
                     'deleteOriginals': _deleteOriginals,
                     'outputDir': _outputDir,
+                    'explicitTreeUri': _explicitTreeUri,
                     'keyIdHex': widget.keyIdHex,
                   },
                 ),
@@ -158,21 +204,22 @@ class _EncryptOptionsScreenState extends State<EncryptOptionsScreen> {
 }
 
 class _OutputFolderRow extends StatelessWidget {
-  final String? outputDir;
-  final bool isDefault;
+  final String title;
+  final String subtitle;
+  final bool isCustom;
   final VoidCallback onChoose;
   final VoidCallback onClear;
 
   const _OutputFolderRow({
-    required this.outputDir,
-    required this.isDefault,
+    required this.title,
+    required this.subtitle,
+    required this.isCustom,
     required this.onChoose,
     required this.onClear,
   });
 
   @override
   Widget build(BuildContext context) {
-    final dir = outputDir;
     return Semantics(
       button: true,
       label: 'Choose output folder',
@@ -187,9 +234,9 @@ class _OutputFolderRow extends StatelessWidget {
           child: Row(
             children: [
               Icon(
-                dir == null
-                    ? Icons.folder_outlined
-                    : Icons.folder_special_outlined,
+                isCustom
+                    ? Icons.folder_special_outlined
+                    : Icons.folder_outlined,
                 color: LatchColors.ink,
               ),
               const SizedBox(width: 12),
@@ -197,15 +244,10 @@ class _OutputFolderRow extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      dir == null
-                          ? 'Same folder as each original'
-                          : p.basename(dir),
-                      style: Theme.of(context).textTheme.bodyLarge,
-                    ),
+                    Text(title, style: Theme.of(context).textTheme.bodyLarge),
                     const SizedBox(height: 2),
                     Text(
-                      dir ?? 'Tap to choose a different folder',
+                      subtitle,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodySmall,
@@ -213,7 +255,7 @@ class _OutputFolderRow extends StatelessWidget {
                   ],
                 ),
               ),
-              if (!isDefault)
+              if (isCustom)
                 IconButton(
                   icon: const Icon(
                     Icons.close,

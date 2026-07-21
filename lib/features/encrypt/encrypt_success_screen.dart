@@ -1,18 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as p;
+import '../../core/output_plan.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/latch_button.dart';
 
 class EncryptSuccessScreen extends StatelessWidget {
-  /// Full paths the worker actually wrote the .latch files to.
-  final List<String> files;
+  /// Where the worker actually wrote each locked file (after relocation).
+  final List<RelocatedOutput> outputs;
 
-  const EncryptSuccessScreen({super.key, required this.files});
+  const EncryptSuccessScreen({super.key, required this.outputs});
 
   /// Human description of where the outputs landed, from the real paths.
   String get _savedWhere {
-    final dirs = files.map(p.dirname).toSet();
+    final dirs = outputs.map((o) => p.dirname(o.path)).toSet();
     if (dirs.isEmpty) return '';
     if (dirs.length == 1) return 'Saved in ${dirs.first}';
     return 'Saved across ${dirs.length} folders';
@@ -20,6 +21,7 @@ class EncryptSuccessScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fallbackCount = outputs.where((o) => o.fellBackToDownloads).length;
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
@@ -49,7 +51,7 @@ class EncryptSuccessScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 20),
                 Text(
-                  '${files.length} file${files.length == 1 ? '' : 's'} locked.',
+                  '${outputs.length} file${outputs.length == 1 ? '' : 's'} locked.',
                   style: Theme.of(context).textTheme.displayMedium,
                   textAlign: TextAlign.center,
                 ),
@@ -59,17 +61,25 @@ class EncryptSuccessScreen extends StatelessWidget {
                 Flexible(
                   child: ListView(
                     shrinkWrap: true,
-                    children: files
-                        .map((f) => _OutputFile(name: p.basename(f)))
+                    children: outputs
+                        .map(
+                          (o) => _OutputFile(
+                            name: p.basename(o.path),
+                            fellBack: o.fellBackToDownloads,
+                          ),
+                        )
                         .toList(),
                   ),
                 ),
                 const SizedBox(height: 12),
-                Text(
-                  _savedWhere,
-                  style: Theme.of(context).textTheme.bodySmall,
-                  textAlign: TextAlign.center,
-                ),
+                if (fallbackCount > 0)
+                  _FallbackBanner(count: fallbackCount)
+                else
+                  Text(
+                    _savedWhere,
+                    style: Theme.of(context).textTheme.bodySmall,
+                    textAlign: TextAlign.center,
+                  ),
                 const Spacer(),
                 LatchPrimaryButton(
                   label: 'Done',
@@ -85,10 +95,45 @@ class EncryptSuccessScreen extends StatelessWidget {
   }
 }
 
+class _FallbackBanner extends StatelessWidget {
+  final int count;
+  const _FallbackBanner({required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: LatchColors.cautionLight,
+        border: Border.all(color: LatchColors.caution, width: 1.5),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.info_outline, color: LatchColors.caution, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '$count file${count == 1 ? '' : 's'} couldn\'t be saved to the '
+              'original folder and ${count == 1 ? 'was' : 'were'} saved to '
+              'Downloads instead.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: const Color(0xFF8A5E1E),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _OutputFile extends StatelessWidget {
   final String name;
+  final bool fellBack;
 
-  const _OutputFile({required this.name});
+  const _OutputFile({required this.name, this.fellBack = false});
 
   @override
   Widget build(BuildContext context) {
@@ -106,7 +151,7 @@ class _OutputFile extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              name,
+              fellBack ? '$name  (in Downloads)' : name,
               style: const TextStyle(fontSize: 14, color: Color(0xFF2A6F57)),
             ),
           ),

@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as p;
+import '../../core/output_plan.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/latch_button.dart';
 
 class DecryptSuccessScreen extends StatelessWidget {
-  final List<String> files;
+  /// Where each unlocked file actually landed (after relocation).
+  final List<RelocatedOutput> outputs;
 
-  const DecryptSuccessScreen({super.key, required this.files});
+  const DecryptSuccessScreen({super.key, required this.outputs});
 
   @override
   Widget build(BuildContext context) {
+    final fallbackCount = outputs.where((o) => o.fellBackToDownloads).length;
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
@@ -40,8 +43,8 @@ class DecryptSuccessScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 20),
                 Text(
-                  files.length > 1
-                      ? '${files.length} files restored.'
+                  outputs.length > 1
+                      ? '${outputs.length} files restored.'
                       : 'File restored.',
                   style: Theme.of(context).textTheme.displayMedium,
                   textAlign: TextAlign.center,
@@ -52,9 +55,9 @@ class DecryptSuccessScreen extends StatelessWidget {
                 Flexible(
                   child: ListView(
                     shrinkWrap: true,
-                    children: files
+                    children: outputs
                         .map(
-                          (f) => Container(
+                          (o) => Container(
                             width: double.infinity,
                             padding: const EdgeInsets.all(14),
                             margin: const EdgeInsets.only(bottom: 8),
@@ -79,14 +82,14 @@ class DecryptSuccessScreen extends StatelessWidget {
                                         CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        p.basename(f),
+                                        p.basename(o.path),
                                         style: const TextStyle(
                                           fontSize: 14,
                                           color: Color(0xFF2A6F57),
                                         ),
                                       ),
                                       Text(
-                                        'In ${p.dirname(f)}',
+                                        'In ${p.dirname(o.path)}',
                                         style: const TextStyle(
                                           fontSize: 12,
                                           color: Color(0xFF6FAE93),
@@ -102,6 +105,10 @@ class DecryptSuccessScreen extends StatelessWidget {
                         .toList(),
                   ),
                 ),
+                if (fallbackCount > 0) ...[
+                  const SizedBox(height: 12),
+                  _FallbackBanner(count: fallbackCount),
+                ],
                 const Spacer(),
                 LatchPrimaryButton(
                   label: 'Done',
@@ -112,6 +119,40 @@ class DecryptSuccessScreen extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _FallbackBanner extends StatelessWidget {
+  final int count;
+  const _FallbackBanner({required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: LatchColors.cautionLight,
+        border: Border.all(color: LatchColors.caution, width: 1.5),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.info_outline, color: LatchColors.caution, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '$count file${count == 1 ? '' : 's'} couldn\'t be saved to the '
+              'original folder and ${count == 1 ? 'was' : 'were'} saved to '
+              'Downloads instead.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: const Color(0xFF8A5E1E),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

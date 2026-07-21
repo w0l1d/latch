@@ -5,6 +5,7 @@ import 'core/incoming_file_service.dart';
 import 'core/passphrase_storage_service.dart';
 import 'core/recipient_key_service.dart';
 import 'core/router.dart';
+import 'core/saf_bridge.dart';
 import 'shared/theme/app_theme.dart';
 
 Future<void> main() async {
@@ -26,6 +27,9 @@ Future<void> main() async {
   AppCrypto.recipientKeys = RecipientKeyService(
     keygen: AppCrypto.generateShareKeypair,
   );
+  // Restore any persisted folder grants so repeat encrypts/decrypts into the
+  // same folder don't re-prompt for permission. Best-effort; never blocks boot.
+  await SafBridge.loadTreeGrants();
   runApp(const LatchApp());
 }
 

@@ -1,5 +1,6 @@
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'output_plan.dart';
 import '../features/onboarding/welcome_screen.dart';
 import '../features/onboarding/how_it_works_screen.dart';
 import '../features/onboarding/device_check_screen.dart';
@@ -105,6 +106,9 @@ final router = GoRouter(
           outputDir: map['outputDir'] is String
               ? map['outputDir'] as String?
               : null,
+          explicitTreeUri: map['explicitTreeUri'] is String
+              ? map['explicitTreeUri'] as String?
+              : null,
           keyIdHex: map['keyIdHex'] is String
               ? map['keyIdHex'] as String?
               : null,
@@ -129,6 +133,9 @@ final router = GoRouter(
           outputDir: map['outputDir'] is String
               ? map['outputDir'] as String?
               : null,
+          explicitTreeUri: map['explicitTreeUri'] is String
+              ? map['explicitTreeUri'] as String?
+              : null,
           keyIdHex: map['keyIdHex'] is String
               ? map['keyIdHex'] as String?
               : null,
@@ -139,8 +146,10 @@ final router = GoRouter(
       path: '/encrypt/success',
       builder: (ctx, state) {
         final extra = state.extra;
-        final files = extra is List<String> ? extra : <String>[];
-        return EncryptSuccessScreen(files: files);
+        final outputs = extra is List<RelocatedOutput>
+            ? extra
+            : <RelocatedOutput>[];
+        return EncryptSuccessScreen(outputs: outputs);
       },
     ),
     GoRoute(
@@ -174,8 +183,10 @@ final router = GoRouter(
       path: '/decrypt/success',
       builder: (ctx, state) {
         final extra = state.extra;
-        final files = extra is List<String> ? extra : <String>[];
-        return DecryptSuccessScreen(files: files);
+        final outputs = extra is List<RelocatedOutput>
+            ? extra
+            : <RelocatedOutput>[];
+        return DecryptSuccessScreen(outputs: outputs);
       },
     ),
     GoRoute(path: '/settings', builder: (ctx, st) => const SettingsScreen()),

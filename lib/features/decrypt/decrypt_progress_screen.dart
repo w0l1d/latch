@@ -9,7 +9,8 @@ import '../../shared/widgets/latch_button.dart';
 import '../../shared/widgets/latch_alert.dart';
 import '../../shared/error_messages.dart';
 import '../../core/app_crypto.dart';
-import '../../core/default_output.dart';
+import '../../core/output_plan.dart';
+import '../../core/save_folder_prompt.dart';
 
 class DecryptProgressScreen extends StatefulWidget {
   final List<String> files;
@@ -32,6 +33,7 @@ class _DecryptProgressScreenState extends State<DecryptProgressScreen> {
   final _results = <BatchResult>[];
   int _doneCount = 0;
   bool _reported = false;
+  OutputPlan? _plan;
 
   @override
   void initState() {
@@ -72,11 +74,19 @@ class _DecryptProgressScreenState extends State<DecryptProgressScreen> {
         recipientPk = kp.publicKey;
         recipientSk = kp.secretKey;
       }
-      // Unlocked files should land where the .latch files live. The picker
-      // only hands us cache copies, so resolve their real folder from the
-      // content:// URIs — Downloads is the fallback when scoped storage
-      // makes that folder unwritable.
-      outputDir = await DefaultOutput.directoryFor(widget.files);
+      // Unlocked files should land where the .latch files live. On Android
+      // that means staging in cache then creating the output in the source
+      // folder's granted tree (prompting for the grant per distinct folder);
+      // Downloads is the fallback when the user declines. Off-Android the
+      // worker writes directly beside each original / to the platform default.
+      _plan = await OutputPlanner.plan(
+        widget.files,
+        requestGrant: (folder) async {
+          if (!mounted || _cancelled) return null;
+          return promptSaveFolder(context, folder);
+        },
+      );
+      outputDir = _plan!.outputDir;
     } catch (e) {
       // A pre-batch platform failure (secure storage, prefs) must surface —
       // falling out of this method silently would leave the spinner forever.
@@ -138,17 +148,30 @@ class _DecryptProgressScreenState extends State<DecryptProgressScreen> {
         );
   }
 
-  void _onDone() {
+  Future<void> _onDone() async {
     final ok = _results.where((r) => r.ok).length;
     final bad = _results.where((r) => !r.ok).length;
     if (ok > 0) {
-      if (bad > 0) {
-        _showPartialSuccess(ok, bad);
+      final List<RelocatedOutput> outputs;
+      try {
+        // Android: move each staged plaintext into its granted source folder
+        // (or Downloads). Off-Android returns the paths the worker wrote.
+        outputs = await relocateStagedOutputs(
+          _results,
+          _plan ?? const OutputPlan(),
+          displayNameFor: _plainName,
+        );
+      } catch (e) {
+        if (!mounted) return;
+        _showError('Decryption failed', userMessageForError('$e'));
         return;
       }
-      if (mounted) {
-        context.pushReplacement('/decrypt/success', extra: _outFiles());
+      if (!mounted) return;
+      if (bad > 0) {
+        _showPartialSuccess(ok, bad, outputs);
+        return;
       }
+      context.pushReplacement('/decrypt/success', extra: outputs);
     } else {
       // All failed — pick the first error and show the right dialog.
       final first = _results.firstWhere((r) => !r.ok);
@@ -181,15 +204,16 @@ class _DecryptProgressScreenState extends State<DecryptProgressScreen> {
     }
   }
 
-  /// Paths the worker actually wrote (accounts for the output folder and
-  /// collision renaming); falls back to the derived name only if a worker
-  /// predates the outPath protocol field.
-  List<String> _outFiles() => _results
-      .where((r) => r.ok)
-      .map((r) => r.outPath ?? p.withoutExtension(r.path))
-      .toList();
+  /// Destination file name for a decrypted source: the picked `.latch` name
+  /// minus its suffix (matches the worker's `withoutSuffix`).
+  static String _plainName(String source) {
+    final base = p.basename(source);
+    return base.endsWith('.latch')
+        ? base.substring(0, base.length - '.latch'.length)
+        : base;
+  }
 
-  void _showPartialSuccess(int ok, int bad) {
+  void _showPartialSuccess(int ok, int bad, List<RelocatedOutput> outputs) {
     final listed = _results
         .where((r) => !r.ok)
         .take(3)
@@ -208,7 +232,7 @@ class _DecryptProgressScreenState extends State<DecryptProgressScreen> {
       buttonLabel: 'Continue',
       onPressed: () {
         Navigator.pop(context);
-        context.pushReplacement('/decrypt/success', extra: _outFiles());
+        context.pushReplacement('/decrypt/success', extra: outputs);
       },
     );
   }

@@ -9,6 +9,8 @@ import '../../shared/widgets/latch_button.dart';
 import '../../shared/widgets/latch_alert.dart';
 import '../../shared/error_messages.dart';
 import '../../core/app_crypto.dart';
+import '../../core/output_plan.dart';
+import '../../core/save_folder_prompt.dart';
 import '../../core/saf_bridge.dart';
 
 class EncryptProgressScreen extends StatefulWidget {
@@ -16,6 +18,7 @@ class EncryptProgressScreen extends StatefulWidget {
   final String passphrase;
   final bool deleteOriginals;
   final String? outputDir;
+  final String? explicitTreeUri;
   final String? keyIdHex;
 
   const EncryptProgressScreen({
@@ -24,6 +27,7 @@ class EncryptProgressScreen extends StatefulWidget {
     required this.passphrase,
     required this.deleteOriginals,
     this.outputDir,
+    this.explicitTreeUri,
     this.keyIdHex,
   });
 
@@ -38,6 +42,7 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
   final _results = <BatchResult>[];
   int _doneCount = 0;
   bool _reported = false;
+  OutputPlan? _plan;
 
   @override
   void initState() {
@@ -60,11 +65,25 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
 
   Future<void> _loadAndRun() async {
     Uint8List? deviceKey;
+    OutputPlan plan;
     try {
       final prefs = await SharedPreferences.getInstance();
       if (prefs.getBool('device_bound_recovery') ?? false) {
         deviceKey = await AppCrypto.deviceKeyService?.getOrCreateKey();
       }
+      // Decide where locked files land (Android: stage in cache, then relocate
+      // into the granted source folder afterwards). Prompts for a folder grant
+      // per distinct source folder unless the user picked one explicitly.
+      plan = await OutputPlanner.plan(
+        widget.files,
+        explicitDir: widget.outputDir,
+        explicitTreeUri: widget.explicitTreeUri,
+        requestGrant: (folder) async {
+          if (!mounted || _cancelled) return null;
+          return promptSaveFolder(context, folder);
+        },
+      );
+      _plan = plan;
     } catch (e) {
       // A pre-batch platform failure (secure storage, prefs) must surface —
       // falling out of this method silently would leave the spinner forever.
@@ -78,7 +97,7 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
           widget.files,
           widget.passphrase,
           deleteOriginals: widget.deleteOriginals,
-          outputDir: widget.outputDir,
+          outputDir: plan.outputDir,
           keyIdHex: widget.keyIdHex,
           deviceKey: deviceKey,
           onFileResult: (path, ok, error, outPath) {
@@ -128,14 +147,28 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
     final ok = _results.where((r) => r.ok).length;
     final bad = _results.where((r) => !r.ok).length;
     if (ok > 0) {
-      await _deleteRealOriginals();
-      if (!mounted) return;
-      final outFiles = _outFiles();
-      if (bad > 0) {
-        _showPartialSuccess(ok, bad);
+      final List<RelocatedOutput> outputs;
+      try {
+        // Android: move each staged file into its granted source folder (or
+        // Downloads). Off-Android this just returns the paths the worker wrote.
+        outputs = await relocateStagedOutputs(
+          _results,
+          _plan ?? const OutputPlan(),
+          displayNameFor: (s) => '${p.basename(s)}.latch',
+        );
+      } catch (e) {
+        if (!mounted) return;
+        _showError('Encryption failed', userMessageForError(e));
         return;
       }
-      if (mounted) context.pushReplacement('/encrypt/success', extra: outFiles);
+      // Delete originals only after the locked copies are safely in place.
+      await _deleteRealOriginals();
+      if (!mounted) return;
+      if (bad > 0) {
+        _showPartialSuccess(ok, bad, outputs);
+        return;
+      }
+      context.pushReplacement('/encrypt/success', extra: outputs);
     } else {
       // All failed — show the first error.
       final first = _results.firstWhere((r) => !r.ok);
@@ -168,15 +201,7 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
     }
   }
 
-  /// Paths the worker actually wrote (accounts for the output folder and
-  /// collision renaming); falls back to the derived name only if a worker
-  /// predates the outPath protocol field.
-  List<String> _outFiles() => _results
-      .where((r) => r.ok)
-      .map((r) => r.outPath ?? '${r.path}.latch')
-      .toList();
-
-  void _showPartialSuccess(int ok, int bad) {
+  void _showPartialSuccess(int ok, int bad, List<RelocatedOutput> outputs) {
     final listed = _results
         .where((r) => !r.ok)
         .take(3)
@@ -194,7 +219,7 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
       buttonLabel: 'Continue',
       onPressed: () {
         Navigator.pop(context);
-        context.pushReplacement('/encrypt/success', extra: _outFiles());
+        context.pushReplacement('/encrypt/success', extra: outputs);
       },
     );
   }

@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latch/core/saf_bridge.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -106,5 +107,67 @@ void main() {
         expect(await SafBridge.realDirectoryFor('/cache/i.pdf'), isNull);
       },
     );
+  });
+
+  group('SafBridge tree grants', () {
+    test('pickTree forwards the initial path', () async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SafBridge.channel, (call) async {
+            calls.add(call);
+            return 'content://tree/primary%3ADocuments';
+          });
+
+      final uri = await SafBridge.pickTree(initialPath: '/storage/x/Documents');
+      expect(uri, 'content://tree/primary%3ADocuments');
+      expect(calls.single.method, 'openTree');
+      expect(calls.single.arguments, {'initialPath': '/storage/x/Documents'});
+    });
+
+    test('treeUriToPath returns null on platform failure', () async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SafBridge.channel, (call) async {
+            throw PlatformException(code: 'saf_error');
+          });
+      expect(await SafBridge.treeUriToPath('content://tree/x'), isNull);
+    });
+
+    test('createInTree sends every argument and parses the result', () async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SafBridge.channel, (call) async {
+            calls.add(call);
+            return {
+              'uri': 'content://doc/new',
+              'displayPath': '/storage/x/Documents/a.txt.latch',
+            };
+          });
+
+      final created = await SafBridge.createInTree(
+        treeUri: 'content://tree/primary%3ADocuments',
+        displayName: 'a.txt.latch',
+        srcPath: '/cache/latch_stage/0_a.txt.latch',
+      );
+      expect(created.uri, 'content://doc/new');
+      expect(created.displayPath, '/storage/x/Documents/a.txt.latch');
+      expect(calls.single.method, 'createInTree');
+      expect(calls.single.arguments, {
+        'treeUri': 'content://tree/primary%3ADocuments',
+        'displayName': 'a.txt.latch',
+        'mimeType': 'application/octet-stream',
+        'srcPath': '/cache/latch_stage/0_a.txt.latch',
+      });
+    });
+
+    test('rememberTreeGrant caches by folder and treeGrantForFolder reads it', () async {
+      SharedPreferences.setMockInitialValues({});
+      await SafBridge.rememberTreeGrant(
+        '/storage/x/Documents',
+        'content://tree/primary%3ADocuments',
+      );
+      expect(
+        SafBridge.treeGrantForFolder('/storage/x/Documents'),
+        'content://tree/primary%3ADocuments',
+      );
+      expect(SafBridge.treeGrantForFolder('/storage/x/Other'), isNull);
+    });
   });
 }
