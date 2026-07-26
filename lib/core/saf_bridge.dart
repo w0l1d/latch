@@ -129,6 +129,25 @@ class SafBridge {
     return (uri: m['uri'] as String, displayPath: m['displayPath'] as String);
   }
 
+  /// Open the system file browser at the folder holding the outputs.
+  ///
+  /// Prefers a granted [treeUri] (opens exactly that folder); otherwise builds a
+  /// primary-storage folder view from [path]. Returns false when nothing can be
+  /// opened (no handler app, non-Android, or the path isn't on primary storage).
+  /// Best-effort: never throws.
+  static Future<bool> openFolder({String? treeUri, String? path}) async {
+    if (!Platform.isAndroid) return false;
+    try {
+      final ok = await channel.invokeMethod<bool>('openFolder', {
+        'treeUri': treeUri,
+        'path': path,
+      });
+      return ok ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// The cached tree grant for [folderPath], if the user has granted it.
   static String? treeGrantForFolder(String folderPath) =>
       _treeUriByFolder[folderPath];

@@ -127,6 +127,13 @@ class MainActivity : FlutterFragmentActivity() {
                                 val created = createInTree(treeUri, displayName, mimeType, srcPath)
                                 runOnUiThread { result.success(created) }
                             }
+                            // Open the system file browser at a folder so the
+                            // user can see the files they just locked/unlocked.
+                            "openFolder" -> {
+                                val treeUri = call.argument<String>("treeUri")
+                                val path = call.argument<String>("path")
+                                runOnUiThread { result.success(openFolder(treeUri, path)) }
+                            }
                             else -> runOnUiThread { result.notImplemented() }
                         }
                     } catch (e: Exception) {
@@ -198,6 +205,34 @@ class MainActivity : FlutterFragmentActivity() {
             "com.android.externalstorage.documents",
             docId,
         )
+    }
+
+    // Open the Documents UI / a file browser at a folder. Prefers a granted
+    // tree URI (opens exactly that folder); otherwise builds a primary-storage
+    // document URI from a filesystem path. Returns false when no activity can
+    // handle it or the folder can't be addressed.
+    private fun openFolder(treeUri: String?, path: String?): Boolean {
+        val docUri: Uri = when {
+            treeUri != null -> {
+                val tree = Uri.parse(treeUri)
+                DocumentsContract.buildDocumentUriUsingTree(
+                    tree,
+                    DocumentsContract.getTreeDocumentId(tree),
+                )
+            }
+            path != null -> initialTreeUri(path) ?: return false
+            else -> return false
+        }
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(docUri, DocumentsContract.Document.MIME_TYPE_DIR)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        return try {
+            startActivity(intent)
+            true
+        } catch (e: android.content.ActivityNotFoundException) {
+            false
+        }
     }
 
     // Filesystem path a granted tree URI resolves to (mirrors resolveToFilePath

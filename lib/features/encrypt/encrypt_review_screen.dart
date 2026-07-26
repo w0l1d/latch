@@ -11,6 +11,7 @@ class EncryptReviewScreen extends StatelessWidget {
   final bool deleteOriginals;
   final String? outputDir;
   final String? explicitTreeUri;
+  final String? explicitTreeLabel;
   final String? keyIdHex;
 
   const EncryptReviewScreen({
@@ -20,6 +21,7 @@ class EncryptReviewScreen extends StatelessWidget {
     required this.deleteOriginals,
     this.outputDir,
     this.explicitTreeUri,
+    this.explicitTreeLabel,
     this.keyIdHex,
   });
 
@@ -43,7 +45,9 @@ class EncryptReviewScreen extends StatelessWidget {
             children: [
               _ReviewRow(
                 label: 'Files',
-                value: '${files.length} · ${files.join(', ')}',
+                value:
+                    '${files.length} · '
+                    '${files.map(p.basename).join(', ')}',
               ),
               _Divider(),
               _ReviewRow(
@@ -60,10 +64,10 @@ class EncryptReviewScreen extends StatelessWidget {
               _ReviewRow(
                 label: 'Output',
                 value: explicitTreeUri != null
-                    ? 'Chosen folder'
+                    ? (explicitTreeLabel ?? 'Chosen folder')
                     : outputDir == null
-                    ? 'Same folder as each'
-                    : 'Folder · ${p.basename(outputDir!)}',
+                    ? 'Same folder as each original'
+                    : outputDir!,
               ),
               const SizedBox(height: 20),
               Container(

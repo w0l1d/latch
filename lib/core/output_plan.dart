@@ -46,7 +46,16 @@ class RelocatedOutput {
   /// to Downloads instead — surfaced to the user as an explicit notice.
   final bool fellBackToDownloads;
 
-  const RelocatedOutput(this.path, {this.fellBackToDownloads = false});
+  /// The granted SAF tree the file was created in (Android), if any. Lets the
+  /// UI open exactly that folder in the system file browser. Null for Downloads
+  /// fallback and non-Android outputs, where [path] is used instead.
+  final String? treeUri;
+
+  const RelocatedOutput(
+    this.path, {
+    this.fellBackToDownloads = false,
+    this.treeUri,
+  });
 }
 
 class OutputPlanner {
@@ -154,7 +163,7 @@ Future<List<RelocatedOutput>> relocateStagedOutputs(
           srcPath: staged,
         );
         await _deleteQuietly(staged);
-        out.add(RelocatedOutput(created.displayPath));
+        out.add(RelocatedOutput(created.displayPath, treeUri: target.treeUri));
         continue;
       } catch (_) {
         // Grant revoked or write failed — fall through to Downloads.

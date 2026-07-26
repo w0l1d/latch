@@ -1,7 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as p;
 import '../../core/output_plan.dart';
+import '../../core/saf_bridge.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/latch_button.dart';
 
@@ -17,6 +19,22 @@ class EncryptSuccessScreen extends StatelessWidget {
     if (dirs.isEmpty) return '';
     if (dirs.length == 1) return 'Saved in ${dirs.first}';
     return 'Saved across ${dirs.length} folders';
+  }
+
+  /// Opens the folder the first output landed in, using its exact SAF grant
+  /// when available. Shows a notice if no app can browse it.
+  Future<void> _openFolder(BuildContext context) async {
+    if (outputs.isEmpty) return;
+    final target = outputs.first;
+    final ok = await SafBridge.openFolder(
+      treeUri: target.treeUri,
+      path: target.treeUri == null ? p.dirname(target.path) : null,
+    );
+    if (!ok && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No app available to open the folder.')),
+      );
+    }
   }
 
   @override
@@ -81,6 +99,13 @@ class EncryptSuccessScreen extends StatelessWidget {
                     textAlign: TextAlign.center,
                   ),
                 const Spacer(),
+                if (Platform.isAndroid && outputs.isNotEmpty) ...[
+                  LatchSecondaryButton(
+                    label: 'Open folder',
+                    onPressed: () => _openFolder(context),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 LatchPrimaryButton(
                   label: 'Done',
                   onPressed: () => context.go('/home'),

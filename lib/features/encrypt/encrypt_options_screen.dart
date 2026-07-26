@@ -190,6 +190,7 @@ class _EncryptOptionsScreenState extends State<EncryptOptionsScreen> {
                     'deleteOriginals': _deleteOriginals,
                     'outputDir': _outputDir,
                     'explicitTreeUri': _explicitTreeUri,
+                    'explicitTreeLabel': _explicitTreeLabel,
                     'keyIdHex': widget.keyIdHex,
                   },
                 ),

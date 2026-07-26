@@ -109,6 +109,9 @@ final router = GoRouter(
           explicitTreeUri: map['explicitTreeUri'] is String
               ? map['explicitTreeUri'] as String?
               : null,
+          explicitTreeLabel: map['explicitTreeLabel'] is String
+              ? map['explicitTreeLabel'] as String?
+              : null,
           keyIdHex: map['keyIdHex'] is String
               ? map['keyIdHex'] as String?
               : null,
