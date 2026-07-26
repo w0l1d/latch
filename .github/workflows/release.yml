@@ -223,11 +223,72 @@ jobs:
             --title "Latch ${{ steps.version.outputs.tag_name }}" \
             --generate-notes
 
+      # Gather human context so the APK dropped in Telegram is self-describing:
+      # which change it carries (commit subject/author) and — if the release
+      # commit came from a merged/squashed PR — that PR's number, title, branch
+      # and link. A tag build has no branch of its own, so the PR head ref is
+      # the closest "what was this" signal a tester can act on.
+      - name: Gather release context
+        id: context
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          COMMIT_SUBJECT=$(git log -1 --pretty=%s)
+          COMMIT_AUTHOR=$(git log -1 --pretty=%an)
+          echo "commit_subject=$COMMIT_SUBJECT" >> "$GITHUB_OUTPUT"
+          echo "commit_author=$COMMIT_AUTHOR" >> "$GITHUB_OUTPUT"
+
+          # Full commit body (message minus subject) — multi-line, so emit it
+          # via a heredoc delimiter and hand it to Announce through env rather
+          # than ${{ }} substitution, so newlines/quotes can't break the shell.
+          {
+            echo "commit_body<<COMMIT_BODY_EOF"
+            git log -1 --pretty=%b
+            echo "COMMIT_BODY_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          # Associated-PRs endpoint: the PR(s) whose merge/squash produced this
+          # commit. Take the first; tolerate none (direct tag on a plain commit).
+          PR_JSON=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" 2>/dev/null || echo '[]')
+          PR_NUMBER=$(echo "$PR_JSON" | jq -r '.[0].number // empty')
+          PR_TITLE=$(echo "$PR_JSON" | jq -r '.[0].title // empty')
+          PR_URL=$(echo "$PR_JSON" | jq -r '.[0].html_url // empty')
+          PR_BRANCH=$(echo "$PR_JSON" | jq -r '.[0].head.ref // empty')
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "pr_title=$PR_TITLE" >> "$GITHUB_OUTPUT"
+          echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
+          echo "pr_branch=$PR_BRANCH" >> "$GITHUB_OUTPUT"
+
       - name: Announce in Telegram
+        env:
+          # Multi-line — passed via env so raw newlines/quotes stay data, not shell.
+          COMMIT_BODY: ${{ steps.context.outputs.commit_body }}
         run: |
           COMMIT_LINK="https://github.com/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}"
           RELEASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${{ steps.version.outputs.tag_name }}"
-          CAPTION=$'🚀 Latch '"${{ steps.version.outputs.tag_name }}"$' ('"${{ steps.version.outputs.release_date }}"$')\n\n🔖 Commit: '"${{ steps.version.outputs.short_sha }}"$'\n🔗 '"$COMMIT_LINK"$'\n📋 Release: '"$RELEASE_URL"$'\n\nSHA-256:\n'"${{ steps.sha.outputs.shas }}"
+          COMMIT_SUBJECT="${{ steps.context.outputs.commit_subject }}"
+          COMMIT_AUTHOR="${{ steps.context.outputs.commit_author }}"
+          PR_NUMBER="${{ steps.context.outputs.pr_number }}"
+          PR_TITLE="${{ steps.context.outputs.pr_title }}"
+          PR_URL="${{ steps.context.outputs.pr_url }}"
+          PR_BRANCH="${{ steps.context.outputs.pr_branch }}"
+
+          # Keep the body from blowing past Telegram's 1024-char caption limit.
+          BODY=$(printf '%s' "$COMMIT_BODY" | head -c 400)
+          [ "${#COMMIT_BODY}" -gt 400 ] && BODY="${BODY}…"
+
+          CAPTION=$'🚀 Latch '"${{ steps.version.outputs.tag_name }}"$' ('"${{ steps.version.outputs.release_date }}"$')'
+          CAPTION+=$'\n📝 '"$COMMIT_SUBJECT"
+          [ -n "$BODY" ] && CAPTION+=$'\n\n'"$BODY"
+          if [ -n "$PR_NUMBER" ]; then
+            CAPTION+=$'\n\n🔀 PR #'"$PR_NUMBER"$': '"$PR_TITLE"
+            [ -n "$PR_BRANCH" ] && CAPTION+=$'\n🌿 Branch: '"$PR_BRANCH"
+            [ -n "$PR_URL" ] && CAPTION+=$'\n🔗 '"$PR_URL"
+          fi
+          CAPTION+=$'\n\n🔖 Commit: '"${{ steps.version.outputs.short_sha }}"$' by '"$COMMIT_AUTHOR"
+          CAPTION+=$'\n🔗 '"$COMMIT_LINK"
+          CAPTION+=$'\n📋 Release: '"$RELEASE_URL"
+          CAPTION+=$'\n\nSHA-256:\n'"${{ steps.sha.outputs.shas }}"
 
           for ABI in arm64-v8a armeabi-v7a; do
             APK="dist/latch-${{ steps.version.outputs.tag_name }}-${ABI}.apk"
