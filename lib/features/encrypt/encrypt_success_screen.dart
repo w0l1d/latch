@@ -140,9 +140,9 @@ class _FallbackBanner extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              '$count file${count == 1 ? '' : 's'} couldn\'t be saved to the '
-              'original folder and ${count == 1 ? 'was' : 'were'} saved to '
-              'Downloads instead.',
+              '$count file${count == 1 ? '' : 's'} '
+              '${count == 1 ? 'was' : 'were'} saved to your Downloads folder '
+              'instead of the original folder.',
               style: Theme.of(
                 context,
               ).textTheme.bodySmall?.copyWith(color: const Color(0xFF8A5E1E)),

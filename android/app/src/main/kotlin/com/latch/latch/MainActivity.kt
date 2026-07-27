@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
 import android.provider.DocumentsContract
+import android.provider.MediaStore
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import io.flutter.embedding.android.FlutterFragmentActivity
@@ -163,8 +164,31 @@ class MainActivity : FlutterFragmentActivity() {
                 if (file.exists()) file.absolutePath else null
             }
             "com.android.providers.downloads.documents" ->
-                if (docId.startsWith("raw:")) docId.removePrefix("raw:") else null
-            else -> null
+                if (docId.startsWith("raw:")) docId.removePrefix("raw:") else dataColumnPath(uri)
+            else -> dataColumnPath(uri)
+        }
+    }
+
+    // Last resort for providers that front real files but don't encode the path
+    // in their document id — Downloads' `msf:<id>` documents and MediaStore
+    // documents both expose `_data`. Cloud/virtual providers don't, and then
+    // this is null (caller treats the source folder as unknown).
+    private fun dataColumnPath(uri: Uri): String? {
+        return try {
+            contentResolver.query(
+                uri,
+                arrayOf(MediaStore.MediaColumns.DATA),
+                null,
+                null,
+                null,
+            )?.use { c ->
+                val idx = c.getColumnIndex(MediaStore.MediaColumns.DATA)
+                if (idx < 0 || !c.moveToFirst()) return@use null
+                val path = c.getString(idx) ?: return@use null
+                if (File(path).exists()) path else null
+            }
+        } catch (e: Exception) {
+            null
         }
     }
 

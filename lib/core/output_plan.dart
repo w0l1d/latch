@@ -67,13 +67,14 @@ class OutputPlanner {
   ///   encrypt "choose a folder" button on Android). When set, every file
   ///   targets it and no per-folder prompting happens.
   /// - [requestGrant]: invoked once per distinct source folder that has no
-  ///   cached grant; returns a tree URI, or null when the user declines (→ that
-  ///   folder's files fall back to Downloads).
+  ///   cached grant, and once for the whole batch with a null folder when the
+  ///   source folder can't be resolved at all; returns a tree URI, or null when
+  ///   the user declines (→ those files fall back to Downloads).
   static Future<OutputPlan> plan(
     List<String> files, {
     String? explicitDir,
     String? explicitTreeUri,
-    Future<String?> Function(String folder)? requestGrant,
+    Future<String?> Function(String? folder)? requestGrant,
     @visibleForTesting bool? platformIsAndroid,
   }) async {
     final android = platformIsAndroid ?? Platform.isAndroid;
@@ -100,11 +101,20 @@ class OutputPlanner {
 
     // "Same folder as each original": resolve one grant per distinct folder.
     final grantByFolder = <String, String?>{};
+    // Sources whose provider exposes no filesystem folder (cloud, or a document
+    // id we can't map to a path) still get a say in where output lands — ask
+    // once for the whole batch rather than silently using Downloads. Nothing is
+    // persisted: there is no folder path to key a grant on.
+    var askedUnknown = false;
+    String? unknownGrant;
     for (final f in files) {
       final folder = await SafBridge.realDirectoryFor(f);
       if (folder == null) {
-        // Cloud / media provider with no filesystem folder → Downloads.
-        byPath[f] = const OutputTarget();
+        if (!askedUnknown) {
+          askedUnknown = true;
+          if (requestGrant != null) unknownGrant = await requestGrant(null);
+        }
+        byPath[f] = OutputTarget(treeUri: unknownGrant);
         continue;
       }
       if (!grantByFolder.containsKey(folder)) {
