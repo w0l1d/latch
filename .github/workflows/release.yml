@@ -30,7 +30,7 @@ concurrency:
 jobs:
   # Only for manual runs: compute the next tag from existing tags (+ the chosen
   # bump) and push it. The tag is pushed with GITHUB_TOKEN, which by design does
-  # NOT trigger another workflow run, so build_and_release below runs once in
+  # NOT trigger another workflow run, so the build/release jobs below run once in
   # this same run rather than re-triggering via the tag-push event.
   auto_tag:
     if: github.event_name == 'workflow_dispatch'
@@ -96,7 +96,10 @@ jobs:
           git push origin "$NEW_TAG"
           echo "tag_name=$NEW_TAG" >> "$GITHUB_OUTPUT"
 
-  build_and_release:
+  # Resolve and validate the tag once, up front: both per-ABI build jobs and the
+  # release job need the version parts, and re-deriving them per job would let
+  # them drift. Pure string work on the tag — no checkout needed.
+  version:
     needs: auto_tag
     if: |
       always() &&
@@ -105,44 +108,17 @@ jobs:
         (needs.auto_tag.result == 'skipped' && github.ref_type == 'tag')
       )
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    permissions:
-      contents: write
+    timeout-minutes: 5
+    outputs:
+      tag_name: ${{ steps.version.outputs.tag_name }}
+      version_name: ${{ steps.version.outputs.version_name }}
+      release_date: ${{ steps.version.outputs.release_date }}
+      build_number: ${{ steps.version.outputs.build_number }}
+      short_sha: ${{ steps.version.outputs.short_sha }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.auto_tag.outputs.tag_name || github.ref_name }}
-
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          flutter-version: 3.44.2
-          cache: true
-
-      # Without this, `flutter build apk` spends ~3 of its ~9 minutes on a cold
-      # ~/.gradle: downloading the Gradle distribution, AGP/Kotlin plugins and
-      # every Maven dependency before the first real task runs. Keyed on the
-      # inputs that decide those downloads (wrapper version, Gradle scripts,
-      # resolved pub deps); restore-keys let an almost-matching cache still
-      # prime most of it. ~/.gradle/caches also holds the Gradle build cache
-      # (build-cache-1), so task outputs carry over between releases too.
-      - name: Cache Gradle
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('android/gradle/wrapper/gradle-wrapper.properties', 'android/**/*.gradle*', 'pubspec.lock') }}
-          restore-keys: |
-            gradle-${{ runner.os }}-
-
-      - name: Pub get
-        run: flutter pub get
-
       # The tag (vMAJOR.MINOR.PATCH-YYYY.MM.DD.BUILD) is the source of truth for
       # the release version; the semver+build parts are fed to `flutter build`
-      # below. The date is release metadata only, not tracked in code.
+      # in the build jobs. The date is release metadata only, not tracked in code.
       - name: Compute version
         id: version
         run: |
@@ -166,24 +142,88 @@ jobs:
           echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
           echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
 
+  # One job per ABI, in parallel. The per-ABI work — libsodium cross-compile,
+  # gen_snapshot AOT, packaging — was ~60% of the old single-job build and
+  # shares nothing between ABIs, so putting each chain on its own runner cuts
+  # wall clock to roughly a one-ABI build. Each job hands its staged APK to the
+  # release job as an artifact; nothing is published from here.
+  build:
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      # No half-releases: if one ABI fails, cancel the other and skip release.
+      fail-fast: true
+      matrix:
+        include:
+          - abi: armeabi-v7a
+            target_platform: android-arm
+            # Play Store multi-APK ABI code — see the versionCode check below.
+            abi_code: 1
+          - abi: arm64-v8a
+            target_platform: android-arm64
+            abi_code: 2
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.version.outputs.tag_name }}
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.44.2
+          cache: true
+
+      # Without this, `flutter build apk` spends ~3 of its ~9 minutes on a cold
+      # ~/.gradle: downloading the Gradle distribution, AGP/Kotlin plugins and
+      # every Maven dependency before the first real task runs. Keyed on the
+      # inputs that decide those downloads (wrapper version, Gradle scripts,
+      # locked pub deps); restore-keys let an almost-matching cache still prime
+      # most of it, including the other ABI's (the dependency set is identical).
+      # ~/.gradle/caches also holds the Gradle build cache (build-cache-1), so
+      # task outputs carry over between releases too. The ABI is part of the key
+      # so the two concurrent jobs write separate caches instead of racing for
+      # one name.
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ matrix.abi }}-${{ hashFiles('android/gradle/wrapper/gradle-wrapper.properties', 'android/**/*.gradle*', 'pubspec.lock') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-${{ matrix.abi }}-
+            gradle-${{ runner.os }}-
+
+      - name: Pub get
+        run: flutter pub get
+
       # The tag is the source of truth: --build-name/--build-number set the
       # version directly, so pubspec.yaml is never mutated or committed back to
       # main. The APK-badging validation below still enforces the tag against
       # the built artifact.
       #
-      # Split per real-device ABI and drop x86_64 (emulator-only, never the
+      # One real-device ABI per job, x86_64 dropped (emulator-only, never the
       # target of a direct APK install): a single fat APK bundling all three
       # ABIs' native libs (Flutter engine + AOT app code) ran ~54MB, over
-      # Telegram's ~50MB bot upload limit. Two per-ABI APKs come in at
-      # ~16-19MB each — smaller individual downloads for users too.
-      - name: Build release APKs
+      # Telegram's ~50MB bot upload limit. Per-ABI APKs come in at ~16-19MB
+      # each — smaller individual downloads for users too.
+      #
+      # --split-per-abi stays even though only one platform is targeted: it is
+      # what gives the output its ABI-suffixed name and the offset versionCode
+      # the check below expects (verified: android-arm alone still yields
+      # app-armeabi-v7a-release.apk with versionCode 1<build_number>).
+      - name: Build release APK (${{ matrix.abi }})
         run: |
           flutter build apk --release --split-per-abi \
-            --target-platform android-arm,android-arm64 \
-            --build-name="${{ steps.version.outputs.version_name }}" \
-            --build-number="${{ steps.version.outputs.build_number }}"
+            --target-platform ${{ matrix.target_platform }} \
+            --build-name="${{ needs.version.outputs.version_name }}" \
+            --build-number="${{ needs.version.outputs.build_number }}"
 
-      - name: Validate built APKs match tag
+      - name: Validate built APK matches tag
         run: |
           AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt | sort -V | tail -1)
           if [ -z "$AAPT" ]; then
@@ -191,36 +231,64 @@ jobs:
             exit 1
           fi
 
-          EXPECTED_VERSION_NAME="${{ steps.version.outputs.version_name }}"
-          BASE_VERSION_CODE="${{ steps.version.outputs.build_number }}"
+          EXPECTED_VERSION_NAME="${{ needs.version.outputs.version_name }}"
+          BASE_VERSION_CODE="${{ needs.version.outputs.build_number }}"
 
-          # flutter build --split-per-abi offsets each APK's versionCode by
-          # its Play Store multi-APK ABI code (armeabi-v7a=1, arm64-v8a=2)
-          # times 1000, so per-ABI APKs get distinct version codes.
-          declare -A ABI_OFFSET=([armeabi-v7a]=1 [arm64-v8a]=2)
+          # flutter build --split-per-abi offsets the APK's versionCode by its
+          # Play Store multi-APK ABI code (armeabi-v7a=1, arm64-v8a=2) times
+          # 1000, so per-ABI APKs get distinct version codes.
+          EXPECTED_VERSION_CODE=$((${{ matrix.abi_code }} * 1000 + BASE_VERSION_CODE))
 
-          for ABI in armeabi-v7a arm64-v8a; do
-            APK_PATH="build/app/outputs/flutter-apk/app-${ABI}-release.apk"
-            BADGING=$("$AAPT" dump badging "$APK_PATH")
-            APK_VERSION_NAME=$(echo "$BADGING" | grep -oP "versionName='\K[^']+")
-            APK_VERSION_CODE=$(echo "$BADGING" | grep -oP "versionCode='\K[^']+")
+          APK_PATH="build/app/outputs/flutter-apk/app-${{ matrix.abi }}-release.apk"
+          BADGING=$("$AAPT" dump badging "$APK_PATH")
+          APK_VERSION_NAME=$(echo "$BADGING" | grep -oP "versionName='\K[^']+")
+          APK_VERSION_CODE=$(echo "$BADGING" | grep -oP "versionCode='\K[^']+")
 
-            EXPECTED_VERSION_CODE=$((ABI_OFFSET[$ABI] * 1000 + BASE_VERSION_CODE))
+          if [ "$APK_VERSION_NAME" != "$EXPECTED_VERSION_NAME" ] || [ "$APK_VERSION_CODE" != "$EXPECTED_VERSION_CODE" ]; then
+            echo "::error::${{ matrix.abi }} APK reports $APK_VERSION_NAME ($APK_VERSION_CODE) but tag ${{ needs.version.outputs.tag_name }} expects $EXPECTED_VERSION_NAME ($EXPECTED_VERSION_CODE)"
+            exit 1
+          fi
+          echo "${{ matrix.abi }} APK version validated: $APK_VERSION_NAME ($APK_VERSION_CODE)"
 
-            if [ "$APK_VERSION_NAME" != "$EXPECTED_VERSION_NAME" ] || [ "$APK_VERSION_CODE" != "$EXPECTED_VERSION_CODE" ]; then
-              echo "::error::$ABI APK reports $APK_VERSION_NAME ($APK_VERSION_CODE) but tag ${{ steps.version.outputs.tag_name }} expects $EXPECTED_VERSION_NAME ($EXPECTED_VERSION_CODE)"
-              exit 1
-            fi
-            echo "$ABI APK version validated: $APK_VERSION_NAME ($APK_VERSION_CODE)"
-          done
-
-      - name: Stage APKs
+      - name: Stage APK
         run: |
           mkdir -p dist
-          for ABI in armeabi-v7a arm64-v8a; do
-            cp "build/app/outputs/flutter-apk/app-${ABI}-release.apk" \
-               "dist/latch-${{ steps.version.outputs.tag_name }}-${ABI}.apk"
-          done
+          cp "build/app/outputs/flutter-apk/app-${{ matrix.abi }}-release.apk" \
+             "dist/latch-${{ needs.version.outputs.tag_name }}-${{ matrix.abi }}.apk"
+
+      # Hand-off to the release job only — the durable copies are the ones
+      # attached to the GitHub Release, hence the 1-day retention.
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-${{ matrix.abi }}
+          path: dist/latch-*.apk
+          if-no-files-found: error
+          retention-days: 1
+
+  # Publishes once, from both ABIs' artifacts: GitHub Release first, then the
+  # Telegram drop. Split out from the builds so the release is created exactly
+  # once no matter how many ABIs the matrix grows to.
+  release:
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      # Only for the `git log` in "Gather release context" below; the APKs
+      # arrive as artifacts, not from a build here.
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.version.outputs.tag_name }}
+
+      - name: Download APKs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: apk-*
+          merge-multiple: true
+          path: dist
 
       - name: Compute SHA-256
         id: sha
@@ -235,9 +303,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "${{ steps.version.outputs.tag_name }}" \
+          gh release create "${{ needs.version.outputs.tag_name }}" \
             dist/*.apk \
-            --title "Latch ${{ steps.version.outputs.tag_name }}" \
+            --title "Latch ${{ needs.version.outputs.tag_name }}" \
             --generate-notes
 
       # Gather human context so the APK dropped in Telegram is self-describing:
@@ -284,7 +352,7 @@ jobs:
           COMMIT_BODY: ${{ steps.context.outputs.commit_body }}
         run: |
           COMMIT_LINK="https://github.com/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}"
-          RELEASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${{ steps.version.outputs.tag_name }}"
+          RELEASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${{ needs.version.outputs.tag_name }}"
           COMMIT_SUBJECT="${{ steps.context.outputs.commit_subject }}"
           COMMIT_AUTHOR="${{ steps.context.outputs.commit_author }}"
           PR_NUMBER="${{ steps.context.outputs.pr_number }}"
@@ -296,7 +364,7 @@ jobs:
           BODY=$(printf '%s' "$COMMIT_BODY" | head -c 400)
           [ "${#COMMIT_BODY}" -gt 400 ] && BODY="${BODY}…"
 
-          CAPTION=$'🚀 Latch '"${{ steps.version.outputs.tag_name }}"$' ('"${{ steps.version.outputs.release_date }}"$')'
+          CAPTION=$'🚀 Latch '"${{ needs.version.outputs.tag_name }}"$' ('"${{ needs.version.outputs.release_date }}"$')'
           CAPTION+=$'\n📝 '"$COMMIT_SUBJECT"
           [ -n "$BODY" ] && CAPTION+=$'\n\n'"$BODY"
           if [ -n "$PR_NUMBER" ]; then
@@ -304,13 +372,13 @@ jobs:
             [ -n "$PR_BRANCH" ] && CAPTION+=$'\n🌿 Branch: '"$PR_BRANCH"
             [ -n "$PR_URL" ] && CAPTION+=$'\n🔗 '"$PR_URL"
           fi
-          CAPTION+=$'\n\n🔖 Commit: '"${{ steps.version.outputs.short_sha }}"$' by '"$COMMIT_AUTHOR"
+          CAPTION+=$'\n\n🔖 Commit: '"${{ needs.version.outputs.short_sha }}"$' by '"$COMMIT_AUTHOR"
           CAPTION+=$'\n🔗 '"$COMMIT_LINK"
           CAPTION+=$'\n📋 Release: '"$RELEASE_URL"
           CAPTION+=$'\n\nSHA-256:\n'"${{ steps.sha.outputs.shas }}"
 
           for ABI in arm64-v8a armeabi-v7a; do
-            APK="dist/latch-${{ steps.version.outputs.tag_name }}-${ABI}.apk"
+            APK="dist/latch-${{ needs.version.outputs.tag_name }}-${ABI}.apk"
             RESPONSE=$(curl -sS -F "chat_id=-1003694191301" \
                  -F "message_thread_id=54" \
                  -F "document=@${APK}" \
