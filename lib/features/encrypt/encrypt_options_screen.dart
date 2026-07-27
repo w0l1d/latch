@@ -14,11 +14,16 @@ class EncryptOptionsScreen extends StatefulWidget {
   final String passphrase;
   final String? keyIdHex;
 
+  /// Test seam: forces the Android save-flow branches when running off-device.
+  @visibleForTesting
+  final bool? platformIsAndroid;
+
   const EncryptOptionsScreen({
     super.key,
     required this.files,
     required this.passphrase,
     this.keyIdHex,
+    this.platformIsAndroid,
   });
 
   @override
@@ -36,6 +41,8 @@ class _EncryptOptionsScreenState extends State<EncryptOptionsScreen> {
   String? _explicitTreeUri;
   String? _explicitTreeLabel;
 
+  bool get _isAndroid => widget.platformIsAndroid ?? Platform.isAndroid;
+
   @override
   void initState() {
     super.initState();
@@ -47,7 +54,7 @@ class _EncryptOptionsScreenState extends State<EncryptOptionsScreen> {
     // On Android the default is each original's own folder (resolved and
     // granted at lock time). Off-Android we fall back to the platform default
     // (null on desktop = beside each original; app documents on iOS).
-    final def = Platform.isAndroid
+    final def = _isAndroid
         ? null
         : await DefaultOutput.directoryFor(widget.files);
     if (!mounted) return;
@@ -59,12 +66,16 @@ class _EncryptOptionsScreenState extends State<EncryptOptionsScreen> {
   }
 
   Future<void> _pickFolder() async {
-    if (Platform.isAndroid) {
+    if (_isAndroid) {
       // Grant a folder the app can create output files in (ACTION_OPEN_-
-      // DOCUMENT_TREE). The single-file picker can't grant this.
+      // DOCUMENT_TREE). The single-file picker can't grant this. Start the
+      // picker at the folder the files came from (best-effort: unresolvable
+      // or share-intent sources leave it unseeded).
+      final seed = await SafBridge.realDirectoryFor(widget.files.first);
+      if (!mounted) return;
       String? treeUri;
       try {
-        treeUri = await SafBridge.pickTree();
+        treeUri = await SafBridge.pickTree(initialPath: seed);
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
