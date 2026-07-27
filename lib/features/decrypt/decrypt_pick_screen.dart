@@ -20,7 +20,14 @@ class _DecryptPickScreenState extends State<DecryptPickScreen> {
   Future<void> _pick() async {
     setState(() => _picking = true);
     try {
-      final result = await FilePicker.platform.pickFiles(allowMultiple: true);
+      // Default to showing only .latch containers — that's all decrypt can
+      // consume. Platforms that can't honor a custom extension filter simply
+      // fall back to showing everything, which is harmless here.
+      final result = await FilePicker.platform.pickFiles(
+        allowMultiple: true,
+        type: FileType.custom,
+        allowedExtensions: const ['latch'],
+      );
       if (result != null && result.files.isNotEmpty && mounted) {
         // A platform can return entries with a null path — never force-unwrap.
         final paths = <String>[];
