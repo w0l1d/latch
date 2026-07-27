@@ -154,7 +154,44 @@ void main() {
         'displayName': 'a.txt.latch',
         'mimeType': 'application/octet-stream',
         'srcPath': '/cache/latch_stage/0_a.txt.latch',
+        'subPath': '',
       });
+    });
+
+    test('createInTree forwards a nested sub-folder', () async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SafBridge.channel, (call) async {
+            calls.add(call);
+            return {
+              'uri': 'content://doc/nested',
+              'displayPath': '/storage/x/Documents/Work/a.txt.latch',
+            };
+          });
+
+      final created = await SafBridge.createInTree(
+        treeUri: 'content://tree/primary%3ADocuments',
+        displayName: 'a.txt.latch',
+        srcPath: '/cache/latch_stage/0_a.txt.latch',
+        subPath: 'Work',
+      );
+      expect(created.displayPath, '/storage/x/Documents/Work/a.txt.latch');
+      expect(calls.single.arguments['subPath'], 'Work');
+    });
+
+    test('existingTreeGrantFor asks the platform about one folder', () async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SafBridge.channel, (call) async {
+            calls.add(call);
+            return {'treeUri': 'content://tree/docs', 'subPath': 'Work'};
+          });
+
+      final grant = await SafBridge.existingTreeGrantFor(
+        '/storage/x/Documents/Work',
+      );
+      expect(grant!.treeUri, 'content://tree/docs');
+      expect(grant.subPath, 'Work');
+      expect(calls.single.method, 'existingTreeGrant');
+      expect(calls.single.arguments, {'folder': '/storage/x/Documents/Work'});
     });
 
     test(

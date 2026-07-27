@@ -116,6 +116,13 @@ class MainActivity : FlutterFragmentActivity() {
                                 val uri = Uri.parse(call.argument<String>("uri")!!)
                                 runOnUiThread { result.success(treeUriToPath(uri)) }
                             }
+                            // A folder grant the user has ALREADY given that covers
+                            // a folder — so the app asks only for folders it has no
+                            // access to yet. Null when nothing covers it.
+                            "existingTreeGrant" -> {
+                                val folder = call.argument<String>("folder")!!
+                                runOnUiThread { result.success(existingTreeGrant(folder)) }
+                            }
                             // Create a new document in a granted tree and copy the
                             // staged file into it. Returns the new document URI and
                             // a human display path.
@@ -125,7 +132,9 @@ class MainActivity : FlutterFragmentActivity() {
                                 val mimeType = call.argument<String>("mimeType")
                                     ?: "application/octet-stream"
                                 val srcPath = call.argument<String>("srcPath")!!
-                                val created = createInTree(treeUri, displayName, mimeType, srcPath)
+                                val subPath = call.argument<String>("subPath") ?: ""
+                                val created =
+                                    createInTree(treeUri, displayName, mimeType, srcPath, subPath)
                                 runOnUiThread { result.success(created) }
                             }
                             // Open the system file browser at a folder so the
@@ -275,19 +284,68 @@ class MainActivity : FlutterFragmentActivity() {
         return if (file.exists()) file.absolutePath else null
     }
 
+    // A persisted folder grant that already covers [folderPath] — the folder
+    // itself, or an ancestor of it (a tree grant can create documents in any
+    // descendant). Returns {treeUri, subPath}, where subPath is the path from
+    // the granted tree down to the folder ("" when the grant IS the folder), or
+    // null when no grant covers it. Lets the app prompt only for folders it has
+    // no write access to yet, including grants taken in an earlier session or
+    // for a parent folder. The deepest covering grant wins.
+    private fun existingTreeGrant(folderPath: String): Map<String, String>? {
+        val target = folderPath.trimEnd('/')
+        var bestRoot: String? = null
+        var best: Map<String, String>? = null
+        for (perm in contentResolver.persistedUriPermissions) {
+            if (!perm.isWritePermission) continue
+            val uri = perm.uri
+            if (!DocumentsContract.isTreeUri(uri)) continue
+            val root = (
+                try {
+                    treeUriToPath(uri)
+                } catch (e: Exception) {
+                    null
+                }
+                )?.trimEnd('/') ?: continue
+            val sub = when {
+                root == target -> ""
+                target.startsWith("$root/") -> target.substring(root.length + 1)
+                else -> continue
+            }
+            if (bestRoot == null || root.length > bestRoot.length) {
+                bestRoot = root
+                best = mapOf("treeUri" to uri.toString(), "subPath" to sub)
+            }
+        }
+        return best
+    }
+
+    // Address a folder nested inside a granted tree. The externalstorage
+    // provider's document ids are path-shaped ("primary:Docs"), so a descendant
+    // is the tree's own id plus the relative path.
+    private fun childDocId(treeDocId: String, subPath: String): String =
+        if (treeDocId.endsWith(":") || treeDocId.endsWith("/")) {
+            "$treeDocId$subPath"
+        } else {
+            "$treeDocId/$subPath"
+        }
+
     // Create [displayName] in the granted [treeUri] (resolving collisions the
     // same way FileIoDart.resolveNameCollision does), then copy [srcPath] in.
-    // Returns {uri, displayPath}. Deletes the new doc if the copy fails so a
-    // partial file is never left behind.
+    // [subPath] targets a folder nested inside the grant — empty means the tree
+    // root. Returns {uri, displayPath}. Deletes the new doc if the copy fails so
+    // a partial file is never left behind.
     private fun createInTree(
         treeUri: Uri,
         displayName: String,
         mimeType: String,
         srcPath: String,
+        subPath: String,
     ): Map<String, String> {
         val treeDocId = DocumentsContract.getTreeDocumentId(treeUri)
-        val parent = DocumentsContract.buildDocumentUriUsingTree(treeUri, treeDocId)
-        val finalName = uniquify(displayName, childDisplayNames(treeUri, treeDocId))
+        val parentDocId =
+            if (subPath.isEmpty()) treeDocId else childDocId(treeDocId, subPath)
+        val parent = DocumentsContract.buildDocumentUriUsingTree(treeUri, parentDocId)
+        val finalName = uniquify(displayName, childDisplayNames(treeUri, parentDocId))
         val newUri = DocumentsContract.createDocument(contentResolver, parent, mimeType, finalName)
             ?: throw IllegalStateException("createDocument returned null for $finalName")
         try {
@@ -304,7 +362,12 @@ class MainActivity : FlutterFragmentActivity() {
             }
             throw e
         }
-        val dir = treeUriToPath(treeUri)
+        val treeDir = treeUriToPath(treeUri)
+        val dir = when {
+            treeDir == null -> null
+            subPath.isEmpty() -> treeDir
+            else -> "${treeDir.trimEnd('/')}/$subPath"
+        }
         return mapOf(
             "uri" to newUri.toString(),
             "displayPath" to (if (dir != null) "$dir/$finalName" else finalName),
