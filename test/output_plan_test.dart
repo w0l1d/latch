@@ -131,13 +131,39 @@ void main() {
     });
 
     test(
-      'a source with no filesystem folder falls back to Downloads',
+      'a source with no filesystem folder prompts once with a null folder',
       () async {
         // No registered content URI → realDirectoryFor is null (cloud/media).
+        // The user must still be asked rather than silently getting Downloads.
+        mockSaf((_) async => null);
+        final asked = <String?>[];
+        final plan = await OutputPlanner.plan(
+          ['/cache/cloud-a.txt', '/cache/cloud-b.txt'],
+          requestGrant: (folder) async {
+            asked.add(folder);
+            return 'content://tree/picked';
+          },
+          platformIsAndroid: true,
+        );
+        expect(asked, [null], reason: 'asked once for the whole batch');
+        expect(
+          plan.byPath['/cache/cloud-a.txt']!.treeUri,
+          'content://tree/picked',
+        );
+        expect(
+          plan.byPath['/cache/cloud-b.txt']!.treeUri,
+          'content://tree/picked',
+        );
+      },
+    );
+
+    test(
+      'declining the unknown-folder prompt falls back to Downloads',
+      () async {
         mockSaf((_) async => null);
         final plan = await OutputPlanner.plan(
           ['/cache/cloud-only.txt'],
-          requestGrant: (_) async => 'content://tree/should-not-be-used',
+          requestGrant: (_) async => null,
           platformIsAndroid: true,
         );
         expect(plan.byPath['/cache/cloud-only.txt']!.treeUri, isNull);
