@@ -109,14 +109,42 @@ class SafBridge {
     }
   }
 
+  /// A folder grant the user has already given that covers [folderPath] — the
+  /// folder itself, or an ancestor of it, since a tree grant can create
+  /// documents in any descendant. [subPath] is the path from the granted tree
+  /// down to the folder ('' when the grant is the folder itself). Null when no
+  /// existing grant covers it, i.e. the user has to be asked.
+  ///
+  /// Android persists these grants itself, so this finds grants taken in
+  /// earlier sessions (and ones taken for a parent folder) that the app's own
+  /// [_treeUriByFolder] cache has never seen. Best-effort: never throws.
+  static Future<({String treeUri, String subPath})?> existingTreeGrantFor(
+    String folderPath,
+  ) async {
+    try {
+      final m = await channel.invokeMethod<Map>('existingTreeGrant', {
+        'folder': folderPath,
+      });
+      if (m == null) return null;
+      return (
+        treeUri: m['treeUri'] as String,
+        subPath: (m['subPath'] as String?) ?? '',
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Create [displayName] inside the granted [treeUri] and copy [srcPath] into
-  /// it. Returns the created document's URI and a human-readable display path.
-  /// Throws (caller falls back to Downloads) when the grant is gone or the
-  /// write fails.
+  /// it. [subPath] targets a folder nested inside the grant (empty = the tree
+  /// root). Returns the created document's URI and a human-readable display
+  /// path. Throws (caller falls back to Downloads) when the grant is gone, the
+  /// nested folder can't be addressed, or the write fails.
   static Future<({String uri, String displayPath})> createInTree({
     required String treeUri,
     required String displayName,
     required String srcPath,
+    String subPath = '',
     String mimeType = 'application/octet-stream',
   }) async {
     final m = await channel.invokeMethod<Map>('createInTree', {
@@ -124,6 +152,7 @@ class SafBridge {
       'displayName': displayName,
       'mimeType': mimeType,
       'srcPath': srcPath,
+      'subPath': subPath,
     });
     if (m == null) throw StateError('createInTree returned no result');
     return (uri: m['uri'] as String, displayPath: m['displayPath'] as String);

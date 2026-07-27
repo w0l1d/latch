@@ -12,7 +12,13 @@ class OutputTarget {
   /// Granted folder (tree URI) to create the output in; null means there is no
   /// grant, so the output falls back to Downloads.
   final String? treeUri;
-  const OutputTarget({this.treeUri});
+
+  /// Path from [treeUri]'s folder down to the destination folder, for grants
+  /// that cover an ancestor of the source folder rather than the folder itself.
+  /// Empty means create directly in the granted folder.
+  final String subPath;
+
+  const OutputTarget({this.treeUri, this.subPath = ''});
 }
 
 /// A resolved output strategy for a batch.
@@ -100,7 +106,7 @@ class OutputPlanner {
     }
 
     // "Same folder as each original": resolve one grant per distinct folder.
-    final grantByFolder = <String, String?>{};
+    final grantByFolder = <String, OutputTarget>{};
     // Sources whose provider exposes no filesystem folder (cloud, or a document
     // id we can't map to a path) still get a say in where output lands — ask
     // once for the whole batch rather than silently using Downloads. Nothing is
@@ -117,17 +123,52 @@ class OutputPlanner {
         byPath[f] = OutputTarget(treeUri: unknownGrant);
         continue;
       }
-      if (!grantByFolder.containsKey(folder)) {
-        var grant = SafBridge.treeGrantForFolder(folder);
-        if (grant == null && requestGrant != null) {
-          grant = await requestGrant(folder);
-          if (grant != null) await SafBridge.rememberTreeGrant(folder, grant);
-        }
-        grantByFolder[folder] = grant;
-      }
-      byPath[f] = OutputTarget(treeUri: grantByFolder[folder]);
+      grantByFolder[folder] ??= await _grantFor(folder, requestGrant);
+      byPath[f] = grantByFolder[folder]!;
     }
     return OutputPlan(stagingDir: staging, outputDir: staging, byPath: byPath);
+  }
+
+  /// Resolves write access to [folder], asking the user only as a last resort:
+  ///
+  /// 1. the app's own cache of grants it took for exactly this folder;
+  /// 2. any grant Android still holds that covers the folder — the folder
+  ///    itself, or an ancestor of it (a grant on `.../Documents` can create
+  ///    inside `.../Documents/Work`), so a folder already allowed once is never
+  ///    asked about again;
+  /// 3. only then the folder prompt. After the picker returns, the grant is
+  ///    re-resolved through (2) so a user who picks a parent of the requested
+  ///    folder still gets the output in the source folder itself.
+  ///
+  /// A null target tree URI means no access → the caller uses Downloads.
+  static Future<OutputTarget> _grantFor(
+    String folder,
+    Future<String?> Function(String? folder)? requestGrant,
+  ) async {
+    final cached = SafBridge.treeGrantForFolder(folder);
+    if (cached != null) return OutputTarget(treeUri: cached);
+
+    final existing = await SafBridge.existingTreeGrantFor(folder);
+    if (existing != null) {
+      return OutputTarget(treeUri: existing.treeUri, subPath: existing.subPath);
+    }
+
+    if (requestGrant == null) return const OutputTarget();
+    final picked = await requestGrant(folder);
+    if (picked == null) return const OutputTarget();
+
+    final resolved = await SafBridge.existingTreeGrantFor(folder);
+    if (resolved == null) {
+      // The user picked a folder unrelated to the source — honor their choice
+      // and create the output directly in it.
+      return OutputTarget(treeUri: picked);
+    }
+    if (resolved.subPath.isEmpty) {
+      // Granted exactly this folder: worth caching so later batches skip even
+      // the platform lookup.
+      await SafBridge.rememberTreeGrant(folder, resolved.treeUri);
+    }
+    return OutputTarget(treeUri: resolved.treeUri, subPath: resolved.subPath);
   }
 
   static Future<void> _resetDir(String dir) async {
@@ -171,9 +212,17 @@ Future<List<RelocatedOutput>> relocateStagedOutputs(
           treeUri: target!.treeUri!,
           displayName: name,
           srcPath: staged,
+          subPath: target.subPath,
         );
         await _deleteQuietly(staged);
-        out.add(RelocatedOutput(created.displayPath, treeUri: target.treeUri));
+        out.add(
+          RelocatedOutput(
+            created.displayPath,
+            // A grant on an ancestor folder would open the wrong folder, so
+            // "Open folder" addresses those by path instead.
+            treeUri: target.subPath.isEmpty ? target.treeUri : null,
+          ),
+        );
         continue;
       } catch (_) {
         // Grant revoked or write failed — fall through to Downloads.
