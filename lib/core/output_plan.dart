@@ -131,23 +131,24 @@ class OutputPlanner {
 
   /// Resolves write access to [folder], asking the user only as a last resort:
   ///
-  /// 1. the app's own cache of grants it took for exactly this folder;
-  /// 2. any grant Android still holds that covers the folder — the folder
+  /// 1. any grant Android still holds that covers the folder — the folder
   ///    itself, or an ancestor of it (a grant on `.../Documents` can create
-  ///    inside `.../Documents/Work`), so a folder already allowed once is never
-  ///    asked about again;
-  /// 3. only then the folder prompt. After the picker returns, the grant is
-  ///    re-resolved through (2) so a user who picks a parent of the requested
+  ///    inside `.../Documents/Work`), so a folder allowed once is never asked
+  ///    about again, including in later sessions;
+  /// 2. only then the folder prompt. After the picker returns, the grant is
+  ///    re-resolved through (1) so a user who picks a parent of the requested
   ///    folder still gets the output in the source folder itself.
+  ///
+  /// Android's own persisted-permission table is the single record of what the
+  /// app may write to. The app deliberately keeps no copy of it: a copy can
+  /// outlive the grant it describes, and a stale entry here would skip the
+  /// prompt and send every later batch to Downloads with no way back.
   ///
   /// A null target tree URI means no access → the caller uses Downloads.
   static Future<OutputTarget> _grantFor(
     String folder,
     Future<String?> Function(String? folder)? requestGrant,
   ) async {
-    final cached = SafBridge.treeGrantForFolder(folder);
-    if (cached != null) return OutputTarget(treeUri: cached);
-
     final existing = await SafBridge.existingTreeGrantFor(folder);
     if (existing != null) {
       return OutputTarget(treeUri: existing.treeUri, subPath: existing.subPath);
@@ -159,14 +160,9 @@ class OutputPlanner {
 
     final resolved = await SafBridge.existingTreeGrantFor(folder);
     if (resolved == null) {
-      // The user picked a folder unrelated to the source — honor their choice
-      // and create the output directly in it.
+      // The user picked a folder unrelated to the source, or one the provider
+      // can't map to a path — honor their choice at the tree root.
       return OutputTarget(treeUri: picked);
-    }
-    if (resolved.subPath.isEmpty) {
-      // Granted exactly this folder: worth caching so later batches skip even
-      // the platform lookup.
-      await SafBridge.rememberTreeGrant(folder, resolved.treeUri);
     }
     return OutputTarget(treeUri: resolved.treeUri, subPath: resolved.subPath);
   }

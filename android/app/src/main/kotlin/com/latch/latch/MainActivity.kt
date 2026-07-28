@@ -161,22 +161,24 @@ class MainActivity : FlutterFragmentActivity() {
         if (!DocumentsContract.isDocumentUri(this, uri)) return null
         val docId = DocumentsContract.getDocumentId(uri)
         return when (uri.authority) {
-            "com.android.externalstorage.documents" -> {
-                val split = docId.split(":", limit = 2)
-                if (split.size != 2) return null
-                val root = if (split[0].equals("primary", ignoreCase = true)) {
-                    Environment.getExternalStorageDirectory().absolutePath
-                } else {
-                    "/storage/${split[0]}"
-                }
-                val file = File(root, split[1])
-                if (file.exists()) file.absolutePath else null
-            }
+            ExternalStorageDocIds.AUTHORITY -> existingPath(docId)
             "com.android.providers.downloads.documents" ->
                 if (docId.startsWith("raw:")) docId.removePrefix("raw:") else dataColumnPath(uri)
             else -> dataColumnPath(uri)
         }
     }
+
+    // The path an externalstorage document id addresses, but only if something
+    // is actually there — a document id can outlive the file (SD card pulled,
+    // folder deleted), and a path that doesn't exist would be matched against
+    // source folders as if it were live.
+    private fun existingPath(docId: String): String? {
+        val path = ExternalStorageDocIds.toPath(docId, primaryRoot()) ?: return null
+        return if (File(path).exists()) path else null
+    }
+
+    private fun primaryRoot(): String =
+        Environment.getExternalStorageDirectory().absolutePath
 
     // Last resort for providers that front real files but don't encode the path
     // in their document id — Downloads' `msf:<id>` documents and MediaStore
@@ -227,17 +229,13 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
 
-    // Build a primary-storage document URI so the picker opens at [path].
-    // Best-effort: only for paths under the primary external volume.
+    // Build an externalstorage document URI so the picker opens at [path].
+    // Best-effort: null for a path on no volume this provider serves, and the
+    // picker then opens unseeded — as it also does on OEM pickers that ignore
+    // EXTRA_INITIAL_URI regardless of what we pass.
     private fun initialTreeUri(path: String): Uri? {
-        val root = Environment.getExternalStorageDirectory().absolutePath
-        if (!path.startsWith(root)) return null
-        val rel = path.removePrefix(root).trim('/')
-        val docId = if (rel.isEmpty()) "primary:" else "primary:$rel"
-        return DocumentsContract.buildDocumentUri(
-            "com.android.externalstorage.documents",
-            docId,
-        )
+        val docId = ExternalStorageDocIds.toDocId(path, primaryRoot()) ?: return null
+        return DocumentsContract.buildDocumentUri(ExternalStorageDocIds.AUTHORITY, docId)
     }
 
     // Open the Documents UI / a file browser at a folder. Prefers a granted
@@ -268,20 +266,12 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
 
-    // Filesystem path a granted tree URI resolves to (mirrors resolveToFilePath
-    // but on the TREE document id). Null when it doesn't front a real folder.
+    // Filesystem path a granted tree URI resolves to (same mapping as
+    // resolveToFilePath, but on the TREE document id). Null when it doesn't
+    // front a real folder.
     private fun treeUriToPath(treeUri: Uri): String? {
-        if (treeUri.authority != "com.android.externalstorage.documents") return null
-        val docId = DocumentsContract.getTreeDocumentId(treeUri)
-        val split = docId.split(":", limit = 2)
-        if (split.size != 2) return null
-        val root = if (split[0].equals("primary", ignoreCase = true)) {
-            Environment.getExternalStorageDirectory().absolutePath
-        } else {
-            "/storage/${split[0]}"
-        }
-        val file = File(root, split[1])
-        return if (file.exists()) file.absolutePath else null
+        if (treeUri.authority != ExternalStorageDocIds.AUTHORITY) return null
+        return existingPath(DocumentsContract.getTreeDocumentId(treeUri))
     }
 
     // A persisted folder grant that already covers [folderPath] — the folder

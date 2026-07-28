@@ -1,7 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latch/core/saf_bridge.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -193,21 +192,5 @@ void main() {
       expect(calls.single.method, 'existingTreeGrant');
       expect(calls.single.arguments, {'folder': '/storage/x/Documents/Work'});
     });
-
-    test(
-      'rememberTreeGrant caches by folder and treeGrantForFolder reads it',
-      () async {
-        SharedPreferences.setMockInitialValues({});
-        await SafBridge.rememberTreeGrant(
-          '/storage/x/Documents',
-          'content://tree/primary%3ADocuments',
-        );
-        expect(
-          SafBridge.treeGrantForFolder('/storage/x/Documents'),
-          'content://tree/primary%3ADocuments',
-        );
-        expect(SafBridge.treeGrantForFolder('/storage/x/Other'), isNull);
-      },
-    );
   });
 }

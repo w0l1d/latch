@@ -78,3 +78,45 @@ jobs:
             echo "::error::Telegram sendMessage failed: $RESPONSE"
             exit 1
           fi
+
+  # The Android SAF plumbing is plain Kotlin the Dart tests can't reach. The
+  # path ↔ document-id mapping it rests on decides whether output lands beside
+  # the original and whether the folder picker opens at the source folder — both
+  # silent when wrong — so its JVM unit tests gate merges too.
+  android-unit-test:
+    name: Unit test (Android/Kotlin)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.44.2
+          cache: true
+
+      # Resolves the plugin projects Gradle includes, and writes the
+      # local.properties that android/settings.gradle.kts requires.
+      - name: Pub get
+        run: flutter pub get
+
+      - name: Point Gradle at the Flutter SDK
+        run: echo "flutter.sdk=$(dirname "$(dirname "$(readlink -f "$(which flutter)")")")" > android/local.properties
+
+      - name: Gradle unit tests
+        run: ./gradlew :app:testDebugUnitTest --console=plain
+        working-directory: android
+
+      - name: Upload test report on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-unit-test-report
+          path: android/app/build/reports/tests/
+          retention-days: 7

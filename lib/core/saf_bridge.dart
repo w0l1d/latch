@@ -1,8 +1,6 @@
-import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
-import 'package:shared_preferences/shared_preferences.dart';
 
 /// Bridge to Android's Storage Access Framework.
 ///
@@ -86,11 +84,12 @@ class SafBridge {
   // The single-file picker only grants access to the picked document, not its
   // folder, so the app can't create a sibling output there. ACTION_OPEN_-
   // DOCUMENT_TREE grants a whole folder (a persistable "tree" URI) into which
-  // DocumentsContract.createDocument can write new files. Grants are cached by
-  // the folder path they were requested for so we don't re-prompt every batch.
-
-  static const _grantsPrefsKey = 'saf_tree_grants';
-  static final Map<String, String> _treeUriByFolder = {};
+  // DocumentsContract.createDocument can write new files.
+  //
+  // Android persists these grants itself, so [existingTreeGrantFor] is the only
+  // record needed to avoid re-prompting — including across restarts. The app
+  // keeps no copy: one could outlive the grant it names, and then the app would
+  // skip the prompt for a folder it can no longer write to.
 
   /// Prompt the user to grant a folder, seeding the picker at [initialPath].
   /// Returns the granted tree URI, or null if they cancelled.
@@ -115,9 +114,10 @@ class SafBridge {
   /// down to the folder ('' when the grant is the folder itself). Null when no
   /// existing grant covers it, i.e. the user has to be asked.
   ///
-  /// Android persists these grants itself, so this finds grants taken in
-  /// earlier sessions (and ones taken for a parent folder) that the app's own
-  /// [_treeUriByFolder] cache has never seen. Best-effort: never throws.
+  /// Reads Android's own persisted-permission table, so it finds grants taken
+  /// in earlier sessions and grants taken for a parent folder, and it stops
+  /// finding a grant the moment Android stops honoring it. Best-effort: never
+  /// throws.
   static Future<({String treeUri, String subPath})?> existingTreeGrantFor(
     String folderPath,
   ) async {
@@ -174,40 +174,6 @@ class SafBridge {
       return ok ?? false;
     } catch (_) {
       return false;
-    }
-  }
-
-  /// The cached tree grant for [folderPath], if the user has granted it.
-  static String? treeGrantForFolder(String folderPath) =>
-      _treeUriByFolder[folderPath];
-
-  /// Remember (and persist) that [folderPath] outputs may be created in
-  /// [treeUri]. Persistence is best-effort so a prefs failure never blocks.
-  static Future<void> rememberTreeGrant(
-    String folderPath,
-    String treeUri,
-  ) async {
-    _treeUriByFolder[folderPath] = treeUri;
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_grantsPrefsKey, jsonEncode(_treeUriByFolder));
-    } catch (_) {
-      // In-memory grant still works for this session.
-    }
-  }
-
-  /// Seed the in-memory grant registry from persisted prefs at startup.
-  static Future<void> loadTreeGrants() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_grantsPrefsKey);
-      if (raw == null) return;
-      final decoded = jsonDecode(raw) as Map<String, dynamic>;
-      decoded.forEach((k, v) {
-        if (v is String) _treeUriByFolder[k] = v;
-      });
-    } catch (_) {
-      // No persisted grants (or prefs unavailable) — start empty.
     }
   }
 }

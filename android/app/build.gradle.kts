@@ -25,6 +25,12 @@ android {
         versionName = flutter.versionName
     }
 
+    // Plain-JVM unit tests for the framework-free helpers (see
+    // ExternalStorageDocIds): `./gradlew :app:testDebugUnitTest`.
+    sourceSets {
+        getByName("test").kotlin.srcDir("src/test/kotlin")
+    }
+
     buildTypes {
         release {
             // TODO: Add your own signing config for the release build.
@@ -32,6 +38,10 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+}
+
+dependencies {
+    testImplementation("junit:junit:4.13.2")
 }
 
 kotlin {

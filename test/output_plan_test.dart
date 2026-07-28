@@ -183,31 +183,7 @@ void main() {
   });
 
   group('OutputPlanner (Android) — grant resolution ladder', () {
-    test('1. a cached grant for the folder skips lookup and prompt', () async {
-      await SafBridge.rememberTreeGrant(
-        '/storage/e/Cached',
-        'content://tree/cached',
-      );
-      final saf = wireSaf(
-        registerSources: {'/cache/c1.txt': '/storage/e/Cached/c1.txt'},
-      );
-
-      final plan = await OutputPlanner.plan(
-        ['/cache/c1.txt'],
-        requestGrant: (_) async => fail('cached grant must not re-prompt'),
-        platformIsAndroid: true,
-      );
-
-      expect(plan.byPath['/cache/c1.txt']!.treeUri, 'content://tree/cached');
-      expect(plan.byPath['/cache/c1.txt']!.subPath, '');
-      expect(
-        saf.calls.map((c) => c.method),
-        isNot(contains('existingTreeGrant')),
-        reason: 'the app cache answers without touching the platform',
-      );
-    });
-
-    test('2. an existing platform grant for the exact folder — no '
+    test('1. an existing platform grant for the exact folder — no '
         'prompt', () async {
       final saf = wireSaf(
         registerSources: {'/cache/e1.txt': '/storage/e/Exact/e1.txt'},
@@ -224,7 +200,7 @@ void main() {
       expect(plan.byPath['/cache/e1.txt']!.subPath, '');
     });
 
-    test('3. a grant on an ANCESTOR folder covers the source folder '
+    test('2. a grant on an ANCESTOR folder covers the source folder '
         'via subPath', () async {
       final saf = wireSaf(
         registerSources: {'/cache/a1.txt': '/storage/e/Docs/Work/Q3/a1.txt'},
@@ -242,7 +218,7 @@ void main() {
       expect(t.subPath, 'Work/Q3');
     });
 
-    test('3b. the deepest covering grant wins', () async {
+    test('2b. the deepest covering grant wins', () async {
       final saf = wireSaf(
         registerSources: {'/cache/d1.txt': '/storage/e/Deep/A/B/d1.txt'},
       );
@@ -258,8 +234,7 @@ void main() {
       expect(t.subPath, 'B');
     });
 
-    test('4. no grant → prompts for the exact source folder, then caches '
-        'the grant', () async {
+    test('3. no grant → prompts for the exact source folder', () async {
       final saf = wireSaf(
         registerSources: {'/cache/p1.txt': '/storage/e/Ask/p1.txt'},
       );
@@ -280,15 +255,42 @@ void main() {
       final t = plan.byPath['/cache/p1.txt']!;
       expect(t.treeUri, 'content://tree/ask');
       expect(t.subPath, '');
-      expect(
-        SafBridge.treeGrantForFolder('/storage/e/Ask'),
-        'content://tree/ask',
-        reason: 'an exact grant is remembered for later batches',
-      );
     });
 
-    test('5. picking a PARENT of the requested folder still targets the '
-        'source folder, and is not cached as an exact grant', () async {
+    test('3b. a later batch re-reads the platform rather than trusting a '
+        'remembered grant', () async {
+      final saf = wireSaf(
+        registerSources: {'/cache/g1.txt': '/storage/e/Gone/g1.txt'},
+      );
+      saf.grants.grant('/storage/e/Gone', 'content://tree/gone');
+
+      // First batch: granted, no prompt.
+      await OutputPlanner.plan(
+        ['/cache/g1.txt'],
+        requestGrant: (_) async => fail('already granted'),
+        platformIsAndroid: true,
+      );
+
+      // The user revoked it (or the volume went away) between batches. Nothing
+      // the app remembers may paper over that — a remembered grant would skip
+      // the prompt and silently route every later batch to Downloads.
+      saf.grants.granted.remove('/storage/e/Gone');
+      var asked = 0;
+      final plan = await OutputPlanner.plan(
+        ['/cache/g1.txt'],
+        requestGrant: (_) async {
+          asked++;
+          return null;
+        },
+        platformIsAndroid: true,
+      );
+
+      expect(asked, 1, reason: 'a revoked grant must ask again');
+      expect(plan.byPath['/cache/g1.txt']!.treeUri, isNull);
+    });
+
+    test('4. picking a PARENT of the requested folder still targets the '
+        'source folder', () async {
       final saf = wireSaf(
         registerSources: {'/cache/p2.txt': '/storage/e/Parent/Sub/p2.txt'},
       );
@@ -307,14 +309,9 @@ void main() {
       final t = plan.byPath['/cache/p2.txt']!;
       expect(t.treeUri, 'content://tree/parent');
       expect(t.subPath, 'Sub');
-      expect(
-        SafBridge.treeGrantForFolder('/storage/e/Parent/Sub'),
-        isNull,
-        reason: 'only exact grants are cached; the platform holds the rest',
-      );
     });
 
-    test('6. picking an unrelated folder honors that choice at the tree '
+    test('5. picking an unrelated folder honors that choice at the tree '
         'root', () async {
       wireSaf(registerSources: {'/cache/p3.txt': '/storage/e/Src/p3.txt'});
 
@@ -331,7 +328,7 @@ void main() {
     });
 
     test(
-      '7. a declined prompt falls back to Downloads (null treeUri)',
+      '6. a declined prompt falls back to Downloads (null treeUri)',
       () async {
         wireSaf(
           registerSources: {'/cache/deny.txt': '/storage/e/Deny/deny.txt'},
@@ -346,7 +343,7 @@ void main() {
       },
     );
 
-    test('8. with no requestGrant callback an ungranted folder falls back '
+    test('7. with no requestGrant callback an ungranted folder falls back '
         'to Downloads', () async {
       wireSaf(registerSources: {'/cache/n1.txt': '/storage/e/None/n1.txt'});
 
@@ -356,7 +353,7 @@ void main() {
       expect(plan.byPath['/cache/n1.txt']!.treeUri, isNull);
     });
 
-    test('9. prompts once per distinct folder, shared across that '
+    test('8. prompts once per distinct folder, shared across that '
         "folder's files", () async {
       final saf = wireSaf(
         registerSources: {
@@ -384,7 +381,7 @@ void main() {
       expect(plan.byPath['/cache/m3.txt']!.treeUri, 'content://tree/Two');
     });
 
-    test('9b. a second folder needs no prompt when the first grant already '
+    test('8b. a second folder needs no prompt when the first grant already '
         'covers it', () async {
       final saf = wireSaf(
         registerSources: {
@@ -409,7 +406,7 @@ void main() {
       expect(plan.byPath['/cache/s2.txt']!.subPath, 'Nested');
     });
 
-    test('10. a source with no filesystem folder prompts once with a null '
+    test('9. a source with no filesystem folder prompts once with a null '
         'folder', () async {
       // No registered content URI → realDirectoryFor is null (cloud/media).
       // The user must still be asked rather than silently getting Downloads.
@@ -434,7 +431,7 @@ void main() {
       );
     });
 
-    test('11. declining the unknown-folder prompt falls back to '
+    test('10. declining the unknown-folder prompt falls back to '
         'Downloads', () async {
       wireSaf();
       final plan = await OutputPlanner.plan(
@@ -445,7 +442,7 @@ void main() {
       expect(plan.byPath['/cache/cloud-only.txt']!.treeUri, isNull);
     });
 
-    test('12. resolvable and unresolvable sources in one batch each get '
+    test('11. resolvable and unresolvable sources in one batch each get '
         'their own prompt', () async {
       final saf = wireSaf(
         registerSources: {'/cache/mix1.txt': '/storage/e/Mix/mix1.txt'},
