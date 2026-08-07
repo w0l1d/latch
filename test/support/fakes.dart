@@ -36,6 +36,11 @@ class FakeFilePicker extends FilePicker {
   List<String> _pickPaths = const [];
   String? _pickDir;
 
+  // Captures from the most recent pickFiles call, so tests can assert the
+  // screen requested the right extension filter.
+  FileType? lastPickType;
+  List<String>? lastPickAllowedExtensions;
+
   void configure({List<String> paths = const [], String? dir}) {
     _pickPaths = paths;
     _pickDir = dir;
@@ -56,6 +61,8 @@ class FakeFilePicker extends FilePicker {
     bool lockParentWindow = false,
     bool readSequential = false,
   }) async {
+    lastPickType = type;
+    lastPickAllowedExtensions = allowedExtensions;
     if (_pickPaths.isEmpty) return null;
     return FilePickerResult(
       _pickPaths

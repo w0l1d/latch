@@ -403,6 +403,10 @@ void main() {
           await tester.tap(find.text('Choose locked files'));
           await tester.pumpAndSettle();
 
+          // The picker must default to .latch containers only.
+          expect(_picker.lastPickType, FileType.custom);
+          expect(_picker.lastPickAllowedExtensions, const ['latch']);
+
           final enterBtn = find.text('Enter passphrase');
           expect(enterBtn, findsOneWidget);
           await tester.tap(enterBtn);
