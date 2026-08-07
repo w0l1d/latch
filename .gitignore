@@ -119,8 +119,11 @@ google-services.json
 .dart_tool/
 .packages
 build/
-# If you're building an application, you may want to check-in your pubspec.lock
-pubspec.lock
+# The root pubspec.lock IS checked in: Latch ships release APKs built from a
+# tag, so the dependency set must be pinned — an unlocked CI resolve once pulled
+# a newly published transitive dep that broke the Android build for a tag that
+# had built fine hours earlier. The packages/ locks stay ignored (libraries).
+packages/*/pubspec.lock
 
 # Directory created by dartdoc
 # If you don't generate documentation locally you can remove this line.
