@@ -62,6 +62,7 @@ No cloud sync, no accounts, no server-side key escrow, no DRM, no advertising, n
 - **Weak passphrases.** With the device in hand, an attacker brute-forces the passphrase **offline at full speed** — no server rate-limits them. Passphrase entropy and KDF cost are the entire boundary.
 - **Coercion.**
 - Live forensic extraction of plaintext currently in memory.
+- **A passphrase the user copies into a third-party password manager.** Once the passphrase is in another app's storage, it inherits that app's security and its cloud sync — it can leave the device, which nothing in Latch does. This is a deliberate user choice (UC-8) and a real trade-off: it is also the only user-side backup against the unrecoverable-by-design passphrase. Latch does **not** integrate with managers programmatically — see UC-8.
 
 ---
 
@@ -97,7 +98,11 @@ Wrap the existing DEK to a recipient's public key (X25519 sealed box); add it to
 Store a passphrase in the hardware-backed store, gated by biometric/PIN. The gate releases the passphrase; **the PIN is never a KDF input.**
 
 ### UC-8 — External password manager
-Passphrase lives in the user's own manager (Bitwarden, Samsung Pass, iCloud Keychain) via OS autofill; the app stores nothing.
+Passphrase lives in the user's own manager (Bitwarden, Samsung Pass, iCloud Keychain) and the app stores nothing.
+
+**Not an autofill integration — manual transfer only.** The user copies the passphrase out of their manager and pastes it into the passphrase field. Latch has no OS-autofill plumbing: no `autofillHints`, no `AutofillGroup`, no `TextInput.finishAutofillContext()`. Settings → "Your passphrase" → *Use my password manager* is therefore a statement of intent that makes the app store nothing (it disables the app vault and quick unlock via `PassphrasePolicy`); it does not wire the OS autofill framework.
+
+A programmatic integration was deliberately not shipped (issue #6). Latch has no accounts and no username field by design, so a manager has no identifier under which to look up or store a credential — a working integration would need a synthetic identity, and its fill/save paths cannot be verified by widget tests, only by hand on physical Android and iOS devices against a real manager. Storing the passphrase in an external manager also moves the secret into another app's storage and sync; see §3, "Does NOT protect against".
 
 ### UC-9 — Multiple stored passphrases
 An opaque random **key-id** in the header identifies *which* passphrase to use (revealing nothing about it), so the right one is selected instantly instead of trying each (Argon2id is deliberately slow).
@@ -129,8 +134,12 @@ DECRYPT:  passphrase ── Argon2id ──> KEK ── unwraps ──> DEK ─�
 ```
 type each time ─────────────► nothing stored on device (most secure)
 app vault ──► biometric/PIN gate ──► hardware-backed store releases passphrase
-external manager ──► OS autofill ──► manager fills passphrase (app stores nothing)
+external manager ──► user pastes it in ──► app stores nothing (no OS autofill; see UC-8)
 ```
+These are storage *policies* chosen once in Settings, not modes toggled on the
+passphrase screen. The encrypt passphrase screen has a single passphrase field
+plus — only when the vault actually holds something — a "Use a saved
+passphrase" action that reads one entry out of the app vault.
 
 ### 5.3 Success / failure flow
 ```

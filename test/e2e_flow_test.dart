@@ -374,6 +374,135 @@ void main() {
     );
   });
 
+  // Issues #4/#5/#6: the passphrase screen used to present a three-way
+  // "Type it / From app / Password mgr" chip row that read as tabs, where
+  // "Type it" changed nothing, "Password mgr" was a dead control, and picking
+  // a saved passphrase left the save toggle implying a second copy.
+  group('encrypt passphrase source', () {
+    /// Drive home → encrypt pick → passphrase for a single temp file.
+    Future<void> toPassphrase(WidgetTester tester, Directory tmp) async {
+      _pathProvider.configure(tmp.path);
+      final src = File('${tmp.path}/doc.txt')..writeAsStringSync('contents');
+      _picker.configure(paths: [src.path]);
+      await _pumpApp(tester);
+      await _resetTo(tester, '/home');
+      await tester.tap(find.text('Encrypt files'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Choose files to lock'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Set a passphrase'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('no dead source controls — the fake segmented control is gone '
+        'and the saved-passphrase action is hidden on an empty vault', (
+      tester,
+    ) async {
+      final tmp = Directory.systemTemp.createTempSync('latch_src_none');
+      try {
+        await AppCrypto.passphraseStorage!.deleteAll();
+        await toPassphrase(tester, tmp);
+
+        // The dead "Password mgr" control and the redundant "Type it" mode
+        // selector must not exist at all (issues #4 and #6).
+        expect(find.text('Password mgr'), findsNothing);
+        expect(find.text('Type it'), findsNothing);
+        expect(find.text('From app'), findsNothing);
+        // Nothing saved yet, so the vault action would be a no-op — hidden.
+        expect(find.text('Use a saved passphrase'), findsNothing);
+        // The passphrase field is still the single primary input.
+        expect(find.byType(TextField), findsWidgets);
+      } finally {
+        if (tmp.existsSync()) tmp.deleteSync(recursive: true);
+      }
+    });
+
+    testWidgets(
+      'picking a saved passphrase shows "Already saved as", stores no '
+      'duplicate, and reuses the entry key-id',
+      (tester) async {
+        final tmp = Directory.systemTemp.createTempSync('latch_src_pick');
+        try {
+          final svc = AppCrypto.passphraseStorage!;
+          await svc.deleteAll();
+          final originalKeyId = await svc.store('work vault', 'stored pw');
+          _fakeAuth.setNextResult(true);
+
+          await toPassphrase(tester, tmp);
+
+          // The saved-passphrase action is a plain action, not a mode.
+          final useSaved = find.text('Use a saved passphrase');
+          expect(useSaved, findsOneWidget);
+
+          // Turn the save offer on FIRST, so the test proves it is reconciled
+          // rather than merely never enabled (issue #5).
+          await tester.tap(find.text('Save for quick unlock'));
+          await tester.pumpAndSettle();
+          expect(find.text('Save for quick unlock'), findsOneWidget);
+
+          await tester.tap(useSaved);
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('work vault'));
+          await tester.pumpAndSettle();
+
+          // The save block is replaced by a statement of fact — no toggle, no
+          // name field, so nothing implies a second copy.
+          expect(find.text('Already saved as "work vault"'), findsOneWidget);
+          expect(find.text('Save for quick unlock'), findsNothing);
+          expect(find.text('Name for this passphrase'), findsNothing);
+
+          await tester.tap(find.widgetWithText(ElevatedButton, 'Continue'));
+          await tester.pumpAndSettle();
+
+          // Continuing must not have written a second entry, and the key-id
+          // must be the picked entry's so the header still resolves to it.
+          final entries = await svc.list();
+          expect(
+            entries.length,
+            1,
+            reason: 'picking an already-saved passphrase must not duplicate it',
+          );
+          expect(entries.single.label, 'work vault');
+          expect(entries.single.keyIdHex, originalKeyId);
+        } finally {
+          if (tmp.existsSync()) tmp.deleteSync(recursive: true);
+        }
+      },
+    );
+
+    testWidgets('hand-editing after picking resets to normal save behaviour', (
+      tester,
+    ) async {
+      final tmp = Directory.systemTemp.createTempSync('latch_src_edit');
+      try {
+        final svc = AppCrypto.passphraseStorage!;
+        await svc.deleteAll();
+        await svc.store('work vault', 'stored pw');
+        _fakeAuth.setNextResult(true);
+
+        await toPassphrase(tester, tmp);
+        await tester.tap(find.text('Use a saved passphrase'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('work vault'));
+        await tester.pumpAndSettle();
+        expect(find.text('Already saved as "work vault"'), findsOneWidget);
+
+        // A different secret is no longer the stored one.
+        await tester.enterText(find.byType(TextField).first, 'a different pw');
+        await tester.pumpAndSettle();
+
+        expect(find.textContaining('Already saved as'), findsNothing);
+        expect(
+          find.text('Save for quick unlock'),
+          findsOneWidget,
+          reason: 'an edited passphrase goes back to the normal save offer',
+        );
+      } finally {
+        if (tmp.existsSync()) tmp.deleteSync(recursive: true);
+      }
+    });
+  });
+
   group('decrypt flow up to unlock', () {
     testWidgets(
       'pick a real .latch → Enter passphrase → Unlock button wired & enabled',

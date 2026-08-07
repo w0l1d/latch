@@ -7,6 +7,7 @@ import '../../shared/widgets/latch_button.dart';
 import '../../core/app_crypto.dart';
 import '../../core/crypto_stub.dart';
 import '../../core/passphrase_policy.dart';
+import '../../core/passphrase_storage_service.dart';
 
 class EncryptPassphraseScreen extends StatefulWidget {
   final List<String> files;
@@ -23,8 +24,25 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
   bool _obscure = true;
   bool _saveForQuickUnlock = false;
   bool _canSave = false;
+
+  /// Whether the vault holds anything to offer. Gates the "Use a saved
+  /// passphrase" action so it is never a control that does nothing.
+  bool _hasSaved = false;
   PassphraseResult? _strength;
-  int _selectedChip = 0;
+
+  /// Label of the vault entry the passphrase was loaded from, or null when the
+  /// user typed it. Non-null means the secret is *already stored*, so it must
+  /// not be saved a second time under a different label.
+  String? _pickedLabel;
+
+  /// The picked entry's existing key-id — reused verbatim so the header still
+  /// points at that vault entry without re-storing the secret.
+  String? _pickedKeyIdHex;
+
+  /// Set only while [_pickFromApp] writes into the controller, so the listener
+  /// can tell a programmatic fill from the user editing the field by hand.
+  bool _fillingFromVault = false;
+  bool _busy = false;
 
   @override
   void initState() {
@@ -34,6 +52,12 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
         _strength = _controller.text.isEmpty
             ? null
             : CryptoStub.evaluate(_controller.text);
+        // Hand-editing a vault-loaded passphrase makes it a different secret,
+        // so it goes back to normal save/overwrite behavior.
+        if (!_fillingFromVault && _pickedLabel != null) {
+          _pickedLabel = null;
+          _pickedKeyIdHex = null;
+        }
       });
     });
     _checkAuth();
@@ -42,16 +66,16 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
   Future<void> _checkAuth() async {
     final svc = AppCrypto.passphraseStorage;
     if (svc == null) return;
-    // Respect an explicit "the app stores nothing" choice from Settings.
+    // Respect an explicit "the app stores nothing" choice from Settings —
+    // it disables both storing new passphrases and offering stored ones.
     if (!await PassphrasePolicy.storageAllowed()) return;
     final ok = await svc.canAuthenticate;
-    if (mounted) setState(() => _canSave = ok);
-  }
-
-  Future<void> _onChipSelected(int index) async {
-    setState(() => _selectedChip = index);
-    if (index == 1) {
-      await _pickFromApp();
+    final hasStored = await svc.hasStored();
+    if (mounted) {
+      setState(() {
+        _canSave = ok;
+        _hasSaved = hasStored;
+      });
     }
   }
 
@@ -114,18 +138,43 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
     String? passphrase;
     try {
       passphrase = await svc.loadWithAuth(label);
-    } catch (e) {
-      // A platform-level auth failure must be visible, not a silent no-op.
+    } catch (_) {
+      // A platform-level auth failure must be visible, not a silent no-op —
+      // but the raw platform exception is not something to show a user.
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not show the unlock prompt: $e')),
+          const SnackBar(
+            content: Text('Could not show the unlock prompt on this device.'),
+          ),
         );
       }
       return;
     }
     if (!mounted) return;
     if (passphrase != null) {
+      // This secret is already in the vault. Remember which entry it came
+      // from so it is never stored a second time under a different label,
+      // and reuse that entry's key-id so the header still points at it.
+      final picked = entries.firstWhere(
+        (e) => e.label == label,
+        orElse: () => StoredPassphrase(
+          label: label,
+          passphrase: '',
+          createdAt: DateTime.now(),
+          keyIdHex: '',
+        ),
+      );
+      _fillingFromVault = true;
       _controller.text = passphrase;
+      _fillingFromVault = false;
+      setState(() {
+        _pickedLabel = label;
+        _pickedKeyIdHex = picked.keyIdHex.isEmpty ? null : picked.keyIdHex;
+        // The save block is replaced by an "already saved" row, so a stale
+        // toggle can't imply a second copy is about to be written.
+        _saveForQuickUnlock = false;
+        _nameController.clear();
+      });
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -185,9 +234,15 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
   }
 
   Future<void> _storeAndContinue() async {
+    if (_busy) return; // a second tap must not push /encrypt/options twice
+    setState(() => _busy = true);
     final svc = AppCrypto.passphraseStorage;
     String? keyIdHex;
-    if (_saveForQuickUnlock && svc != null && _canSave) {
+    // Loaded from the vault: reuse that entry's key-id and store nothing —
+    // re-storing would duplicate the secret under a second label.
+    if (_pickedLabel != null) {
+      keyIdHex = _pickedKeyIdHex;
+    } else if (_saveForQuickUnlock && svc != null && _canSave) {
       final name = _nameController.text.trim();
       final label = name.isEmpty ? _autoName() : name;
       try {
@@ -211,16 +266,16 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
         }
       }
     }
-    if (mounted) {
-      context.push(
-        '/encrypt/options',
-        extra: {
-          'files': widget.files,
-          'passphrase': _controller.text,
-          'keyIdHex': keyIdHex,
-        },
-      );
-    }
+    if (!mounted) return;
+    setState(() => _busy = false);
+    context.push(
+      '/encrypt/options',
+      extra: {
+        'files': widget.files,
+        'passphrase': _controller.text,
+        'keyIdHex': keyIdHex,
+      },
+    );
   }
 
   @override
@@ -258,59 +313,84 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _SourceChips(
-                selected: _selectedChip,
-                onSelected: _onChipSelected,
-              ),
-              const SizedBox(height: 20),
-              if (_selectedChip == 2)
-                AutofillGroup(
-                  child: TextField(
-                    controller: _controller,
-                    obscureText: _obscure,
-                    autofocus: true,
-                    autofillHints: const [AutofillHints.newPassword],
-                    decoration: InputDecoration(
-                      hintText: 'Enter passphrase',
-                      suffixIcon: TextButton(
-                        onPressed: () => setState(() => _obscure = !_obscure),
-                        child: Text(
-                          _obscure ? 'show' : 'hide',
-                          style: const TextStyle(color: LatchColors.subtle),
-                        ),
-                      ),
-                    ),
-                    style: const TextStyle(fontSize: 17, letterSpacing: 1.5),
-                  ),
-                )
-              else
-                TextField(
-                  controller: _controller,
-                  obscureText: _obscure,
-                  autofocus: true,
-                  decoration: InputDecoration(
-                    hintText: 'Enter passphrase',
-                    suffixIcon: TextButton(
-                      onPressed: () => setState(() => _obscure = !_obscure),
-                      child: Text(
-                        _obscure ? 'show' : 'hide',
-                        style: const TextStyle(color: LatchColors.subtle),
-                      ),
+              TextField(
+                controller: _controller,
+                obscureText: _obscure,
+                autofocus: true,
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) {
+                  if (_controller.text.isNotEmpty) _storeAndContinue();
+                },
+                decoration: InputDecoration(
+                  hintText: 'Enter passphrase',
+                  suffixIcon: TextButton(
+                    onPressed: () => setState(() => _obscure = !_obscure),
+                    child: Text(
+                      _obscure ? 'show' : 'hide',
+                      style: const TextStyle(color: LatchColors.subtle),
                     ),
                   ),
-                  style: const TextStyle(fontSize: 17, letterSpacing: 1.5),
                 ),
+                // Theme-derived so the system text-scaling setting applies.
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(letterSpacing: 1.5),
+              ),
+              // A saved passphrase is a one-shot action, not a persistent
+              // mode — and it is only offered when the vault has something
+              // to offer, so it is never a control that does nothing.
+              if (_hasSaved) ...[
+                const SizedBox(height: 4),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: _pickFromApp,
+                    icon: const Icon(Icons.vpn_key_outlined, size: 18),
+                    label: const Text('Use a saved passphrase'),
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
               if (_strength != null) ...[
                 _StrengthBar(score: _strength!.score, color: _strengthColor),
                 const SizedBox(height: 8),
                 Text(
                   _strength!.label,
-                  style: TextStyle(fontSize: 13, color: _strengthColor),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: _strengthColor),
                 ),
               ],
               const SizedBox(height: 10),
-              if (_canSave)
+              // Already in the vault — a static statement, not a save control,
+              // so nothing implies a second copy is about to be written.
+              if (_pickedLabel != null)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: LatchColors.safeLight,
+                    border: Border.all(color: LatchColors.safeBorder),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.check_circle_outline,
+                        color: LatchColors.safe,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Already saved as "${_displayLabel(_pickedLabel!)}"',
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(color: LatchColors.safe),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              if (_canSave && _pickedLabel == null)
                 Semantics(
                   button: true,
                   label: 'Save for quick unlock',
@@ -355,15 +435,16 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
                     ),
                   ),
                 ),
-              if (_canSave && _saveForQuickUnlock) ...[
+              if (_canSave && _saveForQuickUnlock && _pickedLabel == null) ...[
                 const SizedBox(height: 10),
                 TextField(
                   controller: _nameController,
+                  textInputAction: TextInputAction.done,
                   decoration: const InputDecoration(
                     hintText: 'Name for this passphrase',
                     helperText: 'Just a label for your vault — pick anything.',
                   ),
-                  style: const TextStyle(fontSize: 15),
+                  style: Theme.of(context).textTheme.bodyLarge,
                 ),
               ],
               if (_canSave) const SizedBox(height: 10),
@@ -374,7 +455,7 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
               const Spacer(),
               LatchPrimaryButton(
                 label: 'Continue',
-                onPressed: _controller.text.isNotEmpty
+                onPressed: _controller.text.isNotEmpty && !_busy
                     ? _storeAndContinue
                     : null,
               ),
@@ -383,50 +464,6 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _SourceChips extends StatelessWidget {
-  final int selected;
-  final ValueChanged<int> onSelected;
-  static const _labels = ['Type it', 'From app', 'Password mgr'];
-
-  const _SourceChips({required this.selected, required this.onSelected});
-
-  @override
-  Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 8,
-      children: List.generate(_labels.length, (i) {
-        final active = i == selected;
-        return Semantics(
-          button: true,
-          label: _labels[i],
-          child: GestureDetector(
-            onTap: () => onSelected(i),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-              decoration: BoxDecoration(
-                color: active ? LatchColors.ink : Colors.transparent,
-                border: Border.all(
-                  color: active ? LatchColors.ink : LatchColors.border,
-                  width: 2,
-                ),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                _labels[i],
-                style: TextStyle(
-                  fontSize: 13,
-                  color: active ? Colors.white : LatchColors.muted,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-          ),
-        );
-      }),
     );
   }
 }
