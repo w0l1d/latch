@@ -142,17 +142,44 @@ jobs:
           echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
           echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
 
+  # The draft release is how the parallel build jobs hand their APKs to the
+  # release job. Uploading them as workflow artifacts would be the obvious
+  # route, but this repo is private, so artifacts bill against the account's
+  # shared storage quota — which was full, failing the upload outright (and
+  # usage is only recalculated every 6-12h, so it is not something a release
+  # can wait on). Release assets don't touch that quota.
+  #
+  # Draft, not published: a release with no APKs attached is never visible, and
+  # abort_cleanup deletes the draft if any later job fails. The release job
+  # publishes it once both APKs are attached.
+  draft_release:
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ needs.version.outputs.tag_name }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft \
+            --title "Latch ${{ needs.version.outputs.tag_name }}" \
+            --generate-notes
+
   # One job per ABI, in parallel. The per-ABI work — libsodium cross-compile,
   # gen_snapshot AOT, packaging — was ~60% of the old single-job build and
   # shares nothing between ABIs, so putting each chain on its own runner cuts
-  # wall clock to roughly a one-ABI build. Each job hands its staged APK to the
-  # release job as an artifact; nothing is published from here.
+  # wall clock to roughly a one-ABI build. Each job attaches its own APK to the
+  # draft release; nothing is published from here.
   build:
-    needs: version
+    needs: [version, draft_release]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
-      contents: read
+      contents: write
     strategy:
       # No half-releases: if one ABI fails, cancel the other and skip release.
       fail-fast: true
@@ -256,19 +283,20 @@ jobs:
           cp "build/app/outputs/flutter-apk/app-${{ matrix.abi }}-release.apk" \
              "dist/latch-${{ needs.version.outputs.tag_name }}-${{ matrix.abi }}.apk"
 
-      # Hand-off to the release job only — the durable copies are the ones
-      # attached to the GitHub Release, hence the 1-day retention.
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: apk-${{ matrix.abi }}
-          path: dist/latch-*.apk
-          if-no-files-found: error
-          retention-days: 1
+      # --clobber so a re-run of a single matrix leg replaces its own asset
+      # instead of failing on the one it uploaded last time.
+      - name: Attach APK to draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ needs.version.outputs.tag_name }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber \
+            "dist/latch-${{ needs.version.outputs.tag_name }}-${{ matrix.abi }}.apk"
 
-  # Publishes once, from both ABIs' artifacts: GitHub Release first, then the
-  # Telegram drop. Split out from the builds so the release is created exactly
-  # once no matter how many ABIs the matrix grows to.
+  # Publishes once, after every ABI has attached its APK: flip the draft public,
+  # then drop the same files in Telegram. Split out from the builds so this
+  # happens exactly once no matter how many ABIs the matrix grows to.
   release:
     needs: [version, build]
     runs-on: ubuntu-latest
@@ -276,19 +304,30 @@ jobs:
     permissions:
       contents: write
     steps:
-      # Only for the `git log` in "Gather release context" below; the APKs
-      # arrive as artifacts, not from a build here.
+      # Only for the `git log` in "Gather release context" below; the APKs come
+      # off the draft release, not from a build here.
       - name: Checkout
         uses: actions/checkout@v7
         with:
           ref: ${{ needs.version.outputs.tag_name }}
 
-      - name: Download APKs
-        uses: actions/download-artifact@v4
-        with:
-          pattern: apk-*
-          merge-multiple: true
-          path: dist
+      # Same bytes the build jobs attached — Telegram needs the files locally,
+      # and re-downloading them proves the assets on the release are intact.
+      - name: Download APKs from draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p dist
+          gh release download "${{ needs.version.outputs.tag_name }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern '*.apk' \
+            --dir dist
+
+          COUNT=$(find dist -name '*.apk' | wc -l | tr -d ' ')
+          if [ "$COUNT" -ne 2 ]; then
+            echo "::error::expected 2 APKs on the release, found $COUNT"
+            exit 1
+          fi
 
       - name: Compute SHA-256
         id: sha
@@ -299,14 +338,13 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Create GitHub Release
+      - name: Publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "${{ needs.version.outputs.tag_name }}" \
-            dist/*.apk \
-            --title "Latch ${{ needs.version.outputs.tag_name }}" \
-            --generate-notes
+          gh release edit "${{ needs.version.outputs.tag_name }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft=false
 
       # Gather human context so the APK dropped in Telegram is self-describing:
       # which change it carries (commit subject/author) and — if the release
@@ -392,3 +430,53 @@ jobs:
             # Only the first message needs the full caption; keep the rest terse.
             CAPTION="📦 $(basename "$APK")"
           done
+
+  # A failed or cancelled build leaves a draft release behind, and — on a manual
+  # dispatch — a tag that points at nothing published. Earlier failures had to be
+  # cleaned up by hand (delete the tag, or the next dispatch silently skips that
+  # version number), so do it here.
+  #
+  # The draft check is deliberate: if announce failed *after* publishing, the
+  # release is real and must survive. The tag is only removed when auto_tag
+  # created it in this run — a hand-pushed tag belongs to whoever pushed it.
+  abort_cleanup:
+    needs: [auto_tag, version, draft_release, build, release]
+    if: |
+      always() &&
+      needs.version.outputs.tag_name != '' &&
+      (
+        needs.draft_release.result == 'failure' ||
+        needs.build.result == 'failure' || needs.build.result == 'cancelled' ||
+        needs.release.result == 'failure' || needs.release.result == 'cancelled'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Delete draft release and auto-created tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.version.outputs.tag_name }}
+          TAG_WAS_AUTOCREATED: ${{ needs.auto_tag.result == 'success' }}
+        run: |
+          IS_DRAFT=$(gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" \
+            --json isDraft --jq .isDraft 2>/dev/null || echo "absent")
+
+          if [ "$IS_DRAFT" = "true" ]; then
+            if [ "$TAG_WAS_AUTOCREATED" = "true" ]; then
+              echo "Deleting draft release $TAG_NAME and the tag auto_tag created for it"
+              gh release delete "$TAG_NAME" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
+            else
+              echo "Deleting draft release $TAG_NAME; leaving the hand-pushed tag alone"
+              gh release delete "$TAG_NAME" --repo "$GITHUB_REPOSITORY" --yes
+            fi
+          elif [ "$IS_DRAFT" = "absent" ]; then
+            echo "No release for $TAG_NAME; nothing to clean up"
+            if [ "$TAG_WAS_AUTOCREATED" = "true" ]; then
+              echo "Deleting the tag auto_tag created for the failed run"
+              git push origin --delete "$TAG_NAME" || true
+            fi
+          else
+            echo "$TAG_NAME is already published — leaving it in place"
+          fi
