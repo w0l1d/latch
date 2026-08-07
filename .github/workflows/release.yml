@@ -115,7 +115,26 @@ jobs:
       release_date: ${{ steps.version.outputs.release_date }}
       build_number: ${{ steps.version.outputs.build_number }}
       short_sha: ${{ steps.version.outputs.short_sha }}
+      abis: ${{ steps.abis.outputs.abis }}
     steps:
+      # Single source of truth for which ABIs a release ships: it drives the
+      # build matrix, the "are all APKs attached" check and the Telegram loop,
+      # so an ABI can be added or dropped by editing this one line.
+      #
+      # TEMPORARILY DISABLED — armeabi-v7a (32-bit). Re-enable by putting this
+      # entry back at the front of the list:
+      #   {"abi":"armeabi-v7a","target_platform":"android-arm","abi_code":1}
+      #
+      # abi_code is the Play Store multi-APK ABI code; --split-per-abi offsets
+      # each APK's versionCode by abi_code * 1000 (checked in the build job).
+      - name: Resolve target ABIs
+        id: abis
+        run: |
+          ABIS='[{"abi":"arm64-v8a","target_platform":"android-arm64","abi_code":2}]'
+          echo "$ABIS" | jq -e 'length > 0' > /dev/null
+          echo "abis=$ABIS" >> "$GITHUB_OUTPUT"
+          echo "Building: $(echo "$ABIS" | jq -r '[.[].abi] | join(", ")')"
+
       # The tag (vMAJOR.MINOR.PATCH-YYYY.MM.DD.BUILD) is the source of truth for
       # the release version; the semver+build parts are fed to `flutter build`
       # in the build jobs. The date is release metadata only, not tracked in code.
@@ -173,7 +192,8 @@ jobs:
   # gen_snapshot AOT, packaging — was ~60% of the old single-job build and
   # shares nothing between ABIs, so putting each chain on its own runner cuts
   # wall clock to roughly a one-ABI build. Each job attaches its own APK to the
-  # draft release; nothing is published from here.
+  # draft release; nothing is published from here. The ABI set comes from the
+  # version job — see "Resolve target ABIs" there.
   build:
     needs: [version, draft_release]
     runs-on: ubuntu-latest
@@ -181,17 +201,10 @@ jobs:
     permissions:
       contents: write
     strategy:
-      # No half-releases: if one ABI fails, cancel the other and skip release.
+      # No half-releases: if one ABI fails, cancel the others and skip release.
       fail-fast: true
       matrix:
-        include:
-          - abi: armeabi-v7a
-            target_platform: android-arm
-            # Play Store multi-APK ABI code — see the versionCode check below.
-            abi_code: 1
-          - abi: arm64-v8a
-            target_platform: android-arm64
-            abi_code: 2
+        include: ${{ fromJSON(needs.version.outputs.abis) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -316,6 +329,7 @@ jobs:
       - name: Download APKs from draft release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ABIS: ${{ needs.version.outputs.abis }}
         run: |
           mkdir -p dist
           gh release download "${{ needs.version.outputs.tag_name }}" \
@@ -323,9 +337,10 @@ jobs:
             --pattern '*.apk' \
             --dir dist
 
+          EXPECTED=$(echo "$ABIS" | jq length)
           COUNT=$(find dist -name '*.apk' | wc -l | tr -d ' ')
-          if [ "$COUNT" -ne 2 ]; then
-            echo "::error::expected 2 APKs on the release, found $COUNT"
+          if [ "$COUNT" -ne "$EXPECTED" ]; then
+            echo "::error::expected $EXPECTED APKs on the release, found $COUNT"
             exit 1
           fi
 
@@ -388,6 +403,7 @@ jobs:
         env:
           # Multi-line — passed via env so raw newlines/quotes stay data, not shell.
           COMMIT_BODY: ${{ steps.context.outputs.commit_body }}
+          ABIS: ${{ needs.version.outputs.abis }}
         run: |
           COMMIT_LINK="https://github.com/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}"
           RELEASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${{ needs.version.outputs.tag_name }}"
@@ -415,7 +431,9 @@ jobs:
           CAPTION+=$'\n📋 Release: '"$RELEASE_URL"
           CAPTION+=$'\n\nSHA-256:\n'"${{ steps.sha.outputs.shas }}"
 
-          for ABI in arm64-v8a armeabi-v7a; do
+          # Reverse order so the biggest/most-installed ABI (arm64-v8a) is the
+          # one carrying the full caption when several are shipped.
+          for ABI in $(echo "$ABIS" | jq -r '[.[].abi] | reverse | .[]'); do
             APK="dist/latch-${{ needs.version.outputs.tag_name }}-${ABI}.apk"
             RESPONSE=$(curl -sS -F "chat_id=-1003694191301" \
                  -F "message_thread_id=54" \
