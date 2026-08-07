@@ -25,7 +25,13 @@ class HomeScreen extends StatelessWidget {
                 ],
               ),
               const Spacer(),
-              const Icon(Icons.lock_outline, size: 56, color: LatchColors.ink),
+              ExcludeSemantics(
+                child: const Icon(
+                  Icons.lock_outline,
+                  size: 56,
+                  color: LatchColors.ink,
+                ),
+              ),
               const SizedBox(height: 24),
               Text(
                 'What would you\nlike to protect?',

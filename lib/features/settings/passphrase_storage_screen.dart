@@ -56,8 +56,8 @@ class _PassphraseStorageScreenState extends State<PassphraseStorageScreen> {
     if (confirmed != true) return;
     try {
       await svc.delete(entry.label);
-    } catch (e) {
-      _showSnack('Could not delete: $e');
+    } catch (_) {
+      _showSnack('Could not delete the stored passphrase.');
       return;
     }
     _load();
@@ -78,10 +78,14 @@ class _PassphraseStorageScreenState extends State<PassphraseStorageScreen> {
               'opened with the passphrase they were locked with.',
         );
         if (confirmed != true) return;
+        if (svc == null) {
+          _showSnack('Could not delete stored passphrases.');
+          return;
+        }
         try {
-          await svc?.deleteAll();
-        } catch (e) {
-          _showSnack('Could not delete stored passphrases: $e');
+          await svc.deleteAll();
+        } catch (_) {
+          _showSnack('Could not delete stored passphrases.');
           return;
         }
       }

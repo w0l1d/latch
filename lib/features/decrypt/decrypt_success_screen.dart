@@ -101,17 +101,19 @@ class DecryptSuccessScreen extends StatelessWidget {
                                     children: [
                                       Text(
                                         p.basename(o.path),
-                                        style: const TextStyle(
-                                          fontSize: 14,
-                                          color: Color(0xFF2A6F57),
-                                        ),
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodyMedium
+                                            ?.copyWith(color: LatchColors.safe),
                                       ),
                                       Text(
                                         'In ${p.dirname(o.path)}',
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          color: Color(0xFF6FAE93),
-                                        ),
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodySmall
+                                            ?.copyWith(
+                                              color: LatchColors.muted,
+                                            ),
                                       ),
                                     ],
                                   ),
@@ -174,7 +176,7 @@ class _FallbackBanner extends StatelessWidget {
               'instead of the original folder.',
               style: Theme.of(
                 context,
-              ).textTheme.bodySmall?.copyWith(color: const Color(0xFF8A5E1E)),
+              ).textTheme.bodySmall?.copyWith(color: LatchColors.caution),
             ),
           ),
         ],

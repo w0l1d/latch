@@ -72,10 +72,17 @@ class _AddRecipientScreenState extends State<AddRecipientScreen> {
         if (f.path != null) SafBridge.rememberUri(f.path!, f.identifier);
       }
       paths = result.paths.whereType<String>().toList();
-    } catch (e) {
+    } catch (_) {
+      // The raw platform exception is noise to the user — name what failed
+      // and the one route into the app that doesn't need the picker.
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not open the file picker: $e')),
+          const SnackBar(
+            content: Text(
+              'Couldn\'t open the file picker on this device. '
+              'You can share files into Latch from your Files app instead.',
+            ),
+          ),
         );
       }
       return;
@@ -96,6 +103,7 @@ class _AddRecipientScreenState extends State<AddRecipientScreen> {
   }
 
   void _run() {
+    if (_busy) return; // a double-tap must not submit the same batch twice
     final recipient = _recipients
         .where((r) => r.label == _selectedLabel)
         .firstOrNull;
@@ -145,12 +153,12 @@ class _AddRecipientScreenState extends State<AddRecipientScreen> {
       if (!r.ok || !SafBridge.canWriteBack(r.path)) continue;
       try {
         await SafBridge.writeBack(r.path);
-      } catch (e) {
+      } catch (_) {
         results[i] = BatchResult(
           path: r.path,
           ok: false,
           errorMessage:
-              'The change could not be written back to the original file: $e',
+              'The change could not be written back to the original file.',
         );
       }
     }
@@ -270,8 +278,15 @@ class _AddRecipientScreenState extends State<AddRecipientScreen> {
                   obscureText: true,
                   enabled: !_busy,
                   onChanged: (_) => setState(() {}),
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) {
+                    if (_ready) _run();
+                  },
                   decoration: const InputDecoration(hintText: 'Passphrase'),
-                  style: const TextStyle(fontSize: 17, letterSpacing: 1.5),
+                  // Theme-derived so the system text-scaling setting applies.
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleMedium?.copyWith(letterSpacing: 1.5),
                 ),
                 const SizedBox(height: 12),
                 if (_recipients.isEmpty)

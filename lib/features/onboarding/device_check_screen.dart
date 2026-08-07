@@ -133,6 +133,7 @@ class _DeviceCheckScreenState extends State<DeviceCheckScreen> {
                   color: LatchColors.ink,
                   minHeight: 10,
                   semanticsLabel: 'Benchmarking device performance',
+                  semanticsValue: '${(_progress * 100).round()}%',
                 ),
               ),
               const SizedBox(height: 20),

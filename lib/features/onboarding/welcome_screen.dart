@@ -47,15 +47,17 @@ class WelcomeScreen extends StatelessWidget {
 class _LockIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 72,
-      height: 72,
-      decoration: BoxDecoration(
-        color: LatchColors.background,
-        border: Border.all(color: LatchColors.ink, width: 2.5),
-        borderRadius: BorderRadius.circular(18),
+    return ExcludeSemantics(
+      child: Container(
+        width: 72,
+        height: 72,
+        decoration: BoxDecoration(
+          color: LatchColors.background,
+          border: Border.all(color: LatchColors.ink, width: 2.5),
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: const Icon(Icons.lock_outline, size: 38, color: LatchColors.ink),
       ),
-      child: const Icon(Icons.lock_outline, size: 38, color: LatchColors.ink),
     );
   }
 }

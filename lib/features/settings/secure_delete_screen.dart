@@ -46,10 +46,17 @@ class _SecureDeleteScreenState extends State<SecureDeleteScreen> {
         if (f.path != null) SafBridge.rememberUri(f.path!, f.identifier);
       }
       paths = result.paths.whereType<String>().toList();
-    } catch (e) {
+    } catch (_) {
+      // The raw platform exception is noise to the user — name what failed
+      // and the one route into the app that doesn't need the picker.
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not open the file picker: $e')),
+          const SnackBar(
+            content: Text(
+              'Couldn\'t open the file picker on this device. '
+              'You can share files into Latch from your Files app instead.',
+            ),
+          ),
         );
       }
       return;
@@ -151,8 +158,8 @@ class _SecureDeleteScreenState extends State<SecureDeleteScreen> {
       try {
         final noise = await CryptoErase.headerNoise(path);
         await SafBridge.overwriteAndDelete(path, noise);
-      } catch (e) {
-        safFailures[path] = 'The original file could not be shredded: $e';
+      } catch (_) {
+        safFailures[path] = 'The original file could not be shredded.';
       }
     }
     if (!mounted) return;

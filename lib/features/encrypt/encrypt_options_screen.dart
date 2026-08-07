@@ -76,10 +76,10 @@ class _EncryptOptionsScreenState extends State<EncryptOptionsScreen> {
       String? treeUri;
       try {
         treeUri = await SafBridge.pickTree(initialPath: seed);
-      } catch (e) {
+      } catch (_) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Could not open the folder picker: $e')),
+            const SnackBar(content: Text('Could not open the folder picker.')),
           );
         }
         return;
@@ -98,10 +98,10 @@ class _EncryptOptionsScreenState extends State<EncryptOptionsScreen> {
       dir = await FilePicker.platform.getDirectoryPath(
         dialogTitle: 'Choose where to save locked files',
       );
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not open the folder picker: $e')),
+          const SnackBar(content: Text('Could not open the folder picker.')),
         );
       }
       return;
@@ -183,7 +183,7 @@ class _EncryptOptionsScreenState extends State<EncryptOptionsScreen> {
                       child: Text(
                         'Deleting is best-effort. What truly protects deleted remnants is your phone\'s built-in device encryption.',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFF8A5E1E),
+                          color: LatchColors.caution,
                         ),
                       ),
                     ),

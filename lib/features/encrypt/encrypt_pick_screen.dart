@@ -33,10 +33,17 @@ class _EncryptPickScreenState extends State<EncryptPickScreen> {
           }
         });
       }
-    } catch (e) {
+    } catch (_) {
+      // The raw platform exception is noise to the user — name what failed and
+      // the one route into the app that doesn't need the picker.
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not open the file picker: $e')),
+          const SnackBar(
+            content: Text(
+              'Couldn\'t open the file picker on this device. '
+              'You can share files into Latch from your Files app instead.',
+            ),
+          ),
         );
       }
     } finally {

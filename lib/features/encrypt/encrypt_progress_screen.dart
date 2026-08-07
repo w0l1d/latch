@@ -201,6 +201,26 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
     }
   }
 
+  /// Wraps an alert button callback so it dismisses the alert and *then*
+  /// navigates — at most once. Two unguarded pops in a row are a trap: a rapid
+  /// double-tap (or an alert already gone) makes the first pop remove this
+  /// screen's route and the second travel one level too far past the intended
+  /// destination. So: run once, only pop while the alert really is above us,
+  /// and re-check the context before handing over to [next].
+  VoidCallback _dismissAlertThen(VoidCallback next) {
+    var ran = false;
+    return () {
+      if (ran) return;
+      ran = true;
+      final nav = Navigator.of(context);
+      if (ModalRoute.of(context)?.isCurrent == false && nav.canPop()) {
+        nav.pop();
+      }
+      if (!context.mounted) return;
+      next();
+    };
+  }
+
   void _showPartialSuccess(int ok, int bad, List<RelocatedOutput> outputs) {
     final listed = _results
         .where((r) => !r.ok)
@@ -217,10 +237,9 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
       title: '$ok file${ok > 1 ? "s" : ""} locked, $bad failed',
       message: '$listed$more',
       buttonLabel: 'Continue',
-      onPressed: () {
-        Navigator.pop(context);
+      onPressed: _dismissAlertThen(() {
         context.pushReplacement('/encrypt/success', extra: outputs);
-      },
+      }),
     );
   }
 
@@ -236,10 +255,9 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
       title: title,
       message: message,
       buttonLabel: 'Go back',
-      onPressed: () {
-        Navigator.pop(context);
+      onPressed: _dismissAlertThen(() {
         context.pop();
-      },
+      }),
     );
   }
 

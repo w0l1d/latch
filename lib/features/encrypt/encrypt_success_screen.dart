@@ -145,7 +145,7 @@ class _FallbackBanner extends StatelessWidget {
               'instead of the original folder.',
               style: Theme.of(
                 context,
-              ).textTheme.bodySmall?.copyWith(color: const Color(0xFF8A5E1E)),
+              ).textTheme.bodySmall?.copyWith(color: LatchColors.caution),
             ),
           ),
         ],
@@ -177,7 +177,9 @@ class _OutputFile extends StatelessWidget {
           Expanded(
             child: Text(
               fellBack ? '$name  (in Downloads)' : name,
-              style: const TextStyle(fontSize: 14, color: Color(0xFF2A6F57)),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: LatchColors.safe),
             ),
           ),
         ],

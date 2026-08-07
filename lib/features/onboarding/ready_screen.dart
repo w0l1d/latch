@@ -4,8 +4,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/latch_button.dart';
 
-class ReadyScreen extends StatelessWidget {
+class ReadyScreen extends StatefulWidget {
   const ReadyScreen({super.key});
+
+  @override
+  State<ReadyScreen> createState() => _ReadyScreenState();
+}
+
+class _ReadyScreenState extends State<ReadyScreen> {
+  bool _busy = false;
 
   @override
   Widget build(BuildContext context) {
@@ -23,10 +30,12 @@ class ReadyScreen extends StatelessWidget {
                   shape: BoxShape.circle,
                   border: Border.all(color: LatchColors.safe, width: 3),
                 ),
-                child: const Icon(
-                  Icons.check,
-                  color: LatchColors.safe,
-                  size: 32,
+                child: ExcludeSemantics(
+                  child: const Icon(
+                    Icons.check,
+                    color: LatchColors.safe,
+                    size: 32,
+                  ),
                 ),
               ),
               const SizedBox(height: 28),
@@ -46,11 +55,16 @@ class ReadyScreen extends StatelessWidget {
               const Spacer(),
               LatchPrimaryButton(
                 label: 'Go to home',
-                onPressed: () async {
-                  final prefs = await SharedPreferences.getInstance();
-                  await prefs.setBool('onboarding_complete', true);
-                  if (context.mounted) context.go('/home');
-                },
+                onPressed: _busy
+                    ? null
+                    : () async {
+                        if (_busy) return;
+                        setState(() => _busy = true);
+                        final prefs = await SharedPreferences.getInstance();
+                        await prefs.setBool('onboarding_complete', true);
+                        if (context.mounted) context.go('/home');
+                        if (mounted) setState(() => _busy = false);
+                      },
               ),
               const SizedBox(height: 16),
             ],

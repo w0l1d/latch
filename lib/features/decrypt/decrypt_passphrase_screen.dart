@@ -63,11 +63,14 @@ class _DecryptPassphraseScreenState extends State<DecryptPassphraseScreen> {
       String? passphrase;
       try {
         passphrase = await svc.loadWithAuth(label);
-      } catch (e) {
-        // A platform-level auth failure must be visible, not a silent no-op.
+      } catch (_) {
+        // A platform-level auth failure must be visible, not a silent no-op —
+        // but the raw platform exception is not something to show a user.
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Could not show the unlock prompt: $e')),
+            const SnackBar(
+              content: Text('Could not show the unlock prompt on this device.'),
+            ),
           );
         }
         return;
@@ -167,7 +170,9 @@ class _DecryptPassphraseScreenState extends State<DecryptPassphraseScreen> {
                     ),
                   ),
                 ),
-                style: const TextStyle(fontSize: 17, letterSpacing: 1.5),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyLarge?.copyWith(letterSpacing: 1.5),
               ),
               const SizedBox(height: 14),
               if (_hasStored)

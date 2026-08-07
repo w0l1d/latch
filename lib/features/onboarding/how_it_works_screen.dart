@@ -67,35 +67,45 @@ class _Step extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: LatchColors.ink, width: 2.5),
-          ),
-          child: Center(
-            child: Text(
-              number,
-              style: const TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 16,
-                color: LatchColors.ink,
+    return Semantics(
+      container: true,
+      label: 'Step $number: $text',
+      child: ExcludeSemantics(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: LatchColors.ink, width: 2.5),
+              ),
+              child: Center(
+                child: FittedBox(
+                  // Glyph scales with the text scaler; scale down inside
+                  // the fixed-size circle instead of clipping.
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    number,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: LatchColors.ink,
+                    ),
+                  ),
+                ),
               ),
             ),
-          ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(text, style: Theme.of(context).textTheme.bodyLarge),
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Text(text, style: Theme.of(context).textTheme.bodyLarge),
-          ),
-        ),
-      ],
+      ),
     );
   }
 }

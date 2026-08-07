@@ -42,9 +42,9 @@ class _SharingKeysScreenState extends State<SharingKeysScreen> {
         _myPublicKeyHex = pkHex;
         _recipients = recipients;
       });
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
-      setState(() => _keyError = 'Could not create a sharing key: $e');
+      setState(() => _keyError = 'Could not create a sharing key.');
     }
   }
 
@@ -58,10 +58,27 @@ class _SharingKeysScreenState extends State<SharingKeysScreen> {
     ).showSnackBar(const SnackBar(content: Text('Public key copied')));
   }
 
+  void _showSnack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
   Future<void> _addRecipient() async {
+    // The service is set by main() after the tree mounts, so it can be null —
+    // say so instead of opening a dialog whose Save silently does nothing.
+    final svc = AppCrypto.recipientKeys;
+    if (svc == null) {
+      _showSnack('Sharing keys are not available.');
+      return;
+    }
     final labelController = TextEditingController();
     final keyController = TextEditingController();
     String? validationError;
+    // Guards the Save button: two quick taps would otherwise store twice and
+    // pop twice, unwinding past the dialog into the screen beneath it.
+    var saving = false;
 
     final saved = await showDialog<bool>(
       context: context,
@@ -83,7 +100,9 @@ class _SharingKeysScreenState extends State<SharingKeysScreen> {
                   hintText: 'Their public key (64 hex characters)',
                   errorText: validationError,
                 ),
-                style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
+                style: Theme.of(
+                  ctx,
+                ).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
               ),
             ],
           ),
@@ -106,7 +125,9 @@ class _SharingKeysScreenState extends State<SharingKeysScreen> {
                   );
                   return;
                 }
-                await AppCrypto.recipientKeys?.storeRecipient(label, hex);
+                if (saving) return;
+                saving = true;
+                await svc.storeRecipient(label, hex);
                 if (ctx.mounted) Navigator.pop(ctx, true);
               },
               child: const Text('Save'),
@@ -198,11 +219,11 @@ class _SharingKeysScreenState extends State<SharingKeysScreen> {
                         Expanded(
                           child: SelectableText(
                             _myPublicKeyHex!,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontFamily: 'monospace',
-                              color: LatchColors.ink,
-                            ),
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  fontFamily: 'monospace',
+                                  color: LatchColors.ink,
+                                ),
                           ),
                         ),
                         IconButton(

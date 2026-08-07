@@ -30,13 +30,15 @@ class _LossMomentScreenState extends State<LossMomentScreen> {
                   shape: BoxShape.circle,
                   border: Border.all(color: LatchColors.danger, width: 3),
                 ),
-                child: const Center(
-                  child: Text(
-                    '!',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 26,
-                      color: LatchColors.danger,
+                child: Center(
+                  child: FittedBox(
+                    // Glyph scales with the text scaler; scale down inside
+                    // the fixed-size circle instead of clipping.
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      '!',
+                      style: Theme.of(context).textTheme.displayMedium
+                          ?.copyWith(color: LatchColors.danger),
                     ),
                   ),
                 ),
