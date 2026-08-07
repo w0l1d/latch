@@ -240,7 +240,9 @@ jobs:
 
           # Full commit body (message minus subject) — multi-line, so emit it
           # via a heredoc delimiter and hand it to Announce through env rather
-          # than ${{ }} substitution, so newlines/quotes can't break the shell.
+          # than expression substitution, so newlines/quotes can't break the
+          # shell. (Never write an empty GitHub expression here — the parser
+          # scans run: bodies too and rejects it.)
           {
             echo "commit_body<<COMMIT_BODY_EOF"
             git log -1 --pretty=%b
