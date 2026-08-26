@@ -102,11 +102,13 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Padding(
-              padding: EdgeInsets.all(16),
+            Padding(
+              padding: const EdgeInsets.all(16),
               child: Text(
                 'Pick a saved passphrase',
-                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+                style: Theme.of(
+                  ctx,
+                ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
               ),
             ),
             // Flexible + ListView: a long vault list scrolls inside the
