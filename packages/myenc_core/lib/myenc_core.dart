@@ -1,6 +1,7 @@
 export 'src/format/myenc_errors.dart';
 export 'src/format/wrap_entry.dart';
 export 'src/format/file_header.dart';
+export 'src/format/format_version.dart';
 export 'src/format/myenc_codec.dart';
 export 'src/ports/crypto_port.dart';
 export 'src/ports/file_io_port.dart';
