@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'file_header.dart';
+import 'format_version.dart';
 import 'wrap_entry.dart';
 import 'myenc_errors.dart';
 
@@ -86,9 +87,10 @@ class MyencCodec {
     }
 
     final version = buf.getUint8(o++);
-    if (version > FileHeader.supportedVersion) {
-      throw VersionTooNewError(version);
-    }
+    // Fail closed: an unknown version byte — including 0 — is refused, never
+    // guessed at. The registry is the only place that answers "is N known?";
+    // the gate holds no comparison against any version value.
+    FormatVersionRegistry.require(version);
     final flags = buf.getUint8(o++);
     if (flags & ~FileHeader.knownFlagsMask != 0) {
       throw CorruptedFileError('unknown flag bits $flags');

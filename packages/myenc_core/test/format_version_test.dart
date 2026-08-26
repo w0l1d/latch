@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:test/test.dart';
 import 'package:myenc_core/myenc_core.dart';
 
@@ -75,6 +77,56 @@ void main() {
           isA<VersionTooNewError>().having((e) => e.version, 'version', 200),
         ),
       );
+    });
+  });
+
+  group('MyencCodec decode gate consults the registry', () {
+    Uint8List headerBytes({int version = 1}) {
+      return MyencCodec.encodeHeader(
+        FileHeader(
+          version: version,
+          flags: 0,
+          kdfId: FileHeader.kdfArgon2id,
+          salt: Uint8List.fromList(List.generate(16, (i) => i)),
+          opslimit: 3,
+          memlimit: 65536,
+          cipherId: FileHeader.cipherXchacha20Poly1305,
+          chunkSize: FileHeader.defaultChunkSize,
+          keyIdHint: Uint8List.fromList(List.generate(16, (i) => i + 16)),
+          wraps: const [],
+          secretstreamHeader: Uint8List.fromList(
+            List.generate(24, (i) => i + 100),
+          ),
+        ),
+      );
+    }
+
+    test('refuses a container stamped with version 0', () {
+      final bytes = headerBytes(version: 0);
+      expect(
+        () => MyencCodec.decodeHeader(bytes),
+        throwsA(isA<VersionTooNewError>()),
+      );
+    });
+
+    test('refuses versions firstUnknown through 255, carrying the number', () {
+      for (var v = FormatVersionRegistry.firstUnknown; v <= 255; v++) {
+        final bytes = headerBytes(version: v);
+        expect(
+          () => MyencCodec.decodeHeader(bytes),
+          throwsA(
+            isA<VersionTooNewError>().having((e) => e.version, 'version', v),
+          ),
+          reason: 'version $v must be refused',
+        );
+      }
+    });
+
+    test('decodes a container stamped version 1', () {
+      final bytes = headerBytes();
+      final (header, consumed) = MyencCodec.decodeHeader(bytes);
+      expect(header.version, 1);
+      expect(consumed, bytes.length);
     });
   });
 }
