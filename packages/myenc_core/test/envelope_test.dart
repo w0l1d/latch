@@ -188,7 +188,7 @@ void main() {
       );
       expect(() => MyencCodec.decodeHeader(ciphertext), returnsNormally);
       final (header, _) = MyencCodec.decodeHeader(ciphertext);
-      expect(header.version, FileHeader.supportedVersion);
+      expect(header.version, FormatVersionRegistry.writeDefault.number);
       expect(header.wraps.length, 1);
       expect(header.wraps[0].type, WrapType.passphrase);
     });
