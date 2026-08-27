@@ -6,7 +6,7 @@ void main() {
   group('MyencCodec', () {
     FileHeader makeHeader({List<WrapEntry> wraps = const []}) {
       return FileHeader(
-        version: FileHeader.supportedVersion,
+        version: FormatVersionRegistry.writeDefault.number,
         flags: 0,
         kdfId: FileHeader.kdfArgon2id,
         salt: Uint8List.fromList(List.generate(16, (i) => i)),
@@ -208,7 +208,7 @@ void main() {
     test('round-trips encrypted filename field', () {
       final encName = Uint8List.fromList([0xAA, 0xBB, 0xCC, 0xDD]);
       final h = FileHeader(
-        version: FileHeader.supportedVersion,
+        version: FormatVersionRegistry.writeDefault.number,
         flags: 0x01,
         kdfId: FileHeader.kdfArgon2id,
         salt: Uint8List(16),
@@ -228,7 +228,7 @@ void main() {
 
     test('flags=0 but no encryptedFilename → decodes with null', () {
       final h = FileHeader(
-        version: FileHeader.supportedVersion,
+        version: FormatVersionRegistry.writeDefault.number,
         flags: 0x00,
         kdfId: FileHeader.kdfArgon2id,
         salt: Uint8List(16),
@@ -248,7 +248,7 @@ void main() {
     test('throws CorruptedFileError for truncated enc-filename length', () {
       final encName = Uint8List(8);
       final h = FileHeader(
-        version: FileHeader.supportedVersion,
+        version: FormatVersionRegistry.writeDefault.number,
         flags: 0x01,
         kdfId: FileHeader.kdfArgon2id,
         salt: Uint8List(16),
@@ -273,7 +273,7 @@ void main() {
     test('throws CorruptedFileError for truncated enc-filename data', () {
       final encName = Uint8List(8);
       final h = FileHeader(
-        version: FileHeader.supportedVersion,
+        version: FormatVersionRegistry.writeDefault.number,
         flags: 0x01,
         kdfId: FileHeader.kdfArgon2id,
         salt: Uint8List(16),
@@ -319,7 +319,7 @@ void main() {
       final encName = Uint8List(4);
       final valid = MyencCodec.encodeHeader(
         FileHeader(
-          version: FileHeader.supportedVersion,
+          version: FormatVersionRegistry.writeDefault.number,
           flags: 0x01,
           kdfId: FileHeader.kdfArgon2id,
           salt: Uint8List(16),
@@ -349,7 +349,7 @@ void main() {
     test('single-byte mutations of valid header never crash', () {
       final valid = MyencCodec.encodeHeader(
         FileHeader(
-          version: FileHeader.supportedVersion,
+          version: FormatVersionRegistry.writeDefault.number,
           flags: 0x00,
           kdfId: FileHeader.kdfArgon2id,
           salt: Uint8List(16),
@@ -378,7 +378,7 @@ void main() {
     test('oversized declared field (saltLen) throws CorruptedFileError', () {
       final valid = MyencCodec.encodeHeader(
         FileHeader(
-          version: FileHeader.supportedVersion,
+          version: FormatVersionRegistry.writeDefault.number,
           flags: 0,
           kdfId: FileHeader.kdfArgon2id,
           salt: Uint8List(16),

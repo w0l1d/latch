@@ -62,7 +62,7 @@ FileHeader _canonicalHeader() => FileHeader(
 void main() {
   group('format v1 freeze — frozen constants', () {
     test('structural constants may never change for v1', () {
-      expect(FileHeader.supportedVersion, 1);
+      expect(FormatVersionRegistry.writeDefault.number, 1);
       expect(FileHeader.kdfArgon2id, 0x01);
       expect(FileHeader.cipherXchacha20Poly1305, 0x01);
       expect(FileHeader.secretstreamHeaderLength, 24);
