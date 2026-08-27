@@ -12,6 +12,13 @@
 set -o pipefail
 cd "$(git rev-parse --show-toplevel)" || exit 1
 
+# Git exports GIT_DIR into hook subprocesses. Flutter's SDK-version detection
+# is git-based for checkout installs, and GIT_DIR overrides repo discovery —
+# so under the hook it reads this repo instead of the SDK checkout and reports
+# "0.0.0-unknown", failing pub resolution in flutter_test-dependent suites.
+# Drop it now that the hook's own git call above is done.
+unset GIT_DIR
+
 echo "pre-push: dart format check…"
 if ! dart format --output=none --set-exit-if-changed .; then
   echo "✗ Formatting needed — run: dart format ."
