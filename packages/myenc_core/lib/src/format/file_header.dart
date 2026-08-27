@@ -1,8 +1,16 @@
 import 'dart:typed_data';
+import 'format_version.dart';
 import 'wrap_entry.dart';
 
 class FileHeader {
-  static const int supportedVersion = 1;
+  /// The version stamped on newly written containers.
+  ///
+  /// Compatibility alias for [FormatVersionRegistry.writeDefault]: it stores
+  /// nothing and forwards to the registry, so it cannot disagree with the
+  /// single source of truth. Kept as a derived getter (not a const) so the 11
+  /// in-repo references keep compiling. Slated for removal once callers move
+  /// to the registry directly.
+  static int get supportedVersion => FormatVersionRegistry.writeDefault.number;
   static const int kdfArgon2id = 0x01;
   static const int cipherXchacha20Poly1305 = 0x01;
   static const int defaultChunkSize = 65536;

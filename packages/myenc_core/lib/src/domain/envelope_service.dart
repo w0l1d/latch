@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import '../ports/crypto_port.dart';
 import '../format/file_header.dart';
+import '../format/format_version.dart';
 import '../format/myenc_codec.dart';
 import '../format/myenc_errors.dart';
 import '../format/wrap_entry.dart';
@@ -84,7 +85,9 @@ class EnvelopeService {
     }
 
     final header = FileHeader(
-      version: FileHeader.supportedVersion,
+      // The only write site: new containers are stamped with the registry's
+      // write default, stated independently of the read boundary.
+      version: FormatVersionRegistry.writeDefault.number,
       flags: flags,
       kdfId: FileHeader.kdfArgon2id,
       salt: salt,
