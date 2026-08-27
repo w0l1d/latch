@@ -1,0 +1,42 @@
+{
+  "passphrase": "compat-v1-fixture-passphrase",
+  "wrong_passphrase": "this-is-the-wrong-passphrase",
+  "kdf_params": {
+    "opslimit": 2,
+    "memlimit": 65536
+  },
+  "files": {
+    "empty": {
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "raw_length": 0,
+      "latch_file": "latch/empty.latch",
+      "raw_file": "raw/empty.bin"
+    },
+    "one_byte": {
+      "raw_sha256": "df7e70e5021544f4834bbee64a9e3789febc4be81470df629cad6ddb03320a5c",
+      "raw_length": 1,
+      "latch_file": "latch/one_byte.latch",
+      "raw_file": "raw/one_byte.bin"
+    },
+    "small": {
+      "raw_sha256": "05c6e08f1d9fdafa03147fcb8f82f124c76d2f70e3d989dc8aadb5e7d7450bec",
+      "raw_length": 43,
+      "latch_file": "latch/small.latch",
+      "raw_file": "raw/small.bin"
+    },
+    "multi_chunk": {
+      "raw_sha256": "0c6c96cc20d3f906e54f1f1296e8878c1ac39262fb587cd56235c3aa9103d837",
+      "raw_length": 70000,
+      "latch_file": "latch/multi_chunk.latch",
+      "raw_file": "raw/multi_chunk.bin"
+    },
+    "binary": {
+      "raw_sha256": "d41d438c379110c7f7b2c561b1f04f26c1b4549110791f8e022f48974280c13e",
+      "raw_length": 4096,
+      "latch_file": "latch/binary.latch",
+      "raw_file": "raw/binary.bin"
+    }
+  },
+  "wrong_passphrase_fixture": "latch/small.latch",
+  "tampered_body_fixture": "latch/tampered_body.latch"
+}
