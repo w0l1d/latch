@@ -66,10 +66,10 @@ So the retarget is broken out into **Phase 7**, after US3 and US4, and carries t
 **Purpose**: Establish the branch and capture the baseline that every acceptance
 criterion is measured against.
 
-- [ ] T001 Create branch `002-format-version-registry` from `develop` (not `main`, not `001-folder-encryption`); confirm `git merge-base --is-ancestor develop HEAD` succeeds and that `packages/myenc_core/lib/src/format/payload_preamble.dart` and `packages/myenc_core/test/version_gate_test.dart` are **absent** — their presence means the wrong base branch
-- [ ] T002 Move `specs/002-format-version-registry/` onto the new branch if it is currently sitting in the `001-folder-encryption` working tree; run `flutter pub get` at the repository root to resolve path dependencies
-- [ ] T003 [P] Capture the baseline: record test counts from `cd packages/myenc_core && flutter test`, `cd packages/myenc_adapters && flutter test`, and `flutter test` at root. Save the base commit SHA. These are the reference for T023 and T030
-- [ ] T004 [P] Confirm the baseline is clean before touching anything: `git diff --exit-code -- docs/FORMAT.md packages/myenc_adapters/test/golden/` must exit 0
+- [x] T001 Create branch `002-format-version-registry` from `develop` (not `main`, not `001-folder-encryption`); confirm `git merge-base --is-ancestor develop HEAD` succeeds and that `packages/myenc_core/lib/src/format/payload_preamble.dart` and `packages/myenc_core/test/version_gate_test.dart` are **absent** — their presence means the wrong base branch
+- [x] T002 Move `specs/002-format-version-registry/` onto the new branch if it is currently sitting in the `001-folder-encryption` working tree; run `flutter pub get` at the repository root to resolve path dependencies
+- [x] T003 [P] Capture the baseline: record test counts from `cd packages/myenc_core && flutter test`, `cd packages/myenc_adapters && flutter test`, and `flutter test` at root. Save the base commit SHA. These are the reference for T023 and T030
+- [x] T004 [P] Confirm the baseline is clean before touching anything: `git diff --exit-code -- docs/FORMAT.md packages/myenc_adapters/test/golden/` must exit 0
 
 **Checkpoint**: On a branch off `develop`, baseline recorded, all three suites green.
 
@@ -81,10 +81,10 @@ criterion is measured against.
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T005 Create `packages/myenc_core/lib/src/format/format_version.dart` with the format-version entry type: immutable, `const` constructor, a single `number` field (`int`, 1–255). **Declare no capability field** — extensibility comes from the const-constructor-plus-defaulted-field shape, and spec FR-011 forbids shipping a flag that serves only unreleased work (see [research.md](./research.md) Decision 3)
-- [ ] T006 In `packages/myenc_core/lib/src/format/format_version.dart`, add the record: a `const` map of known versions containing exactly `{1: <v1 entry>}`, plus (a) a lookup that returns the entry for a given integer and throws `VersionTooNewError(n)` when absent — never returns null, never substitutes a nearest match; (b) the write-default version, stated in its own right and **not** derived from the map's maximum; (c) the first-unknown boundary, derived as the **smallest positive integer with no entry**. Do not use `max(keys)+1` or `length+1` — [research.md](./research.md) Decision 1 traces why both are wrong under a gapped record
-- [ ] T007 Export `src/format/format_version.dart` from `packages/myenc_core/lib/myenc_core.dart`, keeping the existing export ordering convention (format exports before ports before domain)
-- [ ] T008 Verify core purity and cleanliness: `cd packages/myenc_core && flutter analyze --no-pub` clean, and `grep -rn "package:flutter\|dart:io" lib/` returns nothing (constitution Principle III). Confirm no dependency was added to `packages/myenc_core/pubspec.yaml`
+- [x] T005 Create `packages/myenc_core/lib/src/format/format_version.dart` with the format-version entry type: immutable, `const` constructor, a single `number` field (`int`, 1–255). **Declare no capability field** — extensibility comes from the const-constructor-plus-defaulted-field shape, and spec FR-011 forbids shipping a flag that serves only unreleased work (see [research.md](./research.md) Decision 3)
+- [x] T006 In `packages/myenc_core/lib/src/format/format_version.dart`, add the record: a `const` map of known versions containing exactly `{1: <v1 entry>}`, plus (a) a lookup that returns the entry for a given integer and throws `VersionTooNewError(n)` when absent — never returns null, never substitutes a nearest match; (b) the write-default version, stated in its own right and **not** derived from the map's maximum; (c) the first-unknown boundary, derived as the **smallest positive integer with no entry**. Do not use `max(keys)+1` or `length+1` — [research.md](./research.md) Decision 1 traces why both are wrong under a gapped record
+- [x] T007 Export `src/format/format_version.dart` from `packages/myenc_core/lib/myenc_core.dart`, keeping the existing export ordering convention (format exports before ports before domain)
+- [x] T008 Verify core purity and cleanliness: `cd packages/myenc_core && flutter analyze --no-pub` clean, and `grep -rn "package:flutter\|dart:io" lib/` returns nothing (constitution Principle III). Confirm no dependency was added to `packages/myenc_core/pubspec.yaml`
 
 **Checkpoint**: The record exists, compiles, is exported, and nothing consumes it yet — so all three suites must still be green and unchanged.
 
@@ -101,11 +101,11 @@ confirm each is refused with `VersionTooNewError` before any payload byte is rea
 
 ### Implementation for User Story 1
 
-- [ ] T009 [US1] In `packages/myenc_core/lib/src/format/myenc_codec.dart` (~line 89), replace `if (version > FileHeader.maxReadableVersion) throw VersionTooNewError(version);` with a record lookup that throws on absence. **The gate must contain no comparison against any version value** — an inequality against the boundary would re-admit version 0 and is the pattern this feature removes ([research.md](./research.md) Decision 2)
-- [ ] T010 [US1] Confirm the boundary computation is not reachable from `decodeHeader` in `packages/myenc_core/lib/src/format/myenc_codec.dart` — it iterates, and must not sit on the path that parses untrusted input (data-model.md invariant I5)
-- [ ] T011 [US1] Verify refusal ordering in `packages/myenc_core/lib/src/format/myenc_codec.dart`: the version check still precedes every other header-field validation and any payload read, so no partial plaintext can be emitted for an unreadable version (constitution Principle IV)
-- [ ] T012 [P] [US1] Verify the intentional tightening: a header whose version byte is `0x00` is now refused with `VersionTooNewError`. On `develop` it is **accepted** (empirically confirmed: `decodeHeader` returns a `FileHeader` with `version == 0`). This is the only input whose behaviour differs from the base — see [contracts/format_version_contract.md](./contracts/format_version_contract.md) §3
-- [ ] T013 [US1] Run `cd packages/myenc_core && flutter test`. The existing version tests must pass **unmodified**: `codec_test.dart:84` (refuses `0xFF`), `envelope_test.dart:819` (refuses `0xFF` end-to-end), and `codec_freeze_test.dart:133` (refuses `2`, with its literal still in place)
+- [x] T009 [US1] In `packages/myenc_core/lib/src/format/myenc_codec.dart` (~line 89), replace `if (version > FileHeader.maxReadableVersion) throw VersionTooNewError(version);` with a record lookup that throws on absence. **The gate must contain no comparison against any version value** — an inequality against the boundary would re-admit version 0 and is the pattern this feature removes ([research.md](./research.md) Decision 2)
+- [x] T010 [US1] Confirm the boundary computation is not reachable from `decodeHeader` in `packages/myenc_core/lib/src/format/myenc_codec.dart` — it iterates, and must not sit on the path that parses untrusted input (data-model.md invariant I5)
+- [x] T011 [US1] Verify refusal ordering in `packages/myenc_core/lib/src/format/myenc_codec.dart`: the version check still precedes every other header-field validation and any payload read, so no partial plaintext can be emitted for an unreadable version (constitution Principle IV)
+- [x] T012 [P] [US1] Verify the intentional tightening: a header whose version byte is `0x00` is now refused with `VersionTooNewError`. On `develop` it is **accepted** (empirically confirmed: `decodeHeader` returns a `FileHeader` with `version == 0`). This is the only input whose behaviour differs from the base — see [contracts/format_version_contract.md](./contracts/format_version_contract.md) §3
+- [x] T013 [US1] Run `cd packages/myenc_core && flutter test`. The existing version tests must pass **unmodified**: `codec_test.dart:84` (refuses `0xFF`), `envelope_test.dart:819` (refuses `0xFF` end-to-end), and `codec_freeze_test.dart:133` (refuses `2`, with its literal still in place)
 
 **Checkpoint**: The gate is a lookup. All 256 byte values behave correctly. No test file has been edited.
 
@@ -124,12 +124,12 @@ they are the harness that keeps Phases 5–7 honest.
 
 ### Verification for User Story 2
 
-- [ ] T014 [P] [US2] Primary acceptance instrument: `cd packages/myenc_adapters && flutter test test/golden_vectors_test.dart`, then `git diff --exit-code -- test/golden_vectors_test.dart test/golden/`. Both must succeed. Regenerating the fixtures to accommodate this work is forbidden (constitution Principle II); a non-zero diff exit fails the feature outright
-- [ ] T015 [P] [US2] Run the byte-layout assertions in `packages/myenc_core/test/codec_freeze_test.dart` and confirm the file is still unmodified at this point (`git diff --exit-code -- test/codec_freeze_test.dart`)
-- [ ] T016 [P] [US2] Verify error identity is intact: `VersionTooNewError` keeps its type, name, `version` field, and `toString()` shape. `lib/shared/error_messages.dart` matches on **both** the type and its string form, so both must be preserved — run `flutter test` at the repository root and confirm `test/error_messages_test.dart` passes unmodified
-- [ ] T017 [P] [US2] Verify the isolate-boundary string contract is intact: `lib/core/isolate_worker.dart` maps `VersionTooNewError` to the `'version'` code and `lib/core/app_crypto.dart` plus `lib/features/decrypt/decrypt_progress_screen.dart` match on its string form. None of these files may be edited; confirm behaviour by running the root suite
-- [ ] T018 [P] [US2] Verify the failure-mode distinction still holds (constitution Principle IV): an unknown version raises the version error, **not** `CorruptedFileError` and **not** `WrongPassphraseError`; wrong-passphrase still fails at the DEK unwrap and a tampered body still fails at a chunk tag. Covered by the existing `envelope_test.dart` cases — confirm they pass unmodified
-- [ ] T019 [US2] Verify encode is byte-identical: `MyencCodec.encodeHeader` output is unchanged for every input, and the version byte's offset (5) and width (1) are untouched. Pinned by the existing freeze assertions
+- [x] T014 [P] [US2] Primary acceptance instrument: `cd packages/myenc_adapters && flutter test test/golden_vectors_test.dart`, then `git diff --exit-code -- test/golden_vectors_test.dart test/golden/`. Both must succeed. Regenerating the fixtures to accommodate this work is forbidden (constitution Principle II); a non-zero diff exit fails the feature outright
+- [x] T015 [P] [US2] Run the byte-layout assertions in `packages/myenc_core/test/codec_freeze_test.dart` and confirm the file is still unmodified at this point (`git diff --exit-code -- test/codec_freeze_test.dart`)
+- [x] T016 [P] [US2] Verify error identity is intact: `VersionTooNewError` keeps its type, name, `version` field, and `toString()` shape. `lib/shared/error_messages.dart` matches on **both** the type and its string form, so both must be preserved — run `flutter test` at the repository root and confirm `test/error_messages_test.dart` passes unmodified
+- [x] T017 [P] [US2] Verify the isolate-boundary string contract is intact: `lib/core/isolate_worker.dart` maps `VersionTooNewError` to the `'version'` code and `lib/core/app_crypto.dart` plus `lib/features/decrypt/decrypt_progress_screen.dart` match on its string form. None of these files may be edited; confirm behaviour by running the root suite
+- [x] T018 [P] [US2] Verify the failure-mode distinction still holds (constitution Principle IV): an unknown version raises the version error, **not** `CorruptedFileError` and **not** `WrongPassphraseError`; wrong-passphrase still fails at the DEK unwrap and a tampered body still fails at a chunk tag. Covered by the existing `envelope_test.dart` cases — confirm they pass unmodified
+- [x] T019 [US2] Verify encode is byte-identical: `MyencCodec.encodeHeader` output is unchanged for every input, and the version byte's offset (5) and width (1) are untouched. Pinned by the existing freeze assertions
 
 **Checkpoint**: Behaviour preservation is measured, not claimed. Golden fixtures and every test file still byte-identical to base.
 
@@ -149,15 +149,15 @@ accept/refuse boundary by exactly one with no test file edited.
 > — see [research.md](./research.md) Decision 5 for why this is the permitted side of
 > SC-004.
 
-- [ ] T020 [US3] Create `packages/myenc_core/test/format_version_test.dart` covering data-model.md invariants **I1** (the record's keys are exactly `1..n`, starting at 1 — a gap would silently relocate what the freeze guard covers) and **I2** (every entry's own number equals the key it is registered under)
-- [ ] T021 [US3] In `packages/myenc_core/test/format_version_test.dart`, add invariant **I3**: iterate all 256 byte values and assert each has a defined outcome — known values resolve to an entry, and `0` plus everything from the boundary through `255` throws `VersionTooNewError` (spec SC-002)
-- [ ] T022 [US3] In `packages/myenc_core/test/format_version_test.dart`, assert the boundary is the smallest absent positive integer and currently equals `2`, and that it is computed rather than stored
-- [ ] T023 [US3] Confirm the diff scope: exactly one test file differs from base at this point (`packages/myenc_core/test/format_version_test.dart`, new). Re-run Phase 4 (T014–T019)
+- [x] T020 [US3] Create `packages/myenc_core/test/format_version_test.dart` covering data-model.md invariants **I1** (the record's keys are exactly `1..n`, starting at 1 — a gap would silently relocate what the freeze guard covers) and **I2** (every entry's own number equals the key it is registered under)
+- [x] T021 [US3] In `packages/myenc_core/test/format_version_test.dart`, add invariant **I3**: iterate all 256 byte values and assert each has a defined outcome — known values resolve to an entry, and `0` plus everything from the boundary through `255` throws `VersionTooNewError` (spec SC-002)
+- [x] T022 [US3] In `packages/myenc_core/test/format_version_test.dart`, assert the boundary is the smallest absent positive integer and currently equals `2`, and that it is computed rather than stored
+- [x] T023 [US3] Confirm the diff scope: exactly one test file differs from base at this point (`packages/myenc_core/test/format_version_test.dart`, new). Re-run Phase 4 (T014–T019)
 
 ### Implementation for User Story 3
 
-- [ ] T024 [US3] Prove no version decision escapes the record: `grep -rn "version" packages/myenc_core/lib | grep -E "[<>]=?|== *[0-9]"` returns nothing outside `format_version.dart`. Any surviving comparison against a version literal fails spec SC-001
-- [ ] T025 [US3] Demonstrate spec SC-007 and then discard it: temporarily add a row for version 2 to `packages/myenc_core/lib/src/format/format_version.dart`, editing **nothing else**. Confirm `codec_freeze_test.dart` and `format_version_test.dart` both stay green with **zero test edits** — the boundary moves from 2 to 3 on its own. Then `git checkout -- packages/myenc_core/lib/src/format/format_version.dart`. **The row must not be committed** (spec FR-011)
+- [x] T024 [US3] Prove no version decision escapes the record: `grep -rn "version" packages/myenc_core/lib | grep -E "[<>]=?|== *[0-9]"` returns nothing outside `format_version.dart`. Any surviving comparison against a version literal fails spec SC-001
+- [x] T025 [US3] Demonstrate spec SC-007 and then discard it: temporarily add a row for version 2 to `packages/myenc_core/lib/src/format/format_version.dart`, editing **nothing else**. Confirm `codec_freeze_test.dart` and `format_version_test.dart` both stay green with **zero test edits** — the boundary moves from 2 to 3 on its own. Then `git checkout -- packages/myenc_core/lib/src/format/format_version.dart`. **The row must not be committed** (spec FR-011)
 
 **Checkpoint**: The record's invariants are pinned, no version literal survives outside it, and the one-row property is demonstrated and reverted.
 
@@ -173,13 +173,13 @@ stamped version 1; rewrap still re-emits the source version unchanged.
 
 ### Implementation for User Story 4
 
-- [ ] T026 [US4] In `packages/myenc_core/lib/src/domain/envelope_service.dart` (~line 87), source the header's version from the record's write default instead of `FileHeader.supportedVersion`
-- [ ] T027 [US4] In `packages/myenc_core/lib/src/format/file_header.dart`, convert `supportedVersion` from a stored `const` into a **derived getter** forwarding to the record's write default. It stores nothing and cannot disagree with the record, which satisfies spec FR-009's substance while keeping the 11 existing test references compiling (FR-014). **Do not annotate it `@Deprecated`** — `deprecated_member_use_from_same_package` would fire on all 11 in-repo references and fail `flutter analyze`, forcing exactly the test churn this getter exists to avoid. Add a doc comment recording that it is a compatibility alias slated for removal ([research.md](./research.md) Decision 4)
-- [ ] T028 [US4] Remove the interim constants if present: `maxReadableVersion` and `versionWithPayloadPreamble` must not exist in `packages/myenc_core/lib/src/format/file_header.dart`. On a correct base branch they are already absent (they belong to `001-folder-encryption`); their presence means T001 was done wrong
-- [ ] T029 [US4] Verify the pass-through paths in `packages/myenc_core/lib/src/domain/envelope_service.dart` (~lines 195 and 253) still re-emit `hdr.version` unchanged — rewrap and add-recipient must neither upgrade nor downgrade a container (spec FR-008)
-- [ ] T030 [US4] Confirm `FileHeader.version` remains a plain `int` and was not retyped to the entry type: `decodeHeader` must be able to report a version it has no entry for, which a field constrained to known versions could not represent (data-model.md, Relationship to existing types)
-- [ ] T031 [US4] In `packages/myenc_core/test/format_version_test.dart`, add invariant **I4**: the write default is 1 and is not derived from the record's maximum. Note this edits the same file as T020–T022, so it is **not** parallel with them
-- [ ] T032 [US4] Run all three suites. The existing `codec_freeze_test.dart:65` assertion (`expect(FileHeader.supportedVersion, 1)`) must still pass through the forwarding getter, along with the 9 references in `codec_test.dart` and `envelope_test.dart:191` — all unmodified. Re-run Phase 4 (T014–T019)
+- [x] T026 [US4] In `packages/myenc_core/lib/src/domain/envelope_service.dart` (~line 87), source the header's version from the record's write default instead of `FileHeader.supportedVersion`
+- [x] T027 [US4] In `packages/myenc_core/lib/src/format/file_header.dart`, convert `supportedVersion` from a stored `const` into a **derived getter** forwarding to the record's write default. It stores nothing and cannot disagree with the record, which satisfies spec FR-009's substance while keeping the 11 existing test references compiling (FR-014). **Do not annotate it `@Deprecated`** — `deprecated_member_use_from_same_package` would fire on all 11 in-repo references and fail `flutter analyze`, forcing exactly the test churn this getter exists to avoid. Add a doc comment recording that it is a compatibility alias slated for removal ([research.md](./research.md) Decision 4)
+- [x] T028 [US4] Remove the interim constants if present: `maxReadableVersion` and `versionWithPayloadPreamble` must not exist in `packages/myenc_core/lib/src/format/file_header.dart`. On a correct base branch they are already absent (they belong to `001-folder-encryption`); their presence means T001 was done wrong
+- [x] T029 [US4] Verify the pass-through paths in `packages/myenc_core/lib/src/domain/envelope_service.dart` (~lines 195 and 253) still re-emit `hdr.version` unchanged — rewrap and add-recipient must neither upgrade nor downgrade a container (spec FR-008)
+- [x] T030 [US4] Confirm `FileHeader.version` remains a plain `int` and was not retyped to the entry type: `decodeHeader` must be able to report a version it has no entry for, which a field constrained to known versions could not represent (data-model.md, Relationship to existing types)
+- [x] T031 [US4] In `packages/myenc_core/test/format_version_test.dart`, add invariant **I4**: the write default is 1 and is not derived from the record's maximum. Note this edits the same file as T020–T022, so it is **not** parallel with them
+- [x] T032 [US4] Run all three suites. The existing `codec_freeze_test.dart:65` assertion (`expect(FileHeader.supportedVersion, 1)`) must still pass through the forwarding getter, along with the 9 references in `codec_test.dart` and `envelope_test.dart:191` — all unmodified. Re-run Phase 4 (T014–T019)
 
 **Checkpoint**: All source changes are complete. Write default and read boundary are independent. Exactly one test file differs from base.
 
@@ -196,10 +196,10 @@ The green-before observation in T033 is the evidence that this edit is a deliber
 hardening. It is only meaningful once every other source change is in — hence Phases 5
 and 6 come first despite this task belonging to a P1 story.
 
-- [ ] T033 [US2] **GATE — do not skip.** With all source changes complete, run `cd packages/myenc_core && flutter test test/codec_freeze_test.dart` and observe it **green with the literal `2` still in the test**. Record the result. **If it is red, STOP**: the refactor changed decode behaviour, and retargeting the assertion at that point would be precisely the prohibited act of editing a freeze guard to make a failing test pass. Diagnose and fix the source instead
-- [ ] T034 [US2] In `packages/myenc_core/test/codec_freeze_test.dart` (~line 133), retarget the unknown-version case from the hardcoded literal `2` to the record's derived first-unknown boundary. **This is the only permitted edit to this file.** Commit it alone, touching no other file — the asserted value is unchanged (the boundary is 2 today), so the commit is provably value-neutral
-- [ ] T035 [US2] Re-run `flutter test test/codec_freeze_test.dart` and confirm green again, then `git show --stat HEAD` to confirm the commit touches exactly one file and one assertion. Green → green across a value-neutral commit is the proof this was hardening, not repair
-- [ ] T036 [US2] Confirm the byte-layout assertions in the same file are untouched: the diff must show only the unknown-version case changed
+- [x] T033 [US2] **GATE — do not skip.** With all source changes complete, run `cd packages/myenc_core && flutter test test/codec_freeze_test.dart` and observe it **green with the literal `2` still in the test**. Record the result. **If it is red, STOP**: the refactor changed decode behaviour, and retargeting the assertion at that point would be precisely the prohibited act of editing a freeze guard to make a failing test pass. Diagnose and fix the source instead
+- [x] T034 [US2] In `packages/myenc_core/test/codec_freeze_test.dart` (~line 133), retarget the unknown-version case from the hardcoded literal `2` to the record's derived first-unknown boundary. **This is the only permitted edit to this file.** Commit it alone, touching no other file — the asserted value is unchanged (the boundary is 2 today), so the commit is provably value-neutral
+- [x] T035 [US2] Re-run `flutter test test/codec_freeze_test.dart` and confirm green again, then `git show --stat HEAD` to confirm the commit touches exactly one file and one assertion. Green → green across a value-neutral commit is the proof this was hardening, not repair
+- [x] T036 [US2] Confirm the byte-layout assertions in the same file are untouched: the diff must show only the unknown-version case changed
 
 **Checkpoint**: The freeze guard now pins the rule and can never go stale at a future version bump.
 
@@ -207,15 +207,15 @@ and 6 come first despite this task belonging to a P1 story.
 
 ## Phase 8: Polish & Cross-Cutting Concerns
 
-- [ ] T037 Run `dart format .` at the repository root. CI fails on unformatted code before it reaches analyze, so this must pass before committing (constitution gate 1)
-- [ ] T038 Run all constitution quality gates: `dart format --set-exit-if-changed .`; `flutter analyze --no-pub && flutter test` at root; `flutter test && flutter analyze --no-pub` in `packages/myenc_core`; same in `packages/myenc_adapters`. Record gate 5 (`cd android && ./gradlew :app:testDebugUnitTest`) as **N/A — no Kotlin changed**, rather than skipping it silently
-- [ ] T039 [P] Confirm `docs/FORMAT.md` is unmodified: `git diff --exit-code -- docs/FORMAT.md`. §2 is frozen and §10 already states the rule this feature implements, so neither needs amendment (spec FR-012)
-- [ ] T040 [P] Final diff-scope audit: exactly **two** test files differ from the base commit — `packages/myenc_core/test/format_version_test.dart` (new) and `packages/myenc_core/test/codec_freeze_test.dart` (one assertion retargeted). No test anywhere was weakened, skipped, or deleted (spec SC-004)
-- [ ] T041 [P] Confirm no file outside `packages/myenc_core/` was modified: `git diff --name-only` against the base shows only paths under `packages/myenc_core/` and `specs/002-format-version-registry/` (spec FR-015)
-- [ ] T042 Walk [quickstart.md](./quickstart.md) end to end and tick every item in its §9 Definition of Done
-- [ ] T043 Verify commit hygiene: Conventional Commits with a scope (`refactor(core):` or `feat(core):`), and **no AI attribution of any kind** — no `Co-Authored-By`, no "Generated with" notice (constitution, Commits and releases)
-- [ ] T044 Record the deliberate follow-up so it is not silently dropped: removing the `FileHeader.supportedVersion` forwarding alias and migrating its 11 test references is a separate, mechanical, test-only change, **explicitly out of scope here** (plan.md Complexity Tracking row 2). File it as an issue or a note in the PR body
-- [ ] T045 Record the `001-folder-encryption` handoff in the PR body: once this merges, that branch rebases onto it, drops the interim `maxReadableVersion`/`versionWithPayloadPreamble` constants and `test/version_gate_test.dart`, and adds its version as **one row**. Its own freeze-guard failure resolves as a consequence of T034 with no further test edit — which is this feature demonstrating the property it was built for
+- [x] T037 Run `dart format .` at the repository root. CI fails on unformatted code before it reaches analyze, so this must pass before committing (constitution gate 1)
+- [x] T038 Run all constitution quality gates: `dart format --set-exit-if-changed .`; `flutter analyze --no-pub && flutter test` at root; `flutter test && flutter analyze --no-pub` in `packages/myenc_core`; same in `packages/myenc_adapters`. Record gate 5 (`cd android && ./gradlew :app:testDebugUnitTest`) as **N/A — no Kotlin changed**, rather than skipping it silently
+- [x] T039 [P] Confirm `docs/FORMAT.md` is unmodified: `git diff --exit-code -- docs/FORMAT.md`. §2 is frozen and §10 already states the rule this feature implements, so neither needs amendment (spec FR-012)
+- [x] T040 [P] Final diff-scope audit: exactly **two** test files differ from the base commit — `packages/myenc_core/test/format_version_test.dart` (new) and `packages/myenc_core/test/codec_freeze_test.dart` (one assertion retargeted). No test anywhere was weakened, skipped, or deleted (spec SC-004)
+- [x] T041 [P] Confirm no file outside `packages/myenc_core/` was modified: `git diff --name-only` against the base shows only paths under `packages/myenc_core/` and `specs/002-format-version-registry/` (spec FR-015)
+- [x] T042 Walk [quickstart.md](./quickstart.md) end to end and tick every item in its §9 Definition of Done
+- [x] T043 Verify commit hygiene: Conventional Commits with a scope (`refactor(core):` or `feat(core):`), and **no AI attribution of any kind** — no `Co-Authored-By`, no "Generated with" notice (constitution, Commits and releases)
+- [x] T044 Record the deliberate follow-up so it is not silently dropped: removing the `FileHeader.supportedVersion` forwarding alias and migrating its 11 test references is a separate, mechanical, test-only change, **explicitly out of scope here** (plan.md Complexity Tracking row 2). File it as an issue or a note in the PR body
+- [x] T045 Record the `001-folder-encryption` handoff in the PR body: once this merges, that branch rebases onto it, drops the interim `maxReadableVersion`/`versionWithPayloadPreamble` constants and `test/version_gate_test.dart`, and adds its version as **one row**. Its own freeze-guard failure resolves as a consequence of T034 with no further test edit — which is this feature demonstrating the property it was built for
 
 ---
 
