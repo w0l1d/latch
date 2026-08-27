@@ -130,14 +130,19 @@ void main() {
   });
 
   group('format v1 freeze — versioning policy', () {
-    test('version 2 is rejected with VersionTooNewError', () {
-      final bytes = _hex(_frozenHeaderHex);
-      bytes[5] = 0x02;
-      expect(
-        () => MyencCodec.decodeHeader(bytes),
-        throwsA(isA<VersionTooNewError>()),
-      );
-    });
+    test(
+      'any version the table does not know is rejected with VersionTooNewError',
+      () {
+        final bytes = _hex(_frozenHeaderHex);
+        // The registry's first unknown version, not a literal: the guard pins
+        // the fail-closed rule itself, so it can never go stale at a bump.
+        bytes[5] = FormatVersionRegistry.firstUnknown;
+        expect(
+          () => MyencCodec.decodeHeader(bytes),
+          throwsA(isA<VersionTooNewError>()),
+        );
+      },
+    );
 
     test('every reserved flag bit is rejected', () {
       for (var bit = 1; bit < 8; bit++) {
