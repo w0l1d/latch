@@ -69,6 +69,43 @@ void main() {
       );
     }
 
+    for (final name in [
+      'empty',
+      'one_byte',
+      'small',
+      'multi_chunk',
+      'binary',
+    ]) {
+      test('encrypts $name with the new code and decrypts back to the '
+          'manifest-pinned hash', () async {
+        final entry =
+            (manifest['files'] as Map<String, dynamic>)[name]
+                as Map<String, dynamic>;
+        final raw = File('$dir/${entry['raw_file']}').readAsBytesSync();
+        final kdf = manifest['kdf_params'] as Map<String, dynamic>;
+
+        final ciphertext = await _collect(
+          envelope.encrypt(
+            plaintext: Stream.value(raw),
+            passphrase: Uint8List.fromList(passphrase),
+            params: KdfParams(
+              opslimit: kdf['opslimit'] as int,
+              memlimit: kdf['memlimit'] as int,
+            ),
+          ),
+        );
+        final back = await _collect(
+          envelope.decrypt(
+            ciphertext: Stream.value(ciphertext),
+            passphrase: Uint8List.fromList(passphrase),
+          ),
+        );
+
+        expect(back.length, entry['raw_length']);
+        expect(_sha256Hex(back), entry['raw_sha256']);
+      });
+    }
+
     test(
       'wrong passphrase fails fast, before any body byte is touched',
       () async {
