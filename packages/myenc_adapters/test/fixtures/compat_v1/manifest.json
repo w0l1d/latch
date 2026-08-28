@@ -5,6 +5,8 @@
     "opslimit": 2,
     "memlimit": 65536
   },
+  "generated_at_commit": "9fded2f",
+  "generated_with": "pre-refactor EnvelopeService/SodiumCryptoAdapter (old inline codec, before the FormatVersionStrategy extraction)",
   "files": {
     "empty": {
       "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -24,17 +26,65 @@
       "latch_file": "latch/small.latch",
       "raw_file": "raw/small.bin"
     },
-    "multi_chunk": {
-      "raw_sha256": "0c6c96cc20d3f906e54f1f1296e8878c1ac39262fb587cd56235c3aa9103d837",
-      "raw_length": 70000,
-      "latch_file": "latch/multi_chunk.latch",
-      "raw_file": "raw/multi_chunk.bin"
+    "ascii_text": {
+      "raw_sha256": "20be8e878c4ff76174a87f10bcedc6491cfd9bc7155877fd0d8ecf9e21b77a55",
+      "raw_length": 224,
+      "latch_file": "latch/ascii_text.latch",
+      "raw_file": "raw/ascii_text.bin"
+    },
+    "unicode_text": {
+      "raw_sha256": "772a35761e80218e1324f7e92b7a255ce0bc9b07645cbb11db80ad46b47bd151",
+      "raw_length": 396,
+      "latch_file": "latch/unicode_text.latch",
+      "raw_file": "raw/unicode_text.bin"
+    },
+    "json": {
+      "raw_sha256": "b8bbdc805e89d0ee5709559afbee5265c48f019d7e5355fbb92b1eaf4616ec2b",
+      "raw_length": 542,
+      "latch_file": "latch/json.latch",
+      "raw_file": "raw/json.bin"
+    },
+    "zero_bytes": {
+      "raw_sha256": "5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+      "raw_length": 1024,
+      "latch_file": "latch/zero_bytes.latch",
+      "raw_file": "raw/zero_bytes.bin"
+    },
+    "all_bytes": {
+      "raw_sha256": "785b0751fc2c53dc14a4ce3d800e69ef9ce1009eb327ccf458afe09c242c26c9",
+      "raw_length": 1024,
+      "latch_file": "latch/all_bytes.latch",
+      "raw_file": "raw/all_bytes.bin"
     },
     "binary": {
       "raw_sha256": "d41d438c379110c7f7b2c561b1f04f26c1b4549110791f8e022f48974280c13e",
       "raw_length": 4096,
       "latch_file": "latch/binary.latch",
       "raw_file": "raw/binary.bin"
+    },
+    "boundary_64k": {
+      "raw_sha256": "b5dafc9b16dd9024fe915893f7a920cd31850597052e7b2b9548b435e551ec6b",
+      "raw_length": 65536,
+      "latch_file": "latch/boundary_64k.latch",
+      "raw_file": "raw/boundary_64k.bin"
+    },
+    "boundary_plus_1": {
+      "raw_sha256": "e447ef50c269fcef0545fc63f1d9a3af0a473ffd0fc43022d17b956535c7325a",
+      "raw_length": 65537,
+      "latch_file": "latch/boundary_plus_1.latch",
+      "raw_file": "raw/boundary_plus_1.bin"
+    },
+    "multi_chunk": {
+      "raw_sha256": "6b28f50d8883e7376146d71803bea6c472697f93edac5300abf16d176321c484",
+      "raw_length": 70000,
+      "latch_file": "latch/multi_chunk.latch",
+      "raw_file": "raw/multi_chunk.bin"
+    },
+    "large_1mb": {
+      "raw_sha256": "7e10745856dab68fcaccee34d95c3f7568283d7d626b5eb6c19a0ad99e14ca48",
+      "raw_length": 1048576,
+      "latch_file": "latch/large_1mb.latch",
+      "raw_file": "raw/large_1mb.bin"
     }
   },
   "wrong_passphrase_fixture": "latch/small.latch",
