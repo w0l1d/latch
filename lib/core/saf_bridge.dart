@@ -135,6 +135,24 @@ class SafBridge {
     }
   }
 
+  /// Whether Android still holds a writable grant on this exact [treeUri].
+  ///
+  /// Lets the app reuse a destination the user chose earlier for sources whose
+  /// folder can't be resolved at all, without ever *trusting* the remembered
+  /// URI: the platform's persisted-permission table stays the authority, so a
+  /// revoked grant reports false and the user is asked again. Best-effort:
+  /// never throws — an unanswerable question means "ask the user".
+  static Future<bool> isTreeGrantLive(String treeUri) async {
+    try {
+      final live = await channel.invokeMethod<bool>('isTreeGrantLive', {
+        'uri': treeUri,
+      });
+      return live ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Create [displayName] inside the granted [treeUri] and copy [srcPath] into
   /// it. [subPath] targets a folder nested inside the grant (empty = the tree
   /// root). Returns the created document's URI and a human-readable display

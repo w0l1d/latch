@@ -80,6 +80,7 @@ void main() {
   ({FakeGrantTable grants, List<MethodCall> calls}) wireSaf({
     Map<String, String> registerSources = const {},
     FakeGrantTable? grants,
+    Set<String> liveTreeGrants = const {},
   }) {
     final table = grants ?? FakeGrantTable();
     final calls = <MethodCall>[];
@@ -96,6 +97,8 @@ void main() {
           return realPathByUri[call.arguments['uri'] as String];
         case 'existingTreeGrant':
           return table.cover(call.arguments['folder'] as String);
+        case 'isTreeGrantLive':
+          return liveTreeGrants.contains(call.arguments['uri'] as String);
       }
       return null;
     });
@@ -465,6 +468,66 @@ void main() {
       expect(
         plan.byPath['/cache/mix-cloud.txt']!.treeUri,
         'content://tree/downloads-choice',
+      );
+    });
+
+    test('12. the unknown-folder choice is remembered, so a later batch is '
+        'not asked again', () async {
+      // There is no folder path to key a grant on, so without remembering the
+      // answer the user would face this prompt on every single batch.
+      SharedPreferences.setMockInitialValues({
+        'unresolved_source_tree_uri': 'content://tree/remembered',
+      });
+      wireSaf(liveTreeGrants: {'content://tree/remembered'});
+
+      final asked = <String?>[];
+      final plan = await OutputPlanner.plan(
+        ['/cache/cloud-later.txt'],
+        requestGrant: (folder) async {
+          asked.add(folder);
+          return 'content://tree/should-not-be-asked';
+        },
+        platformIsAndroid: true,
+      );
+
+      expect(asked, isEmpty, reason: 'the remembered destination is reused');
+      expect(
+        plan.byPath['/cache/cloud-later.txt']!.treeUri,
+        'content://tree/remembered',
+      );
+    });
+
+    test('12b. a remembered destination whose grant Android no longer holds '
+        'is discarded, not trusted', () async {
+      // The stored value is a preference, never a substitute for the platform's
+      // permission table — a revoked grant must send the user back to the
+      // prompt, not silently write nowhere.
+      SharedPreferences.setMockInitialValues({
+        'unresolved_source_tree_uri': 'content://tree/revoked',
+      });
+      wireSaf(); // no live grants
+
+      final asked = <String?>[];
+      final plan = await OutputPlanner.plan(
+        ['/cache/cloud-revoked.txt'],
+        requestGrant: (folder) async {
+          asked.add(folder);
+          return 'content://tree/fresh';
+        },
+        platformIsAndroid: true,
+      );
+
+      expect(asked, [null], reason: 'asked again once the grant is gone');
+      expect(
+        plan.byPath['/cache/cloud-revoked.txt']!.treeUri,
+        'content://tree/fresh',
+      );
+      expect(
+        SharedPreferences.getInstance().then(
+          (p) => p.getString('unresolved_source_tree_uri'),
+        ),
+        completion('content://tree/fresh'),
+        reason: 'the fresh choice replaces the dead one',
       );
     });
   });

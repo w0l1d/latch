@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'app_crypto.dart';
 import 'default_output.dart';
 import 'saf_bridge.dart';
+import 'unresolved_destination.dart';
 
 /// Where one source file's output should ultimately land (Android only).
 class OutputTarget {
@@ -108,17 +109,25 @@ class OutputPlanner {
     // "Same folder as each original": resolve one grant per distinct folder.
     final grantByFolder = <String, OutputTarget>{};
     // Sources whose provider exposes no filesystem folder (cloud, or a document
-    // id we can't map to a path) still get a say in where output lands — ask
-    // once for the whole batch rather than silently using Downloads. Nothing is
-    // persisted: there is no folder path to key a grant on.
-    var askedUnknown = false;
+    // id Android won't map to a path — the picker's Downloads/Images/Videos
+    // shortcuts) still get a say in where output lands: ask once for the whole
+    // batch rather than silently using Downloads. The answer is remembered
+    // across batches so this isn't asked every time, but only as a preference —
+    // Android is re-asked whether the grant still holds before it is used.
+    var resolvedUnknown = false;
     String? unknownGrant;
     for (final f in files) {
       final folder = await SafBridge.realDirectoryFor(f);
       if (folder == null) {
-        if (!askedUnknown) {
-          askedUnknown = true;
-          if (requestGrant != null) unknownGrant = await requestGrant(null);
+        if (!resolvedUnknown) {
+          resolvedUnknown = true;
+          unknownGrant = await UnresolvedDestination.live();
+          if (unknownGrant == null && requestGrant != null) {
+            unknownGrant = await requestGrant(null);
+            if (unknownGrant != null) {
+              await UnresolvedDestination.remember(unknownGrant);
+            }
+          }
         }
         byPath[f] = OutputTarget(treeUri: unknownGrant);
         continue;

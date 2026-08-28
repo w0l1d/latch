@@ -20,6 +20,14 @@ import java.io.FileOutputStream
 // plain FlutterActivity every authenticate() call throws no_fragment_activity.
 class MainActivity : FlutterFragmentActivity() {
 
+    private companion object {
+        // The only authorities MediaStore.getMediaUri() is documented to accept.
+        val MEDIA_URI_AUTHORITIES = setOf(
+            ExternalStorageDocIds.AUTHORITY,
+            "com.android.providers.media.documents",
+        )
+    }
+
     // ACTION_OPEN_DOCUMENT_TREE round-trips through an activity result, so the
     // pending MethodChannel result is parked here until the picker returns.
     private var pendingTreeResult: MethodChannel.Result? = null
@@ -102,15 +110,6 @@ class MainActivity : FlutterFragmentActivity() {
                                 val path = resolveToFilePath(uri)
                                 runOnUiThread { result.success(path) }
                             }
-                            // Resolution internals for a picked document — the
-                            // decision inputs, chosen step, raw column values and
-                            // outcome — so a failed resolution can be diagnosed
-                            // on-device without a debugger.
-                            "resolvePathDebug" -> {
-                                val uri = Uri.parse(call.argument<String>("uri")!!)
-                                val debug = debugResolve(uri)
-                                runOnUiThread { result.success(debug) }
-                            }
                             // Ask the user to grant a folder (persistable tree URI)
                             // so the app can CREATE new output files there — the
                             // single-file picker only grants the picked document.
@@ -133,6 +132,15 @@ class MainActivity : FlutterFragmentActivity() {
                             "existingTreeGrant" -> {
                                 val folder = call.argument<String>("folder")!!
                                 runOnUiThread { result.success(existingTreeGrant(folder)) }
+                            }
+                            // Whether Android still holds a writable grant on this
+                            // exact tree. Lets the app reuse a destination the user
+                            // chose earlier for sources whose folder can't be
+                            // resolved, without ever TRUSTING a remembered URI: the
+                            // platform's own table is still the authority.
+                            "isTreeGrantLive" -> {
+                                val uri = call.argument<String>("uri")!!
+                                runOnUiThread { result.success(isTreeGrantLive(uri)) }
                             }
                             // Create a new document in a granted tree and copy the
                             // staged file into it. Returns the new document URI and
@@ -206,29 +214,8 @@ class MainActivity : FlutterFragmentActivity() {
                 queryMediaStoreUriColumns(uri)
                     ?: queryDocumentColumns(uri)
                     ?: queryMediaPath(step.collection, step.id)
-                    ?: fdRealPath(uri)
-            is DocumentPathResolver.Step.QueryDocument -> queryDocumentColumns(uri) ?: fdRealPath(uri)
+            is DocumentPathResolver.Step.QueryDocument -> queryDocumentColumns(uri)
             is DocumentPathResolver.Step.Unknown -> null
-        }
-    }
-
-    // Last resort: open the document's own file descriptor and read the
-    // /proc/self/fd symlink. MediaProvider (and most filesystem-backed
-    // DocumentsProviders) hand back an fd pointing at the real underlying
-    // file rather than a pipe, so its symlink target is the actual absolute
-    // path — this works even when every column-based query above returns
-    // null (e.g. a getMediaUri() row that doesn't back a real MediaStore
-    // entry). Restricted to /storage/ paths: a virtual/cloud provider's fd
-    // resolves to something else entirely (a pipe, a cache file under
-    // /data/...), which this must not mistake for the source folder.
-    private fun fdRealPath(uri: Uri): String? {
-        return try {
-            contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
-                val target = File("/proc/self/fd/${pfd.fd}").canonicalPath
-                target.takeIf { it.startsWith("/storage/") }
-            }
-        } catch (e: Exception) {
-            null
         }
     }
 
@@ -343,12 +330,19 @@ class MainActivity : FlutterFragmentActivity() {
     private fun queryDocumentColumns(uri: Uri): String? =
         pathFromColumns(documentColumns(uri))
 
-    // Maps a granted media-documents Uri to its underlying MediaStore content
-    // Uri (API 26+). Querying that Uri is backed by the specific per-Uri grant
-    // the picker handed us, not by row ownership, so it works for files the
-    // app doesn't own where a direct document-columns query returns nulls.
+    // Maps a granted document Uri to its underlying MediaStore content Uri
+    // (API 26+). Querying that Uri is backed by the specific per-Uri grant the
+    // picker handed us, not by row ownership, so it works for files the app
+    // doesn't own where a direct document-columns query returns nulls.
+    //
+    // getMediaUri() is documented to accept ExternalStorageProvider and
+    // MediaDocumentsProvider Uris ONLY. DownloadsProvider (`msf:` ids) is a
+    // different authority and out of contract, so it is not attempted — there
+    // is no supported way to recover a path for those, and the caller asks the
+    // user where to save instead.
     private fun mediaStoreUri(uri: Uri): Uri? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return null
+        if (uri.authority !in MEDIA_URI_AUTHORITIES) return null
         return try {
             MediaStore.getMediaUri(this, uri)
         } catch (e: Exception) {
@@ -358,41 +352,6 @@ class MainActivity : FlutterFragmentActivity() {
 
     private fun queryMediaStoreUriColumns(uri: Uri): String? =
         mediaStoreUri(uri)?.let { pathFromColumns(documentColumns(it)) }
-
-    // Resolution internals for a picked document — the decision inputs, the
-    // chosen step, and every column value that went into the answer. Used by
-    // the Dart side to explain a failed resolution on-device (dev diagnostics).
-    private fun debugResolve(uri: Uri): Map<String, String> {
-        val docId =
-            if (DocumentsContract.isDocumentUri(this, uri)) DocumentsContract.getDocumentId(uri) else ""
-        val step = DocumentPathResolver.plan(
-            authority = uri.authority,
-            docId = docId,
-            apiLevel = Build.VERSION.SDK_INT,
-            primaryRoot = primaryRoot(),
-        )
-        val media = if (step is DocumentPathResolver.Step.QueryDocumentThenById) {
-            mediaRow(step.collection, step.id)?.toString() ?: "null"
-        } else {
-            "n/a"
-        }
-        val mediaStoreCols = if (step is DocumentPathResolver.Step.QueryDocumentThenById) {
-            mediaStoreUri(uri)?.let { documentColumns(it)?.toString() ?: "null (query failed)" }
-                ?: "null (getMediaUri failed)"
-        } else {
-            "n/a"
-        }
-        return mapOf(
-            "authority" to (uri.authority ?: ""),
-            "docId" to docId,
-            "step" to step.javaClass.simpleName,
-            "path" to (resolveToFilePath(uri) ?: ""),
-            "docColumns" to (documentColumns(uri)?.toString() ?: "null"),
-            "mediaStoreUriColumns" to mediaStoreCols,
-            "mediaRow" to media,
-            "fdRealPath" to (fdRealPath(uri) ?: "null"),
-        )
-    }
 
     private fun column(c: android.database.Cursor, name: String): String? {
         val idx = c.getColumnIndex(name)
@@ -509,6 +468,17 @@ class MainActivity : FlutterFragmentActivity() {
             }
         }
         return best
+    }
+
+    // Whether Android still holds a writable persisted grant on this exact
+    // tree URI. The platform table stays the single source of truth, so a
+    // remembered URI whose grant the user has since revoked reports false and
+    // the app asks again instead of silently failing to write.
+    private fun isTreeGrantLive(treeUri: String): Boolean {
+        val target = Uri.parse(treeUri)
+        return contentResolver.persistedUriPermissions.any {
+            it.isWritePermission && it.uri == target
+        }
     }
 
     // Address a folder nested inside a granted tree. The externalstorage

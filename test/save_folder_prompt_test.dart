@@ -182,22 +182,29 @@ void main() {
     expect(result, isNull);
   });
 
-  testWidgets('dismissing the options dialog counts as declining', (
+  testWidgets('the options dialog cannot be dismissed into a silent fallback', (
     tester,
   ) async {
-    mockPickTreeReplies(['content://tree/never']);
+    mockPickTreeReplies(['content://tree/chosen']);
     String? result = 'unset';
     final run = await pumpPrompt(tester, workFolder, (r) => result = r);
     run();
     await tester.pumpAndSettle();
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
-    // Tap the barrier outside the dialog: showDialog completes with null.
+
+    // A barrier tap (like a back-press) used to complete showDialog with null,
+    // which read as "Use Downloads" — the user's files silently went somewhere
+    // they never chose. The dialog is now modal: it stays until they answer.
     await tester.tapAt(const Offset(10, 10));
     await tester.pumpAndSettle();
 
-    expect(result, isNull);
-    expect(calls, isEmpty, reason: 'no picker after a dismiss');
+    expect(find.text('Where to save'), findsOneWidget);
+    expect(result, 'unset', reason: 'still waiting on the user');
+
+    await tester.tap(find.text('Choose folder'));
+    await tester.pumpAndSettle();
+    expect(result, 'content://tree/chosen');
   });
 
   testWidgets('a picker that fails to open still offers the ways out', (
@@ -332,8 +339,13 @@ void main() {
       findsNothing,
       reason: 'no folder to grant, so no permission rationale',
     );
+    // The copy names Android as the reason rather than reading like a Latch
+    // malfunction: there is no supported way to ask which folder a document
+    // picked this way came from.
     expect(
-      find.textContaining('can\'t tell which folder these files came from'),
+      find.textContaining(
+        'Android doesn\'t tell apps which folder a file came from',
+      ),
       findsOneWidget,
     );
     expect(find.text('Use Downloads'), findsOneWidget);

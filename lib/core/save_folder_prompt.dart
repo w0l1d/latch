@@ -90,6 +90,13 @@ Future<bool> _confirmPicker(BuildContext context, String folder) async {
 
 /// The explicit destinations once the source folder is off the table. True =
 /// the user wants to pick a folder themselves; false = use Downloads.
+///
+/// A null [folder] is not a malfunction and must not read like one: when a file
+/// is picked through the picker's shortcuts (Downloads, Images, Videos…),
+/// Android hands the app that one document and deliberately nothing about the
+/// folder holding it — there is no supported way to ask. So the copy explains
+/// the situation plainly and leads with the action that fixes it (choosing a
+/// folder grants access, and Android remembers that grant for next time).
 Future<bool> _chooseCustomFolder(BuildContext context, String? folder) async {
   final choose = await showDialog<bool>(
     context: context,
@@ -101,9 +108,10 @@ Future<bool> _chooseCustomFolder(BuildContext context, String? folder) async {
       title: const Text('Where to save'),
       content: Text(
         folder == null
-            ? 'Latch can\'t tell which folder these files came from. Save to '
-                  'your Downloads folder, or choose a folder yourself.'
-                  '${_debugSuffix()}'
+            ? 'Android doesn\'t tell apps which folder a file came from when '
+                  'it\'s picked this way, so Latch can\'t save next to it '
+                  'automatically. Choose a folder to save into — Latch will '
+                  'remember it — or use your Downloads folder.'
             : 'Without access to "${p.basename(folder)}" — the folder these '
                   'files came from — files go to your Downloads folder. You '
                   'can also choose a different folder.',
@@ -113,7 +121,7 @@ Future<bool> _chooseCustomFolder(BuildContext context, String? folder) async {
           onPressed: () => Navigator.pop(ctx, false),
           child: const Text('Use Downloads'),
         ),
-        TextButton(
+        FilledButton(
           onPressed: () => Navigator.pop(ctx, true),
           child: const Text('Choose folder'),
         ),
@@ -121,11 +129,4 @@ Future<bool> _chooseCustomFolder(BuildContext context, String? folder) async {
     ),
   );
   return choose == true;
-}
-
-/// DEV DIAGNOSTIC: appends the native resolution detail to the "can't tell
-/// which folder" message so a screenshot of the dialog is enough evidence.
-String _debugSuffix() {
-  final detail = SafBridge.lastResolutionFailure;
-  return detail == null ? '' : '\n\n[DEV] $detail';
 }
