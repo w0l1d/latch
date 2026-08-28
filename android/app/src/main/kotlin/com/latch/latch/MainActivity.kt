@@ -193,10 +193,19 @@ class MainActivity : FlutterFragmentActivity() {
         return when (step) {
             is DocumentPathResolver.Step.Direct -> step.path
             is DocumentPathResolver.Step.QueryDocumentThenById ->
-                // Document columns first: they are backed by the URI grant,
-                // while a MediaStore table query is ownership-filtered to rows
-                // the app created on API 29+ and can miss other apps' files.
-                queryDocumentColumns(uri) ?: queryMediaPath(step.collection, step.id)
+                // The media-documents provider's own document columns (queried
+                // directly) don't expose RELATIVE_PATH/DATA — those overlap
+                // with DocumentsContract's own columns only in name, not
+                // content, so they come back null. MediaStore.getMediaUri()
+                // is the documented bridge: it maps this SAME granted
+                // document Uri to its underlying MediaStore content Uri,
+                // and querying THAT Uri is backed by the per-URI grant, not
+                // ownership — unlike a table query by id, which is
+                // ownership-filtered on API 29+ and misses files the app
+                // doesn't own (e.g. anything downloaded by Chrome).
+                queryMediaStoreUriColumns(uri)
+                    ?: queryDocumentColumns(uri)
+                    ?: queryMediaPath(step.collection, step.id)
             is DocumentPathResolver.Step.QueryDocument -> queryDocumentColumns(uri)
             is DocumentPathResolver.Step.Unknown -> null
         }
@@ -313,6 +322,22 @@ class MainActivity : FlutterFragmentActivity() {
     private fun queryDocumentColumns(uri: Uri): String? =
         pathFromColumns(documentColumns(uri))
 
+    // Maps a granted media-documents Uri to its underlying MediaStore content
+    // Uri (API 26+). Querying that Uri is backed by the specific per-Uri grant
+    // the picker handed us, not by row ownership, so it works for files the
+    // app doesn't own where a direct document-columns query returns nulls.
+    private fun mediaStoreUri(uri: Uri): Uri? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return null
+        return try {
+            MediaStore.getMediaUri(this, uri)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun queryMediaStoreUriColumns(uri: Uri): String? =
+        mediaStoreUri(uri)?.let { pathFromColumns(documentColumns(it)) }
+
     // Resolution internals for a picked document — the decision inputs, the
     // chosen step, and every column value that went into the answer. Used by
     // the Dart side to explain a failed resolution on-device (dev diagnostics).
@@ -330,12 +355,19 @@ class MainActivity : FlutterFragmentActivity() {
         } else {
             "n/a"
         }
+        val mediaStoreCols = if (step is DocumentPathResolver.Step.QueryDocumentThenById) {
+            mediaStoreUri(uri)?.let { documentColumns(it)?.toString() ?: "null (query failed)" }
+                ?: "null (getMediaUri failed)"
+        } else {
+            "n/a"
+        }
         return mapOf(
             "authority" to (uri.authority ?: ""),
             "docId" to docId,
             "step" to step.javaClass.simpleName,
             "path" to (resolveToFilePath(uri) ?: ""),
             "docColumns" to (documentColumns(uri)?.toString() ?: "null"),
+            "mediaStoreUriColumns" to mediaStoreCols,
             "mediaRow" to media,
         )
     }
