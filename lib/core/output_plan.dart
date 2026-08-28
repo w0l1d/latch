@@ -154,6 +154,14 @@ class OutputPlanner {
       return OutputTarget(treeUri: existing.treeUri, subPath: existing.subPath);
     }
 
+    // Android forbids ACTION_OPEN_DOCUMENT_TREE grants on the top-level
+    // Download directory itself (unlike its subfolders, which are grantable
+    // normally). Asking would only show the picker seeded there with no way
+    // to actually grant it — skip straight to the Downloads fallback, which
+    // is already how DefaultOutput treats this folder (directly writable,
+    // no grant needed).
+    if (_isTopLevelDownloadDir(folder)) return const OutputTarget();
+
     if (requestGrant == null) return const OutputTarget();
     final picked = await requestGrant(folder);
     if (picked == null) return const OutputTarget();
@@ -165,6 +173,17 @@ class OutputPlanner {
       return OutputTarget(treeUri: picked);
     }
     return OutputTarget(treeUri: resolved.treeUri, subPath: resolved.subPath);
+  }
+
+  /// True only for the top-level Download directory itself, not a subfolder
+  /// inside it — Android's SAF tree-grant restriction applies to the exact
+  /// directory, not its contents.
+  static bool _isTopLevelDownloadDir(String folder) {
+    final normalized = p.normalize(folder);
+    return const [
+      '/storage/emulated/0/Download',
+      '/sdcard/Download',
+    ].contains(normalized);
   }
 
   static Future<void> _resetDir(String dir) async {

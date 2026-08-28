@@ -62,6 +62,10 @@ Future<String?> _pickTree(String? folder) async {
 Future<bool> _confirmPicker(BuildContext context, String folder) async {
   final proceed = await showDialog<bool>(
     context: context,
+    // Dismissing (back press / tap outside) must not be treated as an
+    // explicit choice — see the "Never a silent Downloads fallback" note
+    // above, which a default-dismissible dialog would otherwise violate.
+    barrierDismissible: false,
     builder: (ctx) => AlertDialog(
       title: const Text('Save beside the originals?'),
       content: Text(
@@ -89,12 +93,17 @@ Future<bool> _confirmPicker(BuildContext context, String folder) async {
 Future<bool> _chooseCustomFolder(BuildContext context, String? folder) async {
   final choose = await showDialog<bool>(
     context: context,
+    // Same reasoning as _confirmPicker: this dialog's two buttons are the
+    // only valid outcomes. A dismiss must not silently resolve to "Use
+    // Downloads".
+    barrierDismissible: false,
     builder: (ctx) => AlertDialog(
       title: const Text('Where to save'),
       content: Text(
         folder == null
             ? 'Latch can\'t tell which folder these files came from. Save to '
                   'your Downloads folder, or choose a folder yourself.'
+                  '${_debugSuffix()}'
             : 'Without access to "${p.basename(folder)}" — the folder these '
                   'files came from — files go to your Downloads folder. You '
                   'can also choose a different folder.',
@@ -112,4 +121,11 @@ Future<bool> _chooseCustomFolder(BuildContext context, String? folder) async {
     ),
   );
   return choose == true;
+}
+
+/// DEV DIAGNOSTIC: appends the native resolution detail to the "can't tell
+/// which folder" message so a screenshot of the dialog is enough evidence.
+String _debugSuffix() {
+  final detail = SafBridge.lastResolutionFailure;
+  return detail == null ? '' : '\n\n[DEV] $detail';
 }
