@@ -206,8 +206,29 @@ class MainActivity : FlutterFragmentActivity() {
                 queryMediaStoreUriColumns(uri)
                     ?: queryDocumentColumns(uri)
                     ?: queryMediaPath(step.collection, step.id)
-            is DocumentPathResolver.Step.QueryDocument -> queryDocumentColumns(uri)
+                    ?: fdRealPath(uri)
+            is DocumentPathResolver.Step.QueryDocument -> queryDocumentColumns(uri) ?: fdRealPath(uri)
             is DocumentPathResolver.Step.Unknown -> null
+        }
+    }
+
+    // Last resort: open the document's own file descriptor and read the
+    // /proc/self/fd symlink. MediaProvider (and most filesystem-backed
+    // DocumentsProviders) hand back an fd pointing at the real underlying
+    // file rather than a pipe, so its symlink target is the actual absolute
+    // path — this works even when every column-based query above returns
+    // null (e.g. a getMediaUri() row that doesn't back a real MediaStore
+    // entry). Restricted to /storage/ paths: a virtual/cloud provider's fd
+    // resolves to something else entirely (a pipe, a cache file under
+    // /data/...), which this must not mistake for the source folder.
+    private fun fdRealPath(uri: Uri): String? {
+        return try {
+            contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+                val target = File("/proc/self/fd/${pfd.fd}").canonicalPath
+                target.takeIf { it.startsWith("/storage/") }
+            }
+        } catch (e: Exception) {
+            null
         }
     }
 
@@ -369,6 +390,7 @@ class MainActivity : FlutterFragmentActivity() {
             "docColumns" to (documentColumns(uri)?.toString() ?: "null"),
             "mediaStoreUriColumns" to mediaStoreCols,
             "mediaRow" to media,
+            "fdRealPath" to (fdRealPath(uri) ?: "null"),
         )
     }
 
