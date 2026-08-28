@@ -337,14 +337,13 @@ void main() {
 class _FixedCrypto implements CryptoPort {
   _FixedCrypto({
     required this.delegate,
-    required SodiumSumo sodium,
+    required this.sodium,
     required List<Uint8List> randomSequence,
     required this.secretboxNonce,
-  }) : _sodium = sodium,
-       _random = List.of(randomSequence);
+  }) : _random = List.of(randomSequence);
 
   final SodiumCryptoAdapter delegate;
-  final SodiumSumo _sodium;
+  final SodiumSumo sodium;
   final Uint8List secretboxNonce;
   final List<Uint8List> _random;
 
@@ -367,9 +366,9 @@ class _FixedCrypto implements CryptoPort {
   Uint8List secretboxSeal(Uint8List plaintext, Uint8List key) {
     // Same wire layout as SodiumCryptoAdapter.secretboxSeal
     // (nonce ‖ MAC ‖ ciphertext), but with the fixed nonce.
-    final secureKey = SecureKey.fromList(_sodium, key);
+    final secureKey = SecureKey.fromList(sodium, key);
     try {
-      final encrypted = _sodium.crypto.secretBox.easy(
+      final encrypted = sodium.crypto.secretBox.easy(
         message: plaintext,
         nonce: secretboxNonce,
         key: secureKey,
