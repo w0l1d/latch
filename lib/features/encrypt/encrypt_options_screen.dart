@@ -69,13 +69,19 @@ class _EncryptOptionsScreenState extends State<EncryptOptionsScreen> {
     if (_isAndroid) {
       // Grant a folder the app can create output files in (ACTION_OPEN_-
       // DOCUMENT_TREE). The single-file picker can't grant this. Start the
-      // picker at the folder the files came from (best-effort: unresolvable
-      // or share-intent sources leave it unseeded).
+      // picker at the folder the files came from — by path when Android will
+      // name it, else by the picked document's own URI, whose parent the
+      // system navigator resolves for us (see [SafBridge.pickTree]). Only a
+      // source with neither (a share intent) leaves the picker unseeded.
       final seed = await SafBridge.realDirectoryFor(widget.files.first);
+      final docSeed = SafBridge.uriFor(widget.files.first);
       if (!mounted) return;
       String? treeUri;
       try {
-        treeUri = await SafBridge.pickTree(initialPath: seed);
+        treeUri = await SafBridge.pickTree(
+          initialPath: seed,
+          initialDocUri: docSeed,
+        );
       } catch (_) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(

@@ -2,10 +2,12 @@ package com.latch.latch
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.provider.DocumentsContract
 import android.provider.MediaStore
+import android.util.Log
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import io.flutter.embedding.android.FlutterFragmentActivity
@@ -17,6 +19,14 @@ import java.io.FileOutputStream
 // local_auth's biometric prompt requires a FragmentActivity host — with a
 // plain FlutterActivity every authenticate() call throws no_fragment_activity.
 class MainActivity : FlutterFragmentActivity() {
+
+    private companion object {
+        // The only authorities MediaStore.getMediaUri() is documented to accept.
+        val MEDIA_URI_AUTHORITIES = setOf(
+            ExternalStorageDocIds.AUTHORITY,
+            "com.android.providers.media.documents",
+        )
+    }
 
     // ACTION_OPEN_DOCUMENT_TREE round-trips through an activity result, so the
     // pending MethodChannel result is parked here until the picker returns.
@@ -34,11 +44,22 @@ class MainActivity : FlutterFragmentActivity() {
             val treeUri = if (res.resultCode == RESULT_OK) res.data?.data else null
             if (treeUri != null) {
                 // Persist the grant so it survives process death / restarts.
-                contentResolver.takePersistableUriPermission(
-                    treeUri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
-                )
+                //
+                // Some devices don't implement this properly and throw (or
+                // silently fail to persist). That must not take the batch down
+                // with it — an exception here would escape the activity-result
+                // callback and leave the parked MethodChannel result unanswered
+                // forever. The grant is still live for this process, so outputs
+                // land in the right folder now; the next batch just asks again,
+                // since existingTreeGrant reads the platform's persisted table
+                // and reports a grant that didn't stick as absent.
+                runCatching {
+                    contentResolver.takePersistableUriPermission(
+                        treeUri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                            Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                    )
+                }
                 r?.success(treeUri.toString())
             } else {
                 r?.success(null) // user cancelled or no data
@@ -107,7 +128,8 @@ class MainActivity : FlutterFragmentActivity() {
                             // callback; do NOT complete `result` here.
                             "openTree" -> {
                                 val initial = call.argument<String>("initialPath")
-                                runOnUiThread { launchOpenTree(initial, result) }
+                                val initialDoc = call.argument<String>("initialDocUri")
+                                runOnUiThread { launchOpenTree(initial, initialDoc, result) }
                             }
                             // Filesystem path a granted tree points at, so a grant
                             // can be matched to a source folder. Null for providers
@@ -122,6 +144,15 @@ class MainActivity : FlutterFragmentActivity() {
                             "existingTreeGrant" -> {
                                 val folder = call.argument<String>("folder")!!
                                 runOnUiThread { result.success(existingTreeGrant(folder)) }
+                            }
+                            // Whether Android still holds a writable grant on this
+                            // exact tree. Lets the app reuse a destination the user
+                            // chose earlier for sources whose folder can't be
+                            // resolved, without ever TRUSTING a remembered URI: the
+                            // platform's own table is still the authority.
+                            "isTreeGrantLive" -> {
+                                val uri = call.argument<String>("uri")!!
+                                runOnUiThread { result.success(isTreeGrantLive(uri)) }
                             }
                             // Create a new document in a granted tree and copy the
                             // staged file into it. Returns the new document URI and
@@ -154,72 +185,227 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     // Only providers that genuinely front filesystem files are mapped;
-    // anything else (media store, cloud providers) returns null and the
-    // caller falls back to the Downloads default.
+    // anything else (cloud providers) returns null and the caller falls back
+    // to the Downloads default. Paths come from the document's own metadata —
+    // the path-shaped externalstorage ids, or the MediaStore row behind
+    // Downloads' msf: ids and the picker's media shortcuts — never from a
+    // filesystem stat, which scoped storage denies for non-media files on
+    // API 30+. Row-id steps query the document's own columns first (backed by
+    // the URI grant) and only then the MediaStore table, which scoped storage
+    // ownership-filters on API 29+ — the table can miss a file another app
+    // owns (e.g. anything downloaded by Chrome). The provider→step decision
+    // table lives in DocumentPathResolver (framework-free, JVM-pinned); this
+    // executes the returned step.
     private fun resolveToFilePath(uri: Uri): String? {
         if (uri.scheme == "file") return uri.path
         if (!DocumentsContract.isDocumentUri(this, uri)) return null
         val docId = DocumentsContract.getDocumentId(uri)
-        return when (uri.authority) {
-            ExternalStorageDocIds.AUTHORITY -> existingPath(docId)
-            "com.android.providers.downloads.documents" ->
-                if (docId.startsWith("raw:")) docId.removePrefix("raw:") else dataColumnPath(uri)
-            else -> dataColumnPath(uri)
+        val step = DocumentPathResolver.plan(
+            authority = uri.authority,
+            docId = docId,
+            apiLevel = Build.VERSION.SDK_INT,
+            primaryRoot = primaryRoot(),
+        )
+        Log.i(
+            "LatchSaf",
+            "resolvePath ${uri.authority} / $docId -> ${step.javaClass.simpleName}",
+        )
+        return when (step) {
+            is DocumentPathResolver.Step.Direct -> step.path
+            is DocumentPathResolver.Step.QueryDocumentThenById ->
+                // The media-documents provider's own document columns (queried
+                // directly) don't expose RELATIVE_PATH/DATA — those overlap
+                // with DocumentsContract's own columns only in name, not
+                // content, so they come back null. MediaStore.getMediaUri()
+                // is the documented bridge: it maps this SAME granted
+                // document Uri to its underlying MediaStore content Uri,
+                // and querying THAT Uri is backed by the per-URI grant, not
+                // ownership — unlike a table query by id, which is
+                // ownership-filtered on API 29+ and misses files the app
+                // doesn't own (e.g. anything downloaded by Chrome).
+                queryMediaStoreUriColumns(uri)
+                    ?: queryDocumentColumns(uri)
+                    ?: queryMediaPath(step.collection, step.id)
+            is DocumentPathResolver.Step.QueryDocument -> queryDocumentColumns(uri)
+            is DocumentPathResolver.Step.Unknown -> null
         }
-    }
-
-    // The path an externalstorage document id addresses, but only if something
-    // is actually there — a document id can outlive the file (SD card pulled,
-    // folder deleted), and a path that doesn't exist would be matched against
-    // source folders as if it were live.
-    private fun existingPath(docId: String): String? {
-        val path = ExternalStorageDocIds.toPath(docId, primaryRoot()) ?: return null
-        return if (File(path).exists()) path else null
     }
 
     private fun primaryRoot(): String =
         Environment.getExternalStorageDirectory().absolutePath
 
-    // Last resort for providers that front real files but don't encode the path
-    // in their document id — Downloads' `msf:<id>` documents and MediaStore
-    // documents both expose `_data`. Cloud/virtual providers don't, and then
-    // this is null (caller treats the source folder as unknown).
-    private fun dataColumnPath(uri: Uri): String? {
+    private fun collectionUri(collection: DocumentPathResolver.Collection): Uri {
+        @Suppress("DEPRECATION") // the string overload is the all-API way here
+        return when (collection) {
+            DocumentPathResolver.Collection.DOWNLOADS ->
+                MediaStore.Downloads.EXTERNAL_CONTENT_URI
+            DocumentPathResolver.Collection.IMAGES ->
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+            DocumentPathResolver.Collection.VIDEO ->
+                MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+            DocumentPathResolver.Collection.AUDIO ->
+                MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+            DocumentPathResolver.Collection.FILES ->
+                MediaStore.Files.getContentUri("external")
+        }
+    }
+
+    // Raw column values of the MediaStore row with this id in [collection], or
+    // null when the row is gone or not queryable.
+    private fun mediaRow(
+        collection: DocumentPathResolver.Collection,
+        id: String,
+    ): Map<String, String?>? {
         return try {
             contentResolver.query(
-                uri,
-                arrayOf(MediaStore.MediaColumns.DATA),
-                null,
-                null,
+                collectionUri(collection),
+                arrayOf(
+                    MediaStore.MediaColumns.RELATIVE_PATH,
+                    MediaStore.MediaColumns.DISPLAY_NAME,
+                    MediaStore.MediaColumns.DATA,
+                    MediaStore.MediaColumns.VOLUME_NAME,
+                ),
+                "${MediaStore.MediaColumns._ID}=?",
+                arrayOf(id),
                 null,
             )?.use { c ->
-                val idx = c.getColumnIndex(MediaStore.MediaColumns.DATA)
-                if (idx < 0 || !c.moveToFirst()) return@use null
-                val path = c.getString(idx) ?: return@use null
-                if (File(path).exists()) path else null
+                if (!c.moveToFirst()) return@use null
+                rowColumns(c)
             }
         } catch (e: Exception) {
             null
         }
     }
 
-    // Launch the folder picker, seeding it at [initialPath] when we can build an
-    // externalstorage document URI for it, and park [result] for the callback.
-    private fun launchOpenTree(initialPath: String?, result: MethodChannel.Result) {
+    // Raw column values of the picked document itself. Backed by the URI grant,
+    // so — unlike [mediaRow] — it is not ownership-filtered and works for files
+    // the app doesn't own (e.g. anything downloaded by Chrome).
+    private fun documentColumns(uri: Uri): Map<String, String?>? {
+        return try {
+            contentResolver.query(
+                uri,
+                arrayOf(
+                    MediaStore.MediaColumns.RELATIVE_PATH,
+                    MediaStore.MediaColumns.DISPLAY_NAME,
+                    MediaStore.MediaColumns.DATA,
+                    MediaStore.MediaColumns.VOLUME_NAME,
+                ),
+                null,
+                null,
+                null,
+            )?.use { c ->
+                if (!c.moveToFirst()) return@use null
+                rowColumns(c)
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun rowColumns(c: android.database.Cursor): Map<String, String?> = mapOf(
+        "relative_path" to column(c, MediaStore.MediaColumns.RELATIVE_PATH),
+        "display_name" to column(c, MediaStore.MediaColumns.DISPLAY_NAME),
+        "data" to column(c, MediaStore.MediaColumns.DATA),
+        "volume_name" to column(c, MediaStore.MediaColumns.VOLUME_NAME),
+    )
+
+    // A filesystem path from raw column values: RELATIVE_PATH + DISPLAY_NAME
+    // (API 29+, where _data is hidden for files the app doesn't own) or _data
+    // (older APIs / app-owned rows). Non-primary volumes (SD cards) mount under
+    // /storage/<volume>, so VOLUME_NAME is respected when present. Null when no
+    // path can be derived — the caller treats the source folder as unknown and
+    // asks the user where to save.
+    private fun pathFromColumns(cols: Map<String, String?>?): String? {
+        if (cols == null) return null
+        val rel = cols["relative_path"]
+        val name = cols["display_name"]
+        if (rel != null && name != null) {
+            val root = cols["volume_name"]
+                ?.takeIf { it.isNotEmpty() && it != MediaStore.VOLUME_EXTERNAL_PRIMARY }
+                ?.let { "/storage/$it" } ?: primaryRoot()
+            return DocumentPathResolver.joinPath(root, rel, name)
+        }
+        return cols["data"]
+    }
+
+    // The filesystem path of MediaStore row [id] in [collection]. Null when the
+    // row is gone or no path can be derived.
+    private fun queryMediaPath(
+        collection: DocumentPathResolver.Collection,
+        id: String,
+    ): String? = pathFromColumns(mediaRow(collection, id))
+
+    // Last resort for providers that front real files but don't encode the path
+    // in their document id — unknown/OEM providers, and Downloads' `msf:` ids
+    // before Q. Never stats the filesystem — a denied stat proves nothing about
+    // the file's existence.
+    private fun queryDocumentColumns(uri: Uri): String? =
+        pathFromColumns(documentColumns(uri))
+
+    // Maps a granted document Uri to its underlying MediaStore content Uri
+    // (API 26+). Querying that Uri is backed by the specific per-Uri grant the
+    // picker handed us, not by row ownership, so it works for files the app
+    // doesn't own where a direct document-columns query returns nulls.
+    //
+    // getMediaUri() is documented to accept ExternalStorageProvider and
+    // MediaDocumentsProvider Uris ONLY. DownloadsProvider (`msf:` ids) is a
+    // different authority and out of contract, so it is not attempted — there
+    // is no supported way to recover a path for those, and the caller asks the
+    // user where to save instead.
+    private fun mediaStoreUri(uri: Uri): Uri? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return null
+        if (uri.authority !in MEDIA_URI_AUTHORITIES) return null
+        return try {
+            MediaStore.getMediaUri(this, uri)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun queryMediaStoreUriColumns(uri: Uri): String? =
+        mediaStoreUri(uri)?.let { pathFromColumns(documentColumns(it)) }
+
+    private fun column(c: android.database.Cursor, name: String): String? {
+        val idx = c.getColumnIndex(name)
+        return if (idx >= 0) c.getString(idx) else null
+    }
+
+    // Launch the folder picker and park [result] for the callback.
+    //
+    // Seeding, in order: a path we resolved (points the picker straight at that
+    // folder), else the picked document's own content:// URI. That second seed
+    // is the only one available for the providers whose folder can't be
+    // resolved at all (the picker's Downloads/Images/Videos shortcuts), and it
+    // works because EXTRA_INITIAL_URI accepts a *document* URI and the system's
+    // document navigator resolves its parent for us — DocumentsUI is privileged
+    // and holds MANAGE_DOCUMENTS, so it can do the child→parent lookup this app
+    // provably cannot. Without it those sources open the picker at the storage
+    // root and the user has to find the folder by hand.
+    //
+    // Both seeds are best-effort by contract ("the initial location is system
+    // specific if ... document navigator failed to locate the desired initial
+    // location"), and some OEM pickers ignore the extra outright. A seed that
+    // is ignored costs nothing — the picker opens where it would have anyway —
+    // so nothing here may depend on it having worked.
+    private fun launchOpenTree(
+        initialPath: String?,
+        initialDocUri: String?,
+        result: MethodChannel.Result,
+    ) {
         if (pendingTreeResult != null) {
             result.error("saf_busy", "a folder picker is already open", null)
             return
         }
         pendingTreeResult = result
+        val seed = initialPath?.let { initialTreeUri(it) }
+            ?: initialDocUri?.let { runCatching { Uri.parse(it) }.getOrNull() }
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
             addFlags(
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or
                     Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
                     Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION,
             )
-            initialPath?.let { p ->
-                initialTreeUri(p)?.let { putExtra(DocumentsContract.EXTRA_INITIAL_URI, it) }
-            }
+            seed?.let { putExtra(DocumentsContract.EXTRA_INITIAL_URI, it) }
         }
         try {
             openTreeLauncher.launch(intent)
@@ -268,10 +454,16 @@ class MainActivity : FlutterFragmentActivity() {
 
     // Filesystem path a granted tree URI resolves to (same mapping as
     // resolveToFilePath, but on the TREE document id). Null when it doesn't
-    // front a real folder.
+    // front a real folder. No existence check: scoped storage hides non-media
+    // paths from direct stat on API 30+, and a stale grant (folder deleted) is
+    // caught anyway at createDocument time — the write fails and the caller
+    // falls back to Downloads with a notice.
     private fun treeUriToPath(treeUri: Uri): String? {
         if (treeUri.authority != ExternalStorageDocIds.AUTHORITY) return null
-        return existingPath(DocumentsContract.getTreeDocumentId(treeUri))
+        return ExternalStorageDocIds.toPath(
+            DocumentsContract.getTreeDocumentId(treeUri),
+            primaryRoot(),
+        )
     }
 
     // A persisted folder grant that already covers [folderPath] — the folder
@@ -307,6 +499,17 @@ class MainActivity : FlutterFragmentActivity() {
             }
         }
         return best
+    }
+
+    // Whether Android still holds a writable persisted grant on this exact
+    // tree URI. The platform table stays the single source of truth, so a
+    // remembered URI whose grant the user has since revoked reports false and
+    // the app asks again instead of silently failing to write.
+    private fun isTreeGrantLive(treeUri: String): Boolean {
+        val target = Uri.parse(treeUri)
+        return contentResolver.persistedUriPermissions.any {
+            it.isWritePermission && it.uri == target
+        }
     }
 
     // Address a folder nested inside a granted tree. The externalstorage

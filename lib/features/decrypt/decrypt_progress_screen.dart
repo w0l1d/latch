@@ -81,9 +81,9 @@ class _DecryptProgressScreenState extends State<DecryptProgressScreen> {
       // worker writes directly beside each original / to the platform default.
       _plan = await OutputPlanner.plan(
         widget.files,
-        requestGrant: (folder) async {
+        requestGrant: (folder, sourcePath) async {
           if (!mounted || _cancelled) return null;
-          return promptSaveFolder(context, folder);
+          return promptSaveFolder(context, folder, sourcePath: sourcePath);
         },
       );
       outputDir = _plan!.outputDir;

@@ -41,14 +41,17 @@ void main() {
   Future<void Function()> pumpPrompt(
     WidgetTester tester,
     String? folder,
-    void Function(String?) onResult,
-  ) async {
+    void Function(String?) onResult, {
+    String? sourcePath,
+  }) async {
     late VoidCallback run;
     await tester.pumpWidget(
       MaterialApp(
         home: Builder(
           builder: (context) {
-            run = () async => onResult(await promptSaveFolder(context, folder));
+            run = () async => onResult(
+              await promptSaveFolder(context, folder, sourcePath: sourcePath),
+            );
             return const SizedBox();
           },
         ),
@@ -81,7 +84,7 @@ void main() {
     expect(calls.single.method, 'openTree');
     expect(
       calls.single.arguments,
-      {'initialPath': workFolder},
+      {'initialPath': workFolder, 'initialDocUri': null},
       reason: 'the picker starts at the folder the files came from',
     );
     expect(result, 'content://tree/granted');
@@ -158,7 +161,7 @@ void main() {
       expect(calls.single.method, 'openTree');
       expect(
         calls.single.arguments,
-        {'initialPath': workFolder},
+        {'initialPath': workFolder, 'initialDocUri': null},
         reason: 'the custom-location picker starts where the files came from',
       );
       expect(result, 'content://tree/custom');
@@ -182,22 +185,29 @@ void main() {
     expect(result, isNull);
   });
 
-  testWidgets('dismissing the options dialog counts as declining', (
+  testWidgets('the options dialog cannot be dismissed into a silent fallback', (
     tester,
   ) async {
-    mockPickTreeReplies(['content://tree/never']);
+    mockPickTreeReplies(['content://tree/chosen']);
     String? result = 'unset';
     final run = await pumpPrompt(tester, workFolder, (r) => result = r);
     run();
     await tester.pumpAndSettle();
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
-    // Tap the barrier outside the dialog: showDialog completes with null.
+
+    // A barrier tap (like a back-press) used to complete showDialog with null,
+    // which read as "Use Downloads" — the user's files silently went somewhere
+    // they never chose. The dialog is now modal: it stays until they answer.
     await tester.tapAt(const Offset(10, 10));
     await tester.pumpAndSettle();
 
-    expect(result, isNull);
-    expect(calls, isEmpty, reason: 'no picker after a dismiss');
+    expect(find.text('Where to save'), findsOneWidget);
+    expect(result, 'unset', reason: 'still waiting on the user');
+
+    await tester.tap(find.text('Choose folder'));
+    await tester.pumpAndSettle();
+    expect(result, 'content://tree/chosen');
   });
 
   testWidgets('a picker that fails to open still offers the ways out', (
@@ -332,8 +342,13 @@ void main() {
       findsNothing,
       reason: 'no folder to grant, so no permission rationale',
     );
+    // The copy names Android as the reason rather than reading like a Latch
+    // malfunction: there is no supported way to ask which folder a document
+    // picked this way came from.
     expect(
-      find.textContaining('can\'t tell which folder these files came from'),
+      find.textContaining(
+        'Android doesn\'t tell apps which folder a file came from',
+      ),
       findsOneWidget,
     );
     expect(find.text('Use Downloads'), findsOneWidget);
@@ -342,7 +357,7 @@ void main() {
   });
 
   testWidgets(
-    'an unknown folder picks a destination with the picker unseeded',
+    'an unknown folder with no document URI leaves the picker unseeded',
     (tester) async {
       mockPickTreeReplies(['content://tree/anywhere']);
       String? result;
@@ -352,8 +367,73 @@ void main() {
       await tester.tap(find.text('Choose folder'));
       await tester.pumpAndSettle();
 
-      expect(calls.single.arguments, {'initialPath': null});
+      expect(calls.single.arguments, {
+        'initialPath': null,
+        'initialDocUri': null,
+      });
       expect(result, 'content://tree/anywhere');
     },
   );
+
+  // The whole point of the document seed: for sources whose folder Android
+  // refuses to name (the picker's Downloads/Images/Videos shortcuts) the app
+  // has no path to seed with, but it still holds the picked document's own
+  // content:// URI — and EXTRA_INITIAL_URI accepts a document URI, letting the
+  // *system* navigator resolve its parent. Without this the user lands at the
+  // storage root and has to find the folder by hand.
+  testWidgets('an unknown folder seeds the picker with the source document', (
+    tester,
+  ) async {
+    const picked = '/data/user/0/com.latch.latch/cache/file_picker/report.pdf';
+    const docUri =
+        'content://com.android.providers.downloads.documents/'
+        'document/msf%3A1000000123';
+    SafBridge.rememberUri(picked, docUri);
+
+    mockPickTreeReplies(['content://tree/resolved-by-system']);
+    String? result;
+    final run = await pumpPrompt(
+      tester,
+      null,
+      (r) => result = r,
+      sourcePath: picked,
+    );
+    run();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Choose folder'));
+    await tester.pumpAndSettle();
+
+    expect(calls.single.arguments, {
+      'initialPath': null,
+      'initialDocUri': docUri,
+    });
+    expect(result, 'content://tree/resolved-by-system');
+  });
+
+  testWidgets('a resolved folder still passes the document as a second seed', (
+    tester,
+  ) async {
+    const picked = '/data/user/0/com.latch.latch/cache/file_picker/notes.txt';
+    const docUri =
+        'content://com.android.externalstorage.documents/'
+        'document/primary%3ADocuments%2FWork%2Fnotes.txt';
+    SafBridge.rememberUri(picked, docUri);
+
+    mockPickTreeReplies(['content://tree/granted']);
+    final run = await pumpPrompt(
+      tester,
+      workFolder,
+      (_) {},
+      sourcePath: picked,
+    );
+    run();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
+
+    expect(calls.single.arguments, {
+      'initialPath': workFolder,
+      'initialDocUri': docUri,
+    });
+  });
 }

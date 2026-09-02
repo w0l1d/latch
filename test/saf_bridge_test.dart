@@ -109,17 +109,23 @@ void main() {
   });
 
   group('SafBridge tree grants', () {
-    test('pickTree forwards the initial path', () async {
+    test('pickTree forwards both picker seeds', () async {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(SafBridge.channel, (call) async {
             calls.add(call);
             return 'content://tree/primary%3ADocuments';
           });
 
-      final uri = await SafBridge.pickTree(initialPath: '/storage/x/Documents');
+      final uri = await SafBridge.pickTree(
+        initialPath: '/storage/x/Documents',
+        initialDocUri: 'content://doc/1',
+      );
       expect(uri, 'content://tree/primary%3ADocuments');
       expect(calls.single.method, 'openTree');
-      expect(calls.single.arguments, {'initialPath': '/storage/x/Documents'});
+      expect(calls.single.arguments, {
+        'initialPath': '/storage/x/Documents',
+        'initialDocUri': 'content://doc/1',
+      });
     });
 
     test('treeUriToPath returns null on platform failure', () async {

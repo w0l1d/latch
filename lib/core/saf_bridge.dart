@@ -91,10 +91,24 @@ class SafBridge {
   // keeps no copy: one could outlive the grant it names, and then the app would
   // skip the prompt for a folder it can no longer write to.
 
-  /// Prompt the user to grant a folder, seeding the picker at [initialPath].
-  /// Returns the granted tree URI, or null if they cancelled.
-  static Future<String?> pickTree({String? initialPath}) =>
-      channel.invokeMethod<String>('openTree', {'initialPath': initialPath});
+  /// Prompt the user to grant a folder. Returns the granted tree URI, or null
+  /// if they cancelled.
+  ///
+  /// The picker is seeded at [initialPath] when a folder was resolved, else at
+  /// [initialDocUri] — the picked document's own `content://` URI, whose parent
+  /// the *system* resolves (`EXTRA_INITIAL_URI` accepts a document URI and the
+  /// document navigator is privileged enough to look up its parent, which this
+  /// app is not). That is the only seed available for sources whose folder
+  /// can't be resolved, and it is what stops those landing the user at the
+  /// storage root. Seeding is best-effort — an ignored seed just means the
+  /// picker opens wherever it would have.
+  static Future<String?> pickTree({
+    String? initialPath,
+    String? initialDocUri,
+  }) => channel.invokeMethod<String>('openTree', {
+    'initialPath': initialPath,
+    'initialDocUri': initialDocUri,
+  });
 
   /// Filesystem path a granted tree URI points at, or null when the provider
   /// doesn't front a real folder. Best-effort: never throws.
@@ -132,6 +146,24 @@ class SafBridge {
       );
     } catch (_) {
       return null;
+    }
+  }
+
+  /// Whether Android still holds a writable grant on this exact [treeUri].
+  ///
+  /// Lets the app reuse a destination the user chose earlier for sources whose
+  /// folder can't be resolved at all, without ever *trusting* the remembered
+  /// URI: the platform's persisted-permission table stays the authority, so a
+  /// revoked grant reports false and the user is asked again. Best-effort:
+  /// never throws — an unanswerable question means "ask the user".
+  static Future<bool> isTreeGrantLive(String treeUri) async {
+    try {
+      final live = await channel.invokeMethod<bool>('isTreeGrantLive', {
+        'uri': treeUri,
+      });
+      return live ?? false;
+    } catch (_) {
+      return false;
     }
   }
 

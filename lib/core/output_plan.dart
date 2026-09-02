@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'app_crypto.dart';
 import 'default_output.dart';
 import 'saf_bridge.dart';
+import 'unresolved_destination.dart';
 
 /// Where one source file's output should ultimately land (Android only).
 class OutputTarget {
@@ -75,12 +76,14 @@ class OutputPlanner {
   /// - [requestGrant]: invoked once per distinct source folder that has no
   ///   cached grant, and once for the whole batch with a null folder when the
   ///   source folder can't be resolved at all; returns a tree URI, or null when
-  ///   the user declines (→ those files fall back to Downloads).
+  ///   the user declines (→ those files fall back to Downloads). The second
+  ///   argument is one source file that lives in that folder, so the prompt can
+  ///   seed the picker with the document itself when the folder is unknown.
   static Future<OutputPlan> plan(
     List<String> files, {
     String? explicitDir,
     String? explicitTreeUri,
-    Future<String?> Function(String? folder)? requestGrant,
+    Future<String?> Function(String? folder, String? sourcePath)? requestGrant,
     @visibleForTesting bool? platformIsAndroid,
   }) async {
     final android = platformIsAndroid ?? Platform.isAndroid;
@@ -108,22 +111,32 @@ class OutputPlanner {
     // "Same folder as each original": resolve one grant per distinct folder.
     final grantByFolder = <String, OutputTarget>{};
     // Sources whose provider exposes no filesystem folder (cloud, or a document
-    // id we can't map to a path) still get a say in where output lands — ask
-    // once for the whole batch rather than silently using Downloads. Nothing is
-    // persisted: there is no folder path to key a grant on.
-    var askedUnknown = false;
+    // id Android won't map to a path — the picker's Downloads/Images/Videos
+    // shortcuts) still get a say in where output lands: ask once for the whole
+    // batch rather than silently using Downloads. The answer is remembered
+    // across batches so this isn't asked every time, but only as a preference —
+    // Android is re-asked whether the grant still holds before it is used.
+    var resolvedUnknown = false;
     String? unknownGrant;
     for (final f in files) {
       final folder = await SafBridge.realDirectoryFor(f);
       if (folder == null) {
-        if (!askedUnknown) {
-          askedUnknown = true;
-          if (requestGrant != null) unknownGrant = await requestGrant(null);
+        if (!resolvedUnknown) {
+          resolvedUnknown = true;
+          unknownGrant = await UnresolvedDestination.live();
+          if (unknownGrant == null && requestGrant != null) {
+            // Pass the source file: its folder is unknown, but its document URI
+            // still lets the system open the picker in the right place.
+            unknownGrant = await requestGrant(null, f);
+            if (unknownGrant != null) {
+              await UnresolvedDestination.remember(unknownGrant);
+            }
+          }
         }
         byPath[f] = OutputTarget(treeUri: unknownGrant);
         continue;
       }
-      grantByFolder[folder] ??= await _grantFor(folder, requestGrant);
+      grantByFolder[folder] ??= await _grantFor(folder, f, requestGrant);
       byPath[f] = grantByFolder[folder]!;
     }
     return OutputPlan(stagingDir: staging, outputDir: staging, byPath: byPath);
@@ -147,15 +160,24 @@ class OutputPlanner {
   /// A null target tree URI means no access → the caller uses Downloads.
   static Future<OutputTarget> _grantFor(
     String folder,
-    Future<String?> Function(String? folder)? requestGrant,
+    String sourcePath,
+    Future<String?> Function(String? folder, String? sourcePath)? requestGrant,
   ) async {
     final existing = await SafBridge.existingTreeGrantFor(folder);
     if (existing != null) {
       return OutputTarget(treeUri: existing.treeUri, subPath: existing.subPath);
     }
 
+    // Android forbids ACTION_OPEN_DOCUMENT_TREE grants on the top-level
+    // Download directory itself (unlike its subfolders, which are grantable
+    // normally). Asking would only show the picker seeded there with no way
+    // to actually grant it — skip straight to the Downloads fallback, which
+    // is already how DefaultOutput treats this folder (directly writable,
+    // no grant needed).
+    if (_isTopLevelDownloadDir(folder)) return const OutputTarget();
+
     if (requestGrant == null) return const OutputTarget();
-    final picked = await requestGrant(folder);
+    final picked = await requestGrant(folder, sourcePath);
     if (picked == null) return const OutputTarget();
 
     final resolved = await SafBridge.existingTreeGrantFor(folder);
@@ -165,6 +187,17 @@ class OutputPlanner {
       return OutputTarget(treeUri: picked);
     }
     return OutputTarget(treeUri: resolved.treeUri, subPath: resolved.subPath);
+  }
+
+  /// True only for the top-level Download directory itself, not a subfolder
+  /// inside it — Android's SAF tree-grant restriction applies to the exact
+  /// directory, not its contents.
+  static bool _isTopLevelDownloadDir(String folder) {
+    final normalized = p.normalize(folder);
+    return const [
+      '/storage/emulated/0/Download',
+      '/sdcard/Download',
+    ].contains(normalized);
   }
 
   static Future<void> _resetDir(String dir) async {
