@@ -152,7 +152,7 @@ void main() {
       final plan = await OutputPlanner.plan(
         ['/cache/a.txt', '/cache/b.txt'],
         explicitTreeUri: 'content://tree/chosen',
-        requestGrant: (_) async => fail('must not prompt'),
+        requestGrant: (_, _) async => fail('must not prompt'),
         platformIsAndroid: true,
       );
       expect(plan.isStaged, isTrue);
@@ -195,7 +195,7 @@ void main() {
 
       final plan = await OutputPlanner.plan(
         ['/cache/e1.txt'],
-        requestGrant: (_) async => fail('already granted — must not prompt'),
+        requestGrant: (_, _) async => fail('already granted — must not prompt'),
         platformIsAndroid: true,
       );
 
@@ -212,7 +212,8 @@ void main() {
 
       final plan = await OutputPlanner.plan(
         ['/cache/a1.txt'],
-        requestGrant: (_) async => fail('an ancestor grant already covers it'),
+        requestGrant: (_, _) async =>
+            fail('an ancestor grant already covers it'),
         platformIsAndroid: true,
       );
 
@@ -245,7 +246,7 @@ void main() {
       final asked = <String?>[];
       final plan = await OutputPlanner.plan(
         ['/cache/p1.txt'],
-        requestGrant: (folder) async {
+        requestGrant: (folder, _) async {
           asked.add(folder);
           // The user granted exactly the folder they were asked about.
           saf.grants.grant('/storage/e/Ask', 'content://tree/ask');
@@ -270,7 +271,7 @@ void main() {
       // First batch: granted, no prompt.
       await OutputPlanner.plan(
         ['/cache/g1.txt'],
-        requestGrant: (_) async => fail('already granted'),
+        requestGrant: (_, _) async => fail('already granted'),
         platformIsAndroid: true,
       );
 
@@ -281,7 +282,7 @@ void main() {
       var asked = 0;
       final plan = await OutputPlanner.plan(
         ['/cache/g1.txt'],
-        requestGrant: (_) async {
+        requestGrant: (_, _) async {
           asked++;
           return null;
         },
@@ -300,7 +301,7 @@ void main() {
 
       final plan = await OutputPlanner.plan(
         ['/cache/p2.txt'],
-        requestGrant: (folder) async {
+        requestGrant: (folder, _) async {
           expect(folder, '/storage/e/Parent/Sub');
           // In the system picker the user navigated up one level.
           saf.grants.grant('/storage/e/Parent', 'content://tree/parent');
@@ -321,7 +322,7 @@ void main() {
       final plan = await OutputPlanner.plan(
         ['/cache/p3.txt'],
         // Grant table stays empty: nothing covers /storage/e/Src.
-        requestGrant: (_) async => 'content://tree/elsewhere',
+        requestGrant: (_, _) async => 'content://tree/elsewhere',
         platformIsAndroid: true,
       );
 
@@ -339,7 +340,7 @@ void main() {
 
         final plan = await OutputPlanner.plan(
           ['/cache/deny.txt'],
-          requestGrant: (_) async => null,
+          requestGrant: (_, _) async => null,
           platformIsAndroid: true,
         );
         expect(plan.byPath['/cache/deny.txt']!.treeUri, isNull);
@@ -369,7 +370,7 @@ void main() {
       final asked = <String?>[];
       final plan = await OutputPlanner.plan(
         ['/cache/m1.txt', '/cache/m2.txt', '/cache/m3.txt'],
-        requestGrant: (folder) async {
+        requestGrant: (folder, _) async {
           asked.add(folder);
           final uri = 'content://tree/${p.basename(folder!)}';
           saf.grants.grant(folder, uri);
@@ -396,7 +397,7 @@ void main() {
       final asked = <String?>[];
       final plan = await OutputPlanner.plan(
         ['/cache/s1.txt', '/cache/s2.txt'],
-        requestGrant: (folder) async {
+        requestGrant: (folder, _) async {
           asked.add(folder);
           saf.grants.grant('/storage/e/Shared', 'content://tree/shared');
           return 'content://tree/shared';
@@ -417,7 +418,7 @@ void main() {
       final asked = <String?>[];
       final plan = await OutputPlanner.plan(
         ['/cache/cloud-a.txt', '/cache/cloud-b.txt'],
-        requestGrant: (folder) async {
+        requestGrant: (folder, _) async {
           asked.add(folder);
           return 'content://tree/picked';
         },
@@ -439,7 +440,7 @@ void main() {
       wireSaf();
       final plan = await OutputPlanner.plan(
         ['/cache/cloud-only.txt'],
-        requestGrant: (_) async => null,
+        requestGrant: (_, _) async => null,
         platformIsAndroid: true,
       );
       expect(plan.byPath['/cache/cloud-only.txt']!.treeUri, isNull);
@@ -454,7 +455,7 @@ void main() {
       final asked = <String?>[];
       final plan = await OutputPlanner.plan(
         ['/cache/mix1.txt', '/cache/mix-cloud.txt'],
-        requestGrant: (folder) async {
+        requestGrant: (folder, _) async {
           asked.add(folder);
           if (folder == null) return 'content://tree/downloads-choice';
           saf.grants.grant(folder, 'content://tree/mix');
@@ -483,7 +484,7 @@ void main() {
       final asked = <String?>[];
       final plan = await OutputPlanner.plan(
         ['/cache/cloud-later.txt'],
-        requestGrant: (folder) async {
+        requestGrant: (folder, _) async {
           asked.add(folder);
           return 'content://tree/should-not-be-asked';
         },
@@ -510,7 +511,7 @@ void main() {
       final asked = <String?>[];
       final plan = await OutputPlanner.plan(
         ['/cache/cloud-revoked.txt'],
-        requestGrant: (folder) async {
+        requestGrant: (folder, _) async {
           asked.add(folder);
           return 'content://tree/fresh';
         },

@@ -75,7 +75,10 @@ void main() {
     );
     expect(
       openTreeCall().arguments,
-      {'initialPath': '/storage/emulated/0/Documents/Work'},
+      {
+        'initialPath': '/storage/emulated/0/Documents/Work',
+        'initialDocUri': 'content://doc/seeded',
+      },
       reason: 'the picker starts where the file came from',
     );
     // The row reflects the chosen folder (setState after the grant).
@@ -109,24 +112,50 @@ void main() {
     );
     expect(openTreeCall().arguments, {
       'initialPath': '/storage/emulated/0/Documents',
+      'initialDocUri': 'content://doc/first',
     });
   });
 
-  testWidgets('an unresolvable source leaves the picker unseeded', (
+  testWidgets('an unresolvable folder still seeds the picker by document', (
     tester,
   ) async {
-    // No rememberUri: share-intent files have no registered content URI, so
-    // the source folder can't be resolved — best-effort means unseeded, not
-    // broken.
+    // The picker's Downloads/Images/Videos shortcuts hand over a document
+    // whose folder Android will not name (resolvePath → null). There is no
+    // path to seed with, but the document URI itself is a valid seed — the
+    // system navigator resolves its parent, which is the whole reason this
+    // case no longer dumps the user at the storage root.
+    SafBridge.rememberUri('/cache/shortcut.pdf', 'content://doc/msf-123');
     mockChannel(
       (call) => call.method == 'openTree' ? 'content://tree/any' : null,
     );
-    await pumpScreen(tester, ['/cache/lonely.pdf']);
+    await pumpScreen(tester, ['/cache/shortcut.pdf']);
     await tapChooseFolder(tester);
 
-    expect(calls.where((c) => c.method == 'resolvePath'), isEmpty);
-    expect(openTreeCall().arguments, {'initialPath': null});
+    expect(calls.where((c) => c.method == 'resolvePath'), hasLength(1));
+    expect(openTreeCall().arguments, {
+      'initialPath': null,
+      'initialDocUri': 'content://doc/msf-123',
+    });
   });
+
+  testWidgets(
+    'a source with no content URI at all leaves the picker unseeded',
+    (tester) async {
+      // No rememberUri: share-intent files have no registered content URI, so
+      // neither seed exists — best-effort means unseeded, not broken.
+      mockChannel(
+        (call) => call.method == 'openTree' ? 'content://tree/any' : null,
+      );
+      await pumpScreen(tester, ['/cache/lonely.pdf']);
+      await tapChooseFolder(tester);
+
+      expect(calls.where((c) => c.method == 'resolvePath'), isEmpty);
+      expect(openTreeCall().arguments, {
+        'initialPath': null,
+        'initialDocUri': null,
+      });
+    },
+  );
 
   testWidgets('cancelling the picker keeps the default destination', (
     tester,

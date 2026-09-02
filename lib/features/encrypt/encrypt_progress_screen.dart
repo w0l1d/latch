@@ -78,9 +78,9 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
         widget.files,
         explicitDir: widget.outputDir,
         explicitTreeUri: widget.explicitTreeUri,
-        requestGrant: (folder) async {
+        requestGrant: (folder, sourcePath) async {
           if (!mounted || _cancelled) return null;
-          return promptSaveFolder(context, folder);
+          return promptSaveFolder(context, folder, sourcePath: sourcePath);
         },
       );
       _plan = plan;

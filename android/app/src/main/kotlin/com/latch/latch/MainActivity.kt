@@ -44,11 +44,22 @@ class MainActivity : FlutterFragmentActivity() {
             val treeUri = if (res.resultCode == RESULT_OK) res.data?.data else null
             if (treeUri != null) {
                 // Persist the grant so it survives process death / restarts.
-                contentResolver.takePersistableUriPermission(
-                    treeUri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
-                )
+                //
+                // Some devices don't implement this properly and throw (or
+                // silently fail to persist). That must not take the batch down
+                // with it — an exception here would escape the activity-result
+                // callback and leave the parked MethodChannel result unanswered
+                // forever. The grant is still live for this process, so outputs
+                // land in the right folder now; the next batch just asks again,
+                // since existingTreeGrant reads the platform's persisted table
+                // and reports a grant that didn't stick as absent.
+                runCatching {
+                    contentResolver.takePersistableUriPermission(
+                        treeUri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                            Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                    )
+                }
                 r?.success(treeUri.toString())
             } else {
                 r?.success(null) // user cancelled or no data
@@ -117,7 +128,8 @@ class MainActivity : FlutterFragmentActivity() {
                             // callback; do NOT complete `result` here.
                             "openTree" -> {
                                 val initial = call.argument<String>("initialPath")
-                                runOnUiThread { launchOpenTree(initial, result) }
+                                val initialDoc = call.argument<String>("initialDocUri")
+                                runOnUiThread { launchOpenTree(initial, initialDoc, result) }
                             }
                             // Filesystem path a granted tree points at, so a grant
                             // can be matched to a source folder. Null for providers
@@ -358,23 +370,42 @@ class MainActivity : FlutterFragmentActivity() {
         return if (idx >= 0) c.getString(idx) else null
     }
 
-    // Launch the folder picker, seeding it at [initialPath] when we can build an
-    // externalstorage document URI for it, and park [result] for the callback.
-    private fun launchOpenTree(initialPath: String?, result: MethodChannel.Result) {
+    // Launch the folder picker and park [result] for the callback.
+    //
+    // Seeding, in order: a path we resolved (points the picker straight at that
+    // folder), else the picked document's own content:// URI. That second seed
+    // is the only one available for the providers whose folder can't be
+    // resolved at all (the picker's Downloads/Images/Videos shortcuts), and it
+    // works because EXTRA_INITIAL_URI accepts a *document* URI and the system's
+    // document navigator resolves its parent for us — DocumentsUI is privileged
+    // and holds MANAGE_DOCUMENTS, so it can do the child→parent lookup this app
+    // provably cannot. Without it those sources open the picker at the storage
+    // root and the user has to find the folder by hand.
+    //
+    // Both seeds are best-effort by contract ("the initial location is system
+    // specific if ... document navigator failed to locate the desired initial
+    // location"), and some OEM pickers ignore the extra outright. A seed that
+    // is ignored costs nothing — the picker opens where it would have anyway —
+    // so nothing here may depend on it having worked.
+    private fun launchOpenTree(
+        initialPath: String?,
+        initialDocUri: String?,
+        result: MethodChannel.Result,
+    ) {
         if (pendingTreeResult != null) {
             result.error("saf_busy", "a folder picker is already open", null)
             return
         }
         pendingTreeResult = result
+        val seed = initialPath?.let { initialTreeUri(it) }
+            ?: initialDocUri?.let { runCatching { Uri.parse(it) }.getOrNull() }
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
             addFlags(
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or
                     Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
                     Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION,
             )
-            initialPath?.let { p ->
-                initialTreeUri(p)?.let { putExtra(DocumentsContract.EXTRA_INITIAL_URI, it) }
-            }
+            seed?.let { putExtra(DocumentsContract.EXTRA_INITIAL_URI, it) }
         }
         try {
             openTreeLauncher.launch(intent)

@@ -76,12 +76,14 @@ class OutputPlanner {
   /// - [requestGrant]: invoked once per distinct source folder that has no
   ///   cached grant, and once for the whole batch with a null folder when the
   ///   source folder can't be resolved at all; returns a tree URI, or null when
-  ///   the user declines (→ those files fall back to Downloads).
+  ///   the user declines (→ those files fall back to Downloads). The second
+  ///   argument is one source file that lives in that folder, so the prompt can
+  ///   seed the picker with the document itself when the folder is unknown.
   static Future<OutputPlan> plan(
     List<String> files, {
     String? explicitDir,
     String? explicitTreeUri,
-    Future<String?> Function(String? folder)? requestGrant,
+    Future<String?> Function(String? folder, String? sourcePath)? requestGrant,
     @visibleForTesting bool? platformIsAndroid,
   }) async {
     final android = platformIsAndroid ?? Platform.isAndroid;
@@ -123,7 +125,9 @@ class OutputPlanner {
           resolvedUnknown = true;
           unknownGrant = await UnresolvedDestination.live();
           if (unknownGrant == null && requestGrant != null) {
-            unknownGrant = await requestGrant(null);
+            // Pass the source file: its folder is unknown, but its document URI
+            // still lets the system open the picker in the right place.
+            unknownGrant = await requestGrant(null, f);
             if (unknownGrant != null) {
               await UnresolvedDestination.remember(unknownGrant);
             }
@@ -132,7 +136,7 @@ class OutputPlanner {
         byPath[f] = OutputTarget(treeUri: unknownGrant);
         continue;
       }
-      grantByFolder[folder] ??= await _grantFor(folder, requestGrant);
+      grantByFolder[folder] ??= await _grantFor(folder, f, requestGrant);
       byPath[f] = grantByFolder[folder]!;
     }
     return OutputPlan(stagingDir: staging, outputDir: staging, byPath: byPath);
@@ -156,7 +160,8 @@ class OutputPlanner {
   /// A null target tree URI means no access → the caller uses Downloads.
   static Future<OutputTarget> _grantFor(
     String folder,
-    Future<String?> Function(String? folder)? requestGrant,
+    String sourcePath,
+    Future<String?> Function(String? folder, String? sourcePath)? requestGrant,
   ) async {
     final existing = await SafBridge.existingTreeGrantFor(folder);
     if (existing != null) {
@@ -172,7 +177,7 @@ class OutputPlanner {
     if (_isTopLevelDownloadDir(folder)) return const OutputTarget();
 
     if (requestGrant == null) return const OutputTarget();
-    final picked = await requestGrant(folder);
+    final picked = await requestGrant(folder, sourcePath);
     if (picked == null) return const OutputTarget();
 
     final resolved = await SafBridge.existingTreeGrantFor(folder);

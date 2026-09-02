@@ -15,19 +15,28 @@ import 'saf_bridge.dart';
 /// picker reopens, still seeded at [folder]).
 ///
 /// A null [folder] means the source folder couldn't be resolved — there is no
-/// permission to ask for, so the destination choices come up directly and both
-/// pickers go unseeded.
+/// named permission to ask for, so the destination choices come up directly.
+/// The picker can still be seeded in that case: [sourcePath] is one source file
+/// from the folder, and its document URI lets the *system* resolve the parent
+/// (see [SafBridge.pickTree]), so "Choose folder" opens in the right place
+/// instead of at the storage root.
 ///
 /// Returns the granted tree URI, or null when the user declines everything —
 /// in which case the caller falls back to saving in Downloads. Used by both
 /// the encrypt and decrypt flows as the `requestGrant` callback for
 /// [OutputPlanner.plan], which only calls it when no existing grant covers
 /// the folder.
-Future<String?> promptSaveFolder(BuildContext context, String? folder) async {
+Future<String?> promptSaveFolder(
+  BuildContext context,
+  String? folder, {
+  String? sourcePath,
+}) async {
+  final docUri = sourcePath == null ? null : SafBridge.uriFor(sourcePath);
+
   // 1. Rationale first — a folder picker appearing out of nowhere reads as the
   // app misbehaving; name the folder and say what happens next.
   if (folder != null && await _confirmPicker(context, folder)) {
-    final granted = await _pickTree(folder);
+    final granted = await _pickTree(folder, docUri);
     if (granted != null) return granted;
   }
 
@@ -38,7 +47,7 @@ Future<String?> promptSaveFolder(BuildContext context, String? folder) async {
 
   // Custom location: start from the folder the files came from, not wherever
   // the picker last was.
-  return _pickTree(folder);
+  return _pickTree(folder, docUri);
 }
 
 /// Opens the system folder picker seeded at [folder], returning the granted
@@ -49,9 +58,9 @@ Future<String?> promptSaveFolder(BuildContext context, String? folder) async {
 /// `ACTION_OPEN_DOCUMENT_TREE` (or one already showing a picker) must still
 /// leave Downloads reachable rather than throwing out of the prompt and
 /// failing the whole batch.
-Future<String?> _pickTree(String? folder) async {
+Future<String?> _pickTree(String? folder, String? docUri) async {
   try {
-    return await SafBridge.pickTree(initialPath: folder);
+    return await SafBridge.pickTree(initialPath: folder, initialDocUri: docUri);
   } catch (_) {
     return null;
   }
