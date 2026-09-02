@@ -5,88 +5,103 @@
     "opslimit": 2,
     "memlimit": 65536
   },
-  "generated_at_commit": "9fded2f",
-  "generated_with": "pre-refactor EnvelopeService/SodiumCryptoAdapter (old inline codec, before the FormatVersionStrategy extraction)",
-  "files": {
-    "empty": {
-      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "raw_length": 0,
-      "latch_file": "latch/empty.latch",
-      "raw_file": "raw/empty.bin"
+  "pinned": {
+    "generated_at_commit": "9fded2f",
+    "generated_with": "pre-refactor EnvelopeService/SodiumCryptoAdapter (old inline codec, before the FormatVersionStrategy extraction)",
+    "_note": "These .latch blobs are the compat evidence: old-code output that new code must keep reading. latch_sha256 pins each blob so regenerating one fails loudly. NEVER regenerate these.",
+    "files": {
+      "empty": {
+        "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "raw_length": 0,
+        "latch_file": "latch/empty.latch",
+        "raw_file": "raw/empty.bin",
+        "latch_sha256": "b54717a0faac6790e029ecd41ac4925798108e449199055b820255961b2cacd7"
+      },
+      "one_byte": {
+        "raw_sha256": "df7e70e5021544f4834bbee64a9e3789febc4be81470df629cad6ddb03320a5c",
+        "raw_length": 1,
+        "latch_file": "latch/one_byte.latch",
+        "raw_file": "raw/one_byte.bin",
+        "latch_sha256": "b73937ec86ea6bd4b281858d44addbc98ac4a58dc7271cd2736c2e979b41ad60"
+      },
+      "small": {
+        "raw_sha256": "05c6e08f1d9fdafa03147fcb8f82f124c76d2f70e3d989dc8aadb5e7d7450bec",
+        "raw_length": 43,
+        "latch_file": "latch/small.latch",
+        "raw_file": "raw/small.bin",
+        "latch_sha256": "617d81f16b205a91297d3bcf23250a2fdc8da8e003a4cd61a0a9e119bba6aa40"
+      },
+      "binary": {
+        "raw_sha256": "d41d438c379110c7f7b2c561b1f04f26c1b4549110791f8e022f48974280c13e",
+        "raw_length": 4096,
+        "latch_file": "latch/binary.latch",
+        "raw_file": "raw/binary.bin",
+        "latch_sha256": "95941bbb740ab905433a8d554e8194318daceab8d181c0f7ede02a763beb4981"
+      },
+      "multi_chunk": {
+        "raw_sha256": "0c6c96cc20d3f906e54f1f1296e8878c1ac39262fb587cd56235c3aa9103d837",
+        "raw_length": 70000,
+        "latch_file": "latch/multi_chunk.latch",
+        "raw_file": "raw/multi_chunk.bin",
+        "latch_sha256": "cd05b5633478e928a0824ec356b83a7319f7314e601c1764ddc8c7755a197ee1"
+      }
     },
-    "one_byte": {
-      "raw_sha256": "df7e70e5021544f4834bbee64a9e3789febc4be81470df629cad6ddb03320a5c",
-      "raw_length": 1,
-      "latch_file": "latch/one_byte.latch",
-      "raw_file": "raw/one_byte.bin"
-    },
-    "small": {
-      "raw_sha256": "05c6e08f1d9fdafa03147fcb8f82f124c76d2f70e3d989dc8aadb5e7d7450bec",
-      "raw_length": 43,
-      "latch_file": "latch/small.latch",
-      "raw_file": "raw/small.bin"
-    },
-    "ascii_text": {
-      "raw_sha256": "20be8e878c4ff76174a87f10bcedc6491cfd9bc7155877fd0d8ecf9e21b77a55",
-      "raw_length": 224,
-      "latch_file": "latch/ascii_text.latch",
-      "raw_file": "raw/ascii_text.bin"
-    },
-    "unicode_text": {
-      "raw_sha256": "772a35761e80218e1324f7e92b7a255ce0bc9b07645cbb11db80ad46b47bd151",
-      "raw_length": 396,
-      "latch_file": "latch/unicode_text.latch",
-      "raw_file": "raw/unicode_text.bin"
-    },
-    "json": {
-      "raw_sha256": "b8bbdc805e89d0ee5709559afbee5265c48f019d7e5355fbb92b1eaf4616ec2b",
-      "raw_length": 542,
-      "latch_file": "latch/json.latch",
-      "raw_file": "raw/json.bin"
-    },
-    "zero_bytes": {
-      "raw_sha256": "5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
-      "raw_length": 1024,
-      "latch_file": "latch/zero_bytes.latch",
-      "raw_file": "raw/zero_bytes.bin"
-    },
-    "all_bytes": {
-      "raw_sha256": "785b0751fc2c53dc14a4ce3d800e69ef9ce1009eb327ccf458afe09c242c26c9",
-      "raw_length": 1024,
-      "latch_file": "latch/all_bytes.latch",
-      "raw_file": "raw/all_bytes.bin"
-    },
-    "binary": {
-      "raw_sha256": "d41d438c379110c7f7b2c561b1f04f26c1b4549110791f8e022f48974280c13e",
-      "raw_length": 4096,
-      "latch_file": "latch/binary.latch",
-      "raw_file": "raw/binary.bin"
-    },
-    "boundary_64k": {
-      "raw_sha256": "b5dafc9b16dd9024fe915893f7a920cd31850597052e7b2b9548b435e551ec6b",
-      "raw_length": 65536,
-      "latch_file": "latch/boundary_64k.latch",
-      "raw_file": "raw/boundary_64k.bin"
-    },
-    "boundary_plus_1": {
-      "raw_sha256": "e447ef50c269fcef0545fc63f1d9a3af0a473ffd0fc43022d17b956535c7325a",
-      "raw_length": 65537,
-      "latch_file": "latch/boundary_plus_1.latch",
-      "raw_file": "raw/boundary_plus_1.bin"
-    },
-    "multi_chunk": {
-      "raw_sha256": "6b28f50d8883e7376146d71803bea6c472697f93edac5300abf16d176321c484",
-      "raw_length": 70000,
-      "latch_file": "latch/multi_chunk.latch",
-      "raw_file": "raw/multi_chunk.bin"
-    },
-    "large_1mb": {
-      "raw_sha256": "7e10745856dab68fcaccee34d95c3f7568283d7d626b5eb6c19a0ad99e14ca48",
-      "raw_length": 1048576,
-      "latch_file": "latch/large_1mb.latch",
-      "raw_file": "raw/large_1mb.bin"
-    }
+    "wrong_passphrase_fixture": "latch/small.latch",
+    "tampered_body_fixture": "latch/tampered_body.latch",
+    "tampered_body_sha256": "2698f42cb8f3ee6e0478fc8d827d655422595cf96e27facfe5d785f4c0b93bba"
   },
-  "wrong_passphrase_fixture": "latch/small.latch",
-  "tampered_body_fixture": "latch/tampered_body.latch"
+  "new_code": {
+    "generated_with": "post-refactor code (FormatVersionStrategy dispatch), added for corpus breadth",
+    "_note": "Round-trip coverage only. These prove nothing about pre/post-refactor compatibility \u2014 new code reading its own output. Safe to regenerate.",
+    "files": {
+      "ascii_text": {
+        "raw_sha256": "20be8e878c4ff76174a87f10bcedc6491cfd9bc7155877fd0d8ecf9e21b77a55",
+        "raw_length": 224,
+        "latch_file": "latch/ascii_text.latch",
+        "raw_file": "raw/ascii_text.bin"
+      },
+      "unicode_text": {
+        "raw_sha256": "772a35761e80218e1324f7e92b7a255ce0bc9b07645cbb11db80ad46b47bd151",
+        "raw_length": 396,
+        "latch_file": "latch/unicode_text.latch",
+        "raw_file": "raw/unicode_text.bin"
+      },
+      "json": {
+        "raw_sha256": "b8bbdc805e89d0ee5709559afbee5265c48f019d7e5355fbb92b1eaf4616ec2b",
+        "raw_length": 542,
+        "latch_file": "latch/json.latch",
+        "raw_file": "raw/json.bin"
+      },
+      "zero_bytes": {
+        "raw_sha256": "5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+        "raw_length": 1024,
+        "latch_file": "latch/zero_bytes.latch",
+        "raw_file": "raw/zero_bytes.bin"
+      },
+      "all_bytes": {
+        "raw_sha256": "785b0751fc2c53dc14a4ce3d800e69ef9ce1009eb327ccf458afe09c242c26c9",
+        "raw_length": 1024,
+        "latch_file": "latch/all_bytes.latch",
+        "raw_file": "raw/all_bytes.bin"
+      },
+      "boundary_64k": {
+        "raw_sha256": "b5dafc9b16dd9024fe915893f7a920cd31850597052e7b2b9548b435e551ec6b",
+        "raw_length": 65536,
+        "latch_file": "latch/boundary_64k.latch",
+        "raw_file": "raw/boundary_64k.bin"
+      },
+      "boundary_plus_1": {
+        "raw_sha256": "e447ef50c269fcef0545fc63f1d9a3af0a473ffd0fc43022d17b956535c7325a",
+        "raw_length": 65537,
+        "latch_file": "latch/boundary_plus_1.latch",
+        "raw_file": "raw/boundary_plus_1.bin"
+      },
+      "large_1mb": {
+        "raw_sha256": "7e10745856dab68fcaccee34d95c3f7568283d7d626b5eb6c19a0ad99e14ca48",
+        "raw_length": 1048576,
+        "latch_file": "latch/large_1mb.latch",
+        "raw_file": "raw/large_1mb.bin"
+      }
+    }
+  }
 }

@@ -1,10 +1,22 @@
-// Proves the codec-version-strategies refactor (specs/003) is neutral: every
-// `.latch` v1 fixture committed here was produced by the UNTOUCHED
-// pre-refactor code (see fixtures/compat_v1/generate_fixtures.dart) and must
-// keep decrypting identically afterwards. Never regenerate these fixtures
-// with the new code — that would stop proving anything. The manifest's
-// "generated_at_commit" field records the exact pre-refactor commit the
-// fixtures were produced from, and is pinned by a provenance test below.
+// Proves the codec-version-strategies refactor (specs/003) is neutral on real
+// old bytes. The corpus is deliberately split in two, because only one half
+// can prove that:
+//
+//   manifest["pinned"]   — `.latch` blobs produced by the UNTOUCHED
+//                          pre-refactor code at commit 9fded2f. This is the
+//                          compat evidence: new code must keep reading them
+//                          identically. NEVER regenerate these.
+//   manifest["new_code"] — blobs produced by the post-refactor code, added
+//                          for corpus breadth (sizes, chunk boundaries,
+//                          content kinds). These prove nothing about
+//                          compatibility — new code reading its own output —
+//                          and are safe to regenerate.
+//
+// The provenance guard below hashes each pinned blob against a committed
+// `latch_sha256`. A string field claiming pre-refactor provenance is NOT a
+// guard: a regeneration that leaves the string in place would pass it while
+// destroying exactly what the corpus exists to prove. The hashes are what
+// makes such a regeneration fail loudly.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -43,44 +55,44 @@ void main() {
     envelope = EnvelopeService(SodiumCryptoAdapter(sodium));
   });
 
-  group('compat v1 corpus (pre-refactor fixtures)', () {
-    final passphrase = utf8.encode('compat-v1-fixture-passphrase');
-    final names = (manifest['files'] as Map<String, dynamic>).keys.toList()
-      ..sort();
+  final passphrase = utf8.encode(manifest['passphrase'] as String);
+  final pinned = manifest['pinned'] as Map<String, dynamic>;
+  final pinnedFiles = pinned['files'] as Map<String, dynamic>;
 
-    test('fixtures carry old-code provenance at the recorded commit', () {
-      expect(manifest['generated_at_commit'], '9fded2f');
-      expect(
-        manifest['generated_with'],
-        contains('before the FormatVersionStrategy extraction'),
-      );
+  group('compat v1 corpus (pinned pre-refactor fixtures)', () {
+    final names = pinnedFiles.keys.toList()..sort();
+
+    test('pinned fixtures are the exact bytes the old code wrote', () {
+      // The real provenance guard: every pinned blob's hash was recorded when
+      // it was produced by pre-refactor code at manifest["pinned"]
+      // ["generated_at_commit"]. Regenerating one with the current code
+      // changes its bytes (fresh salt/DEK/secretstream nonce) and fails here,
+      // which is the point — see the file header comment.
+      for (final name in names) {
+        final entry = pinnedFiles[name] as Map<String, dynamic>;
+        final bytes = File('$dir/${entry['latch_file']}').readAsBytesSync();
+        expect(
+          _sha256Hex(bytes),
+          entry['latch_sha256'],
+          reason:
+              '$name.latch no longer matches the hash recorded for the '
+              'pre-refactor fixture. If it was regenerated, restore it from '
+              'commit ${pinned['generated_at_commit']} — do not update the '
+              'hash.',
+        );
+      }
+      expect(pinned['generated_at_commit'], '9fded2f');
     });
 
-    test('corpus covers every planned size/content/chunk kind', () {
-      expect(names, [
-        'all_bytes',
-        'ascii_text',
-        'binary',
-        'boundary_64k',
-        'boundary_plus_1',
-        'empty',
-        'json',
-        'large_1mb',
-        'multi_chunk',
-        'one_byte',
-        'small',
-        'unicode_text',
-        'zero_bytes',
-      ]);
+    test('pinned corpus covers empty, sub-chunk, and multi-chunk sizes', () {
+      expect(names, ['binary', 'empty', 'multi_chunk', 'one_byte', 'small']);
     });
 
     for (final name in names) {
       test(
         'decrypts $name.latch to the manifest-pinned plaintext hash',
         () async {
-          final entry =
-              (manifest['files'] as Map<String, dynamic>)[name]
-                  as Map<String, dynamic>;
+          final entry = pinnedFiles[name] as Map<String, dynamic>;
           final latchBytes = File(
             '$dir/${entry['latch_file']}',
           ).readAsBytesSync();
@@ -98,37 +110,6 @@ void main() {
       );
     }
 
-    for (final name in names) {
-      test('encrypts $name with the new code and decrypts back to the '
-          'manifest-pinned hash', () async {
-        final entry =
-            (manifest['files'] as Map<String, dynamic>)[name]
-                as Map<String, dynamic>;
-        final raw = File('$dir/${entry['raw_file']}').readAsBytesSync();
-        final kdf = manifest['kdf_params'] as Map<String, dynamic>;
-
-        final ciphertext = await _collect(
-          envelope.encrypt(
-            plaintext: Stream.value(raw),
-            passphrase: Uint8List.fromList(passphrase),
-            params: KdfParams(
-              opslimit: kdf['opslimit'] as int,
-              memlimit: kdf['memlimit'] as int,
-            ),
-          ),
-        );
-        final back = await _collect(
-          envelope.decrypt(
-            ciphertext: Stream.value(ciphertext),
-            passphrase: Uint8List.fromList(passphrase),
-          ),
-        );
-
-        expect(back.length, entry['raw_length']);
-        expect(_sha256Hex(back), entry['raw_sha256']);
-      });
-    }
-
     // The "same salt" comparison, at the only layer where it is possible:
     // the header encode/decode is a pure function of its fields — including
     // the old code's real random salt, keyIdHint, and secretstream header
@@ -138,9 +119,7 @@ void main() {
       test(
         're-encodes $name\'s header byte-identically (same salt, same bytes)',
         () {
-          final entry =
-              (manifest['files'] as Map<String, dynamic>)[name]
-                  as Map<String, dynamic>;
+          final entry = pinnedFiles[name] as Map<String, dynamic>;
           final latchBytes = File(
             '$dir/${entry['latch_file']}',
           ).readAsBytesSync();
@@ -169,9 +148,7 @@ void main() {
     for (final name in names) {
       test('re-encrypts $name with fixed salt/DEK/wrap-nonce: every '
           'deterministic detail matches the old fixture', () async {
-        final entry =
-            (manifest['files'] as Map<String, dynamic>)[name]
-                as Map<String, dynamic>;
+        final entry = pinnedFiles[name] as Map<String, dynamic>;
         final raw = File('$dir/${entry['raw_file']}').readAsBytesSync();
         final latchBytes = File(
           '$dir/${entry['latch_file']}',
@@ -285,7 +262,7 @@ void main() {
       'wrong passphrase fails fast, before any body byte is touched',
       () async {
         final latchBytes = File(
-          '$dir/${manifest['wrong_passphrase_fixture']}',
+          '$dir/${pinned['wrong_passphrase_fixture']}',
         ).readAsBytesSync();
         final wrongPassphrase = utf8.encode(
           manifest['wrong_passphrase'] as String,
@@ -306,9 +283,10 @@ void main() {
     test(
       'tampered body fails at a chunk tag, never emitting partial plaintext',
       () async {
-        final tamperedBytes = File(
-          '$dir/${manifest['tampered_body_fixture']}',
-        ).readAsBytesSync();
+        final tamperedFile = File('$dir/${pinned['tampered_body_fixture']}');
+        final tamperedBytes = tamperedFile.readAsBytesSync();
+        // Pinned like the rest: the tamper is a byte flip in old-code output.
+        expect(_sha256Hex(tamperedBytes), pinned['tampered_body_sha256']);
 
         final emitted = <int>[];
         await expectLater(() async {
@@ -326,6 +304,87 @@ void main() {
         );
       },
     );
+  });
+
+  // Round-trip breadth only. Every fixture below — pinned or new — is
+  // encrypted by the CURRENT code and read back by it, so nothing here says
+  // anything about pre/post-refactor compatibility. It exists to cover
+  // content kinds and chunk boundaries the pinned corpus does not reach
+  // (unicode, all 256 byte values, exactly 64 KiB, 64 KiB + 1, 1 MiB).
+  group('v1 round-trip breadth (new code reading its own output)', () {
+    final newCode = manifest['new_code'] as Map<String, dynamic>;
+    final newFiles = newCode['files'] as Map<String, dynamic>;
+    final allFiles = <String, dynamic>{...pinnedFiles, ...newFiles};
+    final names = allFiles.keys.toList()..sort();
+
+    test('breadth corpus covers every planned size/content/chunk kind', () {
+      expect(names, [
+        'all_bytes',
+        'ascii_text',
+        'binary',
+        'boundary_64k',
+        'boundary_plus_1',
+        'empty',
+        'json',
+        'large_1mb',
+        'multi_chunk',
+        'one_byte',
+        'small',
+        'unicode_text',
+        'zero_bytes',
+      ]);
+    });
+
+    for (final name in names) {
+      test('encrypts $name with the new code and decrypts back to the '
+          'manifest-pinned hash', () async {
+        final entry = allFiles[name] as Map<String, dynamic>;
+        final raw = File('$dir/${entry['raw_file']}').readAsBytesSync();
+        final kdf = manifest['kdf_params'] as Map<String, dynamic>;
+
+        final ciphertext = await _collect(
+          envelope.encrypt(
+            plaintext: Stream.value(raw),
+            passphrase: Uint8List.fromList(passphrase),
+            params: KdfParams(
+              opslimit: kdf['opslimit'] as int,
+              memlimit: kdf['memlimit'] as int,
+            ),
+          ),
+        );
+        final back = await _collect(
+          envelope.decrypt(
+            ciphertext: Stream.value(ciphertext),
+            passphrase: Uint8List.fromList(passphrase),
+          ),
+        );
+
+        expect(back.length, entry['raw_length']);
+        expect(_sha256Hex(back), entry['raw_sha256']);
+      });
+    }
+
+    // The new-code blobs are committed too, so keep them readable: a change
+    // that broke decoding of current-code output would show up here even
+    // though it is not a compat signal.
+    for (final name in (newFiles.keys.toList()..sort())) {
+      test('decrypts the committed $name.latch to its pinned hash', () async {
+        final entry = newFiles[name] as Map<String, dynamic>;
+        final latchBytes = File(
+          '$dir/${entry['latch_file']}',
+        ).readAsBytesSync();
+
+        final plaintext = await _collect(
+          envelope.decrypt(
+            ciphertext: Stream.value(latchBytes),
+            passphrase: Uint8List.fromList(passphrase),
+          ),
+        );
+
+        expect(plaintext.length, entry['raw_length']);
+        expect(_sha256Hex(plaintext), entry['raw_sha256']);
+      });
+    }
   });
 }
 
