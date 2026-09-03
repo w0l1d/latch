@@ -250,7 +250,7 @@ void main() {
           asked.add(folder);
           // The user granted exactly the folder they were asked about.
           saf.grants.grant('/storage/e/Ask', 'content://tree/ask');
-          return 'content://tree/ask';
+          return SaveFolderDecision.granted('content://tree/ask');
         },
         platformIsAndroid: true,
       );
@@ -284,7 +284,7 @@ void main() {
         ['/cache/g1.txt'],
         requestGrant: (_, _) async {
           asked++;
-          return null;
+          return const SaveFolderDecision.useDownloads();
         },
         platformIsAndroid: true,
       );
@@ -305,7 +305,7 @@ void main() {
           expect(folder, '/storage/e/Parent/Sub');
           // In the system picker the user navigated up one level.
           saf.grants.grant('/storage/e/Parent', 'content://tree/parent');
-          return 'content://tree/parent';
+          return SaveFolderDecision.granted('content://tree/parent');
         },
         platformIsAndroid: true,
       );
@@ -322,7 +322,8 @@ void main() {
       final plan = await OutputPlanner.plan(
         ['/cache/p3.txt'],
         // Grant table stays empty: nothing covers /storage/e/Src.
-        requestGrant: (_, _) async => 'content://tree/elsewhere',
+        requestGrant: (_, _) async =>
+            SaveFolderDecision.granted('content://tree/elsewhere'),
         platformIsAndroid: true,
       );
 
@@ -332,7 +333,7 @@ void main() {
     });
 
     test(
-      '6. a declined prompt falls back to Downloads (null treeUri)',
+      '6. choosing Downloads at the prompt falls back to it (null treeUri)',
       () async {
         wireSaf(
           registerSources: {'/cache/deny.txt': '/storage/e/Deny/deny.txt'},
@@ -340,12 +341,50 @@ void main() {
 
         final plan = await OutputPlanner.plan(
           ['/cache/deny.txt'],
-          requestGrant: (_, _) async => null,
+          requestGrant: (_, _) async => const SaveFolderDecision.useDownloads(),
           platformIsAndroid: true,
         );
         expect(plan.byPath['/cache/deny.txt']!.treeUri, isNull);
       },
     );
+
+    test('6b. cancelling the prompt aborts the whole plan instead of '
+        'falling back to Downloads', () async {
+      wireSaf(registerSources: {'/cache/stop.txt': '/storage/e/Stop/stop.txt'});
+
+      final plan = await OutputPlanner.plan(
+        ['/cache/stop.txt'],
+        requestGrant: (_, _) async => const SaveFolderDecision.cancelled(),
+        platformIsAndroid: true,
+      );
+
+      expect(plan.cancelled, isTrue);
+      expect(plan.byPath, isEmpty, reason: 'no file was routed anywhere');
+      expect(plan.outputDir, isNull);
+    });
+
+    test('6c. cancelling stops at the first prompt — the remaining folders '
+        'are not asked about', () async {
+      wireSaf(
+        registerSources: {
+          '/cache/c1.txt': '/storage/e/C/One/c1.txt',
+          '/cache/c2.txt': '/storage/e/C/Two/c2.txt',
+        },
+      );
+
+      final asked = <String?>[];
+      final plan = await OutputPlanner.plan(
+        ['/cache/c1.txt', '/cache/c2.txt'],
+        requestGrant: (folder, _) async {
+          asked.add(folder);
+          return const SaveFolderDecision.cancelled();
+        },
+        platformIsAndroid: true,
+      );
+
+      expect(plan.cancelled, isTrue);
+      expect(asked, ['/storage/e/C/One'], reason: 'cancel means the batch');
+    });
 
     test('7. with no requestGrant callback an ungranted folder falls back '
         'to Downloads', () async {
@@ -374,7 +413,7 @@ void main() {
           asked.add(folder);
           final uri = 'content://tree/${p.basename(folder!)}';
           saf.grants.grant(folder, uri);
-          return uri;
+          return SaveFolderDecision.granted(uri);
         },
         platformIsAndroid: true,
       );
@@ -400,7 +439,7 @@ void main() {
         requestGrant: (folder, _) async {
           asked.add(folder);
           saf.grants.grant('/storage/e/Shared', 'content://tree/shared');
-          return 'content://tree/shared';
+          return SaveFolderDecision.granted('content://tree/shared');
         },
         platformIsAndroid: true,
       );
@@ -420,7 +459,7 @@ void main() {
         ['/cache/cloud-a.txt', '/cache/cloud-b.txt'],
         requestGrant: (folder, _) async {
           asked.add(folder);
-          return 'content://tree/picked';
+          return SaveFolderDecision.granted('content://tree/picked');
         },
         platformIsAndroid: true,
       );
@@ -435,12 +474,12 @@ void main() {
       );
     });
 
-    test('10. declining the unknown-folder prompt falls back to '
-        'Downloads', () async {
+    test('10. choosing Downloads at the unknown-folder prompt falls back to '
+        'it', () async {
       wireSaf();
       final plan = await OutputPlanner.plan(
         ['/cache/cloud-only.txt'],
-        requestGrant: (_, _) async => null,
+        requestGrant: (_, _) async => const SaveFolderDecision.useDownloads(),
         platformIsAndroid: true,
       );
       expect(plan.byPath['/cache/cloud-only.txt']!.treeUri, isNull);
@@ -457,9 +496,13 @@ void main() {
         ['/cache/mix1.txt', '/cache/mix-cloud.txt'],
         requestGrant: (folder, _) async {
           asked.add(folder);
-          if (folder == null) return 'content://tree/downloads-choice';
+          if (folder == null) {
+            return SaveFolderDecision.granted(
+              'content://tree/downloads-choice',
+            );
+          }
           saf.grants.grant(folder, 'content://tree/mix');
-          return 'content://tree/mix';
+          return SaveFolderDecision.granted('content://tree/mix');
         },
         platformIsAndroid: true,
       );
@@ -486,7 +529,9 @@ void main() {
         ['/cache/cloud-later.txt'],
         requestGrant: (folder, _) async {
           asked.add(folder);
-          return 'content://tree/should-not-be-asked';
+          return SaveFolderDecision.granted(
+            'content://tree/should-not-be-asked',
+          );
         },
         platformIsAndroid: true,
       );
@@ -495,6 +540,29 @@ void main() {
       expect(
         plan.byPath['/cache/cloud-later.txt']!.treeUri,
         'content://tree/remembered',
+      );
+    });
+
+    test('10b. cancelling the unknown-folder prompt aborts and remembers '
+        'nothing', () async {
+      // A cancellation is the absence of a preference. Storing it would answer
+      // the "where do unresolvable sources go?" question wrongly, forever.
+      SharedPreferences.setMockInitialValues({});
+      wireSaf();
+
+      final plan = await OutputPlanner.plan(
+        ['/cache/cloud-stop.txt'],
+        requestGrant: (_, _) async => const SaveFolderDecision.cancelled(),
+        platformIsAndroid: true,
+      );
+
+      expect(plan.cancelled, isTrue);
+      expect(plan.byPath, isEmpty);
+      expect(
+        SharedPreferences.getInstance().then(
+          (p) => p.getString('unresolved_source_tree_uri'),
+        ),
+        completion(isNull),
       );
     });
 
@@ -513,7 +581,7 @@ void main() {
         ['/cache/cloud-revoked.txt'],
         requestGrant: (folder, _) async {
           asked.add(folder);
-          return 'content://tree/fresh';
+          return SaveFolderDecision.granted('content://tree/fresh');
         },
         platformIsAndroid: true,
       );

@@ -82,7 +82,9 @@ class _DecryptProgressScreenState extends State<DecryptProgressScreen> {
       _plan = await OutputPlanner.plan(
         widget.files,
         requestGrant: (folder, sourcePath) async {
-          if (!mounted || _cancelled) return null;
+          if (!mounted || _cancelled) {
+            return const SaveFolderDecision.cancelled();
+          }
           return promptSaveFolder(context, folder, sourcePath: sourcePath);
         },
       );
@@ -93,6 +95,15 @@ class _DecryptProgressScreenState extends State<DecryptProgressScreen> {
       if (!mounted || _cancelled) return;
       _reported = true;
       _showError('Decryption failed', userMessageForError('$e'));
+      return;
+    }
+    // The user backed out of the save-folder prompt without naming a
+    // destination. Nothing has been decrypted — planning runs before the worker
+    // — so there is no partial plaintext to sweep; go back the way the Cancel
+    // button does.
+    if (_plan!.cancelled) {
+      _cancelled = true;
+      if (mounted) context.pop();
       return;
     }
     if (!mounted) return;

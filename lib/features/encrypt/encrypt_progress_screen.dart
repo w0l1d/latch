@@ -79,7 +79,9 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
         explicitDir: widget.outputDir,
         explicitTreeUri: widget.explicitTreeUri,
         requestGrant: (folder, sourcePath) async {
-          if (!mounted || _cancelled) return null;
+          if (!mounted || _cancelled) {
+            return const SaveFolderDecision.cancelled();
+          }
           return promptSaveFolder(context, folder, sourcePath: sourcePath);
         },
       );
@@ -89,6 +91,14 @@ class _EncryptProgressScreenState extends State<EncryptProgressScreen> {
       // falling out of this method silently would leave the spinner forever.
       if (!mounted || _cancelled) return;
       _showFatalError(e);
+      return;
+    }
+    // The user backed out of the save-folder prompt without naming a
+    // destination. Nothing has been encrypted — planning runs before the worker
+    // — so leaving is enough; go back the way the Cancel button does.
+    if (plan.cancelled) {
+      _cancelled = true;
+      if (mounted) context.pop();
       return;
     }
     if (!mounted) return;
