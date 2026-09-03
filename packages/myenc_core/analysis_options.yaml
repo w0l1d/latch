@@ -1,0 +1,12 @@
+# myenc_core is pure Dart — no Flutter, no dart:io (see CLAUDE.md). It therefore
+# gets `package:lints/recommended.yaml` rather than the app's
+# `package:flutter_lints/flutter.yaml`: flutter_lints is that same recommended
+# set plus Flutter-specific rules, which have nothing to lint here.
+#
+# This file exists so the analyzer stops walking up to the *root*
+# analysis_options.yaml for files in this tree. It would find the root file but
+# resolve its `package:flutter_lints/...` include against the nearest package
+# config — this package's, which has no flutter_lints — so the include failed
+# and these files were analyzed with no lint rules at all, while the root-level
+# recursive `dart format .` warned once per file.
+include: package:lints/recommended.yaml
