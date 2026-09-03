@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
+import 'output_plan.dart';
 import 'saf_bridge.dart';
 
 /// Asks for write access to [folder] — the folder the sources came from — so
@@ -21,12 +22,13 @@ import 'saf_bridge.dart';
 /// (see [SafBridge.pickTree]), so "Choose folder" opens in the right place
 /// instead of at the storage root.
 ///
-/// Returns the granted tree URI, or null when the user declines everything —
-/// in which case the caller falls back to saving in Downloads. Used by both
-/// the encrypt and decrypt flows as the `requestGrant` callback for
+/// Returns a [SaveFolderDecision]: a grant, an explicit "use Downloads", or a
+/// cancellation. Cancelling stops the batch — Downloads is a destination the
+/// user can choose, never one they get by declining to choose. Used by both the
+/// encrypt and decrypt flows as the `requestGrant` callback for
 /// [OutputPlanner.plan], which only calls it when no existing grant covers
 /// the folder.
-Future<String?> promptSaveFolder(
+Future<SaveFolderDecision> promptSaveFolder(
   BuildContext context,
   String? folder, {
   String? sourcePath,
@@ -34,20 +36,52 @@ Future<String?> promptSaveFolder(
   final docUri = sourcePath == null ? null : SafBridge.uriFor(sourcePath);
 
   // 1. Rationale first — a folder picker appearing out of nowhere reads as the
-  // app misbehaving; name the folder and say what happens next.
+  // app misbehaving; name the folder and say what happens next. Backing out
+  // here is a step back, not a cancel: the destination choices come next, and
+  // Cancel is one of them.
   if (folder != null && await _confirmPicker(context, folder)) {
     final granted = await _pickTree(folder, docUri);
-    if (granted != null) return granted;
+    if (granted != null) return SaveFolderDecision.granted(granted);
   }
 
-  // 2. Declined, unresolvable folder, or broken picker — the explicit ways
-  // out. Never a silent Downloads fallback.
-  if (!context.mounted) return null;
-  if (!await _chooseCustomFolder(context, folder)) return null;
+  // 2. Declined, unresolvable folder, or broken picker — the explicit ways out.
+  // Never a silent Downloads fallback.
+  //
+  // Asked at most twice: an empty picker after "Choose folder" (they backed out
+  // of it, or the device has no handler for the intent at all) comes back here
+  // rather than guessing, so Downloads stays reachable on a device where the
+  // picker cannot open. A second empty picker is taken as an answer — stop
+  // asking and cancel.
+  if (!context.mounted) return const SaveFolderDecision.cancelled();
+  final first = await _askDestination(context, folder, docUri);
+  if (first != null) return first;
 
-  // Custom location: start from the folder the files came from, not wherever
-  // the picker last was.
-  return _pickTree(folder, docUri);
+  if (!context.mounted) return const SaveFolderDecision.cancelled();
+  return await _askDestination(context, folder, docUri) ??
+      const SaveFolderDecision.cancelled();
+}
+
+/// One round of the destination question. Null means "the user asked to choose
+/// a folder and the picker produced nothing" — the only outcome that isn't an
+/// answer, and the only one worth asking about again.
+Future<SaveFolderDecision?> _askDestination(
+  BuildContext context,
+  String? folder,
+  String? docUri,
+) async {
+  if (!context.mounted) return const SaveFolderDecision.cancelled();
+  final destination = await _chooseDestination(context, folder);
+  switch (destination) {
+    case _Destination.cancel:
+      return const SaveFolderDecision.cancelled();
+    case _Destination.downloads:
+      return const SaveFolderDecision.useDownloads();
+    case _Destination.choose:
+      // Custom location: start from the folder the files came from, not
+      // wherever the picker last was.
+      final granted = await _pickTree(folder, docUri);
+      return granted == null ? null : SaveFolderDecision.granted(granted);
+  }
 }
 
 /// Opens the system folder picker seeded at [folder], returning the granted
@@ -97,8 +131,17 @@ Future<bool> _confirmPicker(BuildContext context, String folder) async {
   return proceed == true;
 }
 
-/// The explicit destinations once the source folder is off the table. True =
-/// the user wants to pick a folder themselves; false = use Downloads.
+/// What the user wants done with the output once the source folder is off the
+/// table.
+enum _Destination { cancel, downloads, choose }
+
+/// The explicit destinations once the source folder is off the table.
+///
+/// Three outcomes, all of them deliberate. Cancel is a real button and not just
+/// a back-gesture, because leaving the batch is a choice a user is entitled to
+/// make and an invisible one is no choice at all. Dismissing the dialog means
+/// the same thing: the user did not say where the files go, so nothing is
+/// written. Downloads is offered plainly, but only ever as something chosen.
 ///
 /// A null [folder] is not a malfunction and must not read like one: when a file
 /// is picked through the picker's shortcuts (Downloads, Images, Videos…),
@@ -106,12 +149,14 @@ Future<bool> _confirmPicker(BuildContext context, String folder) async {
 /// folder holding it — there is no supported way to ask. So the copy explains
 /// the situation plainly and leads with the action that fixes it (choosing a
 /// folder grants access, and Android remembers that grant for next time).
-Future<bool> _chooseCustomFolder(BuildContext context, String? folder) async {
-  final choose = await showDialog<bool>(
+Future<_Destination> _chooseDestination(
+  BuildContext context,
+  String? folder,
+) async {
+  final choice = await showDialog<_Destination>(
     context: context,
-    // Same reasoning as _confirmPicker: this dialog's two buttons are the
-    // only valid outcomes. A dismiss must not silently resolve to "Use
-    // Downloads".
+    // Same reasoning as _confirmPicker: a dismiss must not silently resolve to
+    // "Use Downloads". It resolves to cancel, below.
     barrierDismissible: false,
     builder: (ctx) => AlertDialog(
       title: const Text('Where to save'),
@@ -127,15 +172,20 @@ Future<bool> _chooseCustomFolder(BuildContext context, String? folder) async {
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(ctx, false),
+          onPressed: () => Navigator.pop(ctx, _Destination.cancel),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, _Destination.downloads),
           child: const Text('Use Downloads'),
         ),
         FilledButton(
-          onPressed: () => Navigator.pop(ctx, true),
+          onPressed: () => Navigator.pop(ctx, _Destination.choose),
           child: const Text('Choose folder'),
         ),
       ],
     ),
   );
-  return choose == true;
+  // Dismissed (back press) — no destination was named, so cancel.
+  return choice ?? _Destination.cancel;
 }

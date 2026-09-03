@@ -3,16 +3,17 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:latch/core/output_plan.dart';
 import 'package:latch/core/save_folder_prompt.dart';
 import 'package:latch/core/saf_bridge.dart';
 
 /// The folder-grant flow: a rationale dialog first explains WHY a folder
 /// picker is about to appear (naming the source folder), then Continue opens
 /// the system permission picker seeded at that folder. Backing out of either
-/// step — or a picker that can't open — lands on the explicit Downloads /
-/// custom-folder choices, never on a silent fallback. Every branch is pinned
-/// here because this is the only thing standing between the user and files
-/// landing somewhere unexpected.
+/// step — or a picker that can't open — lands on the explicit Cancel /
+/// Downloads / custom-folder choices, never on a silent fallback. Every branch
+/// is pinned here because this is the only thing standing between the user and
+/// files landing somewhere unexpected.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -41,7 +42,7 @@ void main() {
   Future<void Function()> pumpPrompt(
     WidgetTester tester,
     String? folder,
-    void Function(String?) onResult, {
+    void Function(SaveFolderDecision) onResult, {
     String? sourcePath,
   }) async {
     late VoidCallback run;
@@ -60,11 +61,20 @@ void main() {
     return run;
   }
 
+  /// Taps the Cancel of the rationale dialog — the only dialog on screen at
+  /// that point, so the ambiguity with the destinations dialog's Cancel can't
+  /// arise.
+  Future<void> backOutOfRationale(WidgetTester tester) async {
+    expect(find.text('Save beside the originals?'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('explains first; the picker only opens after Continue', (
     tester,
   ) async {
     mockPickTreeReplies(['content://tree/granted']);
-    String? result;
+    SaveFolderDecision? result;
     final run = await pumpPrompt(tester, workFolder, (r) => result = r);
     run();
     await tester.pumpAndSettle();
@@ -87,7 +97,8 @@ void main() {
       {'initialPath': workFolder, 'initialDocUri': null},
       reason: 'the picker starts at the folder the files came from',
     );
-    expect(result, 'content://tree/granted');
+    expect(result!.outcome, SaveFolderOutcome.granted);
+    expect(result!.treeUri, 'content://tree/granted');
     expect(
       find.text('Use Downloads'),
       findsNothing,
@@ -102,11 +113,11 @@ void main() {
     final run = await pumpPrompt(tester, workFolder, (_) {});
     run();
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Cancel'));
-    await tester.pumpAndSettle();
+    await backOutOfRationale(tester);
 
     expect(find.text('Where to save'), findsOneWidget);
     expect(find.textContaining('"Work"'), findsOneWidget);
+    expect(find.text('Cancel'), findsOneWidget);
     expect(find.text('Use Downloads'), findsOneWidget);
     expect(find.text('Choose folder'), findsOneWidget);
     expect(calls, isEmpty, reason: 'Cancel must not open the picker');
@@ -128,33 +139,57 @@ void main() {
     expect(find.text('Choose folder'), findsOneWidget);
   });
 
-  testWidgets('"Use Downloads" returns null without opening the picker', (
+  testWidgets(
+    '"Use Downloads" is an explicit choice, made without the picker',
+    (tester) async {
+      mockPickTreeReplies(['content://tree/never']);
+      SaveFolderDecision? result;
+      final run = await pumpPrompt(tester, workFolder, (r) => result = r);
+      run();
+      await tester.pumpAndSettle();
+      await backOutOfRationale(tester);
+      await tester.tap(find.text('Use Downloads'));
+      await tester.pumpAndSettle();
+
+      expect(result!.outcome, SaveFolderOutcome.useDownloads);
+      expect(result!.treeUri, isNull);
+      expect(
+        calls,
+        isEmpty,
+        reason: 'declining must not open the folder picker',
+      );
+    },
+  );
+
+  // The bug this whole enum exists for: "Cancel" and "Use Downloads" used to be
+  // the same answer, so a user who wanted out got their files written somewhere
+  // they never picked. Cancelling now stops the batch and nothing is written.
+  testWidgets('Cancel is its own answer, distinct from Downloads', (
     tester,
   ) async {
     mockPickTreeReplies(['content://tree/never']);
-    String? result = 'unset';
+    SaveFolderDecision? result;
     final run = await pumpPrompt(tester, workFolder, (r) => result = r);
     run();
     await tester.pumpAndSettle();
+    await backOutOfRationale(tester);
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Use Downloads'));
-    await tester.pumpAndSettle();
 
-    expect(result, isNull);
-    expect(calls, isEmpty, reason: 'declining must not open the folder picker');
+    expect(result!.outcome, SaveFolderOutcome.cancelled);
+    expect(result!.isCancelled, isTrue);
+    expect(calls, isEmpty);
   });
 
   testWidgets(
     '"Choose folder" opens the picker at the source folder and grants',
     (tester) async {
       mockPickTreeReplies(['content://tree/custom']);
-      String? result;
+      SaveFolderDecision? result;
       final run = await pumpPrompt(tester, workFolder, (r) => result = r);
       run();
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Cancel'));
-      await tester.pumpAndSettle();
+      await backOutOfRationale(tester);
       await tester.tap(find.text('Choose folder'));
       await tester.pumpAndSettle();
 
@@ -164,37 +199,49 @@ void main() {
         {'initialPath': workFolder, 'initialDocUri': null},
         reason: 'the custom-location picker starts where the files came from',
       );
-      expect(result, 'content://tree/custom');
+      expect(result!.treeUri, 'content://tree/custom');
     },
   );
 
-  testWidgets('cancelling the custom-location picker returns null', (
+  // An empty picker after "Choose folder" is ambiguous — the user backed out,
+  // or the device never opened one. Re-offering keeps Downloads reachable
+  // instead of guessing, but only once: a second empty picker is an answer.
+  testWidgets('an empty custom-location picker re-offers the choices once', (
     tester,
   ) async {
-    mockPickTreeReplies([null]);
-    String? result = 'unset';
+    mockPickTreeReplies([null, null]);
+    SaveFolderDecision? result;
     final run = await pumpPrompt(tester, workFolder, (r) => result = r);
     run();
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Cancel'));
-    await tester.pumpAndSettle();
+    await backOutOfRationale(tester);
     await tester.tap(find.text('Choose folder'));
     await tester.pumpAndSettle();
 
-    expect(calls.single.method, 'openTree');
-    expect(result, isNull);
+    expect(find.text('Where to save'), findsOneWidget, reason: 'asked again');
+    expect(result, isNull, reason: 'still waiting on the user');
+
+    await tester.tap(find.text('Choose folder'));
+    await tester.pumpAndSettle();
+
+    expect(calls, hasLength(2));
+    expect(
+      result!.outcome,
+      SaveFolderOutcome.cancelled,
+      reason: 'a second empty picker is taken as the answer',
+    );
+    expect(find.text('Where to save'), findsNothing);
   });
 
   testWidgets('the options dialog cannot be dismissed into a silent fallback', (
     tester,
   ) async {
     mockPickTreeReplies(['content://tree/chosen']);
-    String? result = 'unset';
+    SaveFolderDecision? result;
     final run = await pumpPrompt(tester, workFolder, (r) => result = r);
     run();
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Cancel'));
-    await tester.pumpAndSettle();
+    await backOutOfRationale(tester);
 
     // A barrier tap (like a back-press) used to complete showDialog with null,
     // which read as "Use Downloads" — the user's files silently went somewhere
@@ -203,11 +250,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Where to save'), findsOneWidget);
-    expect(result, 'unset', reason: 'still waiting on the user');
+    expect(result, isNull, reason: 'still waiting on the user');
 
     await tester.tap(find.text('Choose folder'));
     await tester.pumpAndSettle();
-    expect(result, 'content://tree/chosen');
+    expect(result!.treeUri, 'content://tree/chosen');
   });
 
   testWidgets('a picker that fails to open still offers the ways out', (
@@ -223,7 +270,7 @@ void main() {
           if (i == 1) throw PlatformException(code: 'unavailable');
           return 'content://tree/recovered';
         });
-    String? result;
+    SaveFolderDecision? result;
     final run = await pumpPrompt(tester, workFolder, (r) => result = r);
     run();
     await tester.pumpAndSettle();
@@ -241,7 +288,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(calls, hasLength(2));
-    expect(result, 'content://tree/recovered');
+    expect(result!.treeUri, 'content://tree/recovered');
   });
 
   testWidgets('a picker that can never open declines instead of throwing', (
@@ -252,7 +299,7 @@ void main() {
           calls.add(call);
           throw PlatformException(code: 'unavailable');
         });
-    String? result = 'unset';
+    SaveFolderDecision? result;
     Object? thrown;
     late VoidCallback run;
     await tester.pumpWidget(
@@ -275,8 +322,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Continue'));
     await tester.pumpAndSettle();
-    // The user takes the one option left that could still work.
+    // The user takes the one option left that could still work; it can't, so
+    // the choices come back and Downloads is still there to take.
     await tester.tap(find.text('Choose folder'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Use Downloads'));
     await tester.pumpAndSettle();
 
     expect(calls, hasLength(2), reason: 'both pickers were attempted');
@@ -287,10 +337,14 @@ void main() {
           'a device with no ACTION_OPEN_DOCUMENT_TREE handler must not abort '
           'the whole batch out of the prompt',
     );
-    expect(result, isNull, reason: 'null = the caller saves to Downloads');
+    expect(
+      result!.outcome,
+      SaveFolderOutcome.useDownloads,
+      reason: 'Downloads stays reachable on a device with no picker at all',
+    );
   });
 
-  testWidgets('a context unmounted mid-picker declines without a dialog', (
+  testWidgets('a context unmounted mid-picker cancels without a dialog', (
     tester,
   ) async {
     final gate = Completer<String?>();
@@ -299,7 +353,7 @@ void main() {
           calls.add(call);
           return gate.future;
         });
-    String? result = 'unset';
+    SaveFolderDecision? result;
     late VoidCallback run;
     await tester.pumpWidget(
       MaterialApp(
@@ -319,13 +373,14 @@ void main() {
     expect(calls.single.method, 'openTree');
 
     // The screen is gone by the time the picker answer arrives (e.g. the
-    // user cancelled the batch): the prompt must quietly decline, not call
-    // showDialog on a dead context.
+    // user cancelled the batch): the prompt must quietly stop, not call
+    // showDialog on a dead context — and not pick Downloads for a user who
+    // is no longer there to be asked.
     await tester.pumpWidget(const MaterialApp(home: SizedBox()));
     gate.complete(null);
     await tester.pumpAndSettle();
 
-    expect(result, isNull);
+    expect(result!.outcome, SaveFolderOutcome.cancelled);
     expect(find.byType(AlertDialog), findsNothing);
   });
 
@@ -351,6 +406,7 @@ void main() {
       ),
       findsOneWidget,
     );
+    expect(find.text('Cancel'), findsOneWidget);
     expect(find.text('Use Downloads'), findsOneWidget);
     expect(find.text('Choose folder'), findsOneWidget);
     expect(calls, isEmpty);
@@ -360,7 +416,7 @@ void main() {
     'an unknown folder with no document URI leaves the picker unseeded',
     (tester) async {
       mockPickTreeReplies(['content://tree/anywhere']);
-      String? result;
+      SaveFolderDecision? result;
       final run = await pumpPrompt(tester, null, (r) => result = r);
       run();
       await tester.pumpAndSettle();
@@ -371,7 +427,7 @@ void main() {
         'initialPath': null,
         'initialDocUri': null,
       });
-      expect(result, 'content://tree/anywhere');
+      expect(result!.treeUri, 'content://tree/anywhere');
     },
   );
 
@@ -391,7 +447,7 @@ void main() {
     SafBridge.rememberUri(picked, docUri);
 
     mockPickTreeReplies(['content://tree/resolved-by-system']);
-    String? result;
+    SaveFolderDecision? result;
     final run = await pumpPrompt(
       tester,
       null,
@@ -407,7 +463,7 @@ void main() {
       'initialPath': null,
       'initialDocUri': docUri,
     });
-    expect(result, 'content://tree/resolved-by-system');
+    expect(result!.treeUri, 'content://tree/resolved-by-system');
   });
 
   testWidgets('a resolved folder still passes the document as a second seed', (

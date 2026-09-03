@@ -8,6 +8,42 @@ import 'default_output.dart';
 import 'saf_bridge.dart';
 import 'unresolved_destination.dart';
 
+/// What the user answered when asked where a batch's output should go.
+///
+/// Three states, not two. "No tree URI" used to mean both "the user declined"
+/// and "there is no grant to be had", and the planner could not tell them
+/// apart — so declining to choose silently routed every output to Downloads.
+/// [useDownloads] is a destination the user picked; [cancelled] is the absence
+/// of a decision, and the batch stops rather than guessing on their behalf.
+enum SaveFolderOutcome { granted, useDownloads, cancelled }
+
+/// The answer to one save-folder prompt: an outcome, plus the granted tree URI
+/// when (and only when) the outcome is [SaveFolderOutcome.granted].
+@immutable
+class SaveFolderDecision {
+  final SaveFolderOutcome outcome;
+
+  /// The granted SAF tree URI; non-null exactly when [outcome] is
+  /// [SaveFolderOutcome.granted].
+  final String? treeUri;
+
+  const SaveFolderDecision._(this.outcome, this.treeUri);
+
+  /// The user allowed access to a folder; [treeUri] is the grant.
+  const SaveFolderDecision.granted(String treeUri)
+    : this._(SaveFolderOutcome.granted, treeUri);
+
+  /// The user explicitly chose Downloads over naming a folder.
+  const SaveFolderDecision.useDownloads()
+    : this._(SaveFolderOutcome.useDownloads, null);
+
+  /// The user backed out without choosing a destination — stop the batch.
+  const SaveFolderDecision.cancelled()
+    : this._(SaveFolderOutcome.cancelled, null);
+
+  bool get isCancelled => outcome == SaveFolderOutcome.cancelled;
+}
+
 /// Where one source file's output should ultimately land (Android only).
 class OutputTarget {
   /// Granted folder (tree URI) to create the output in; null means there is no
@@ -39,7 +75,23 @@ class OutputPlan {
   /// Per-source-path relocation target (Android only; empty off-Android).
   final Map<String, OutputTarget> byPath;
 
-  const OutputPlan({this.stagingDir, this.outputDir, this.byPath = const {}});
+  /// The user backed out of a save-folder prompt without naming a destination.
+  /// The caller must abandon the batch — no crypto has run at this point, so
+  /// there is nothing written to undo.
+  final bool cancelled;
+
+  const OutputPlan({
+    this.stagingDir,
+    this.outputDir,
+    this.byPath = const {},
+    this.cancelled = false,
+  });
+
+  const OutputPlan.cancelled()
+    : stagingDir = null,
+      outputDir = null,
+      byPath = const {},
+      cancelled = true;
 
   bool get isStaged => stagingDir != null;
 }
@@ -75,15 +127,22 @@ class OutputPlanner {
   ///   targets it and no per-folder prompting happens.
   /// - [requestGrant]: invoked once per distinct source folder that has no
   ///   cached grant, and once for the whole batch with a null folder when the
-  ///   source folder can't be resolved at all; returns a tree URI, or null when
-  ///   the user declines (→ those files fall back to Downloads). The second
-  ///   argument is one source file that lives in that folder, so the prompt can
-  ///   seed the picker with the document itself when the folder is unknown.
+  ///   source folder can't be resolved at all. Returns a [SaveFolderDecision]:
+  ///   a grant, an explicit "use Downloads", or a cancellation — which aborts
+  ///   the whole plan (see [OutputPlan.cancelled]). The second argument is one
+  ///   source file that lives in that folder, so the prompt can seed the picker
+  ///   with the document itself when the folder is unknown.
+  ///
+  /// Cancelling stops at the first declined prompt: a batch spanning several
+  /// unfamiliar folders does not march the user through the rest of them, and
+  /// "cancel" means the batch, not just that one folder. Nothing has been
+  /// encrypted or written when this returns — planning runs before the worker.
   static Future<OutputPlan> plan(
     List<String> files, {
     String? explicitDir,
     String? explicitTreeUri,
-    Future<String?> Function(String? folder, String? sourcePath)? requestGrant,
+    Future<SaveFolderDecision> Function(String? folder, String? sourcePath)?
+    requestGrant,
     @visibleForTesting bool? platformIsAndroid,
   }) async {
     final android = platformIsAndroid ?? Platform.isAndroid;
@@ -127,7 +186,12 @@ class OutputPlanner {
           if (unknownGrant == null && requestGrant != null) {
             // Pass the source file: its folder is unknown, but its document URI
             // still lets the system open the picker in the right place.
-            unknownGrant = await requestGrant(null, f);
+            final decision = await requestGrant(null, f);
+            if (decision.isCancelled) return const OutputPlan.cancelled();
+            unknownGrant = decision.treeUri;
+            // Only a real destination is worth remembering — a cancellation is
+            // the absence of a preference, and storing it would answer the
+            // question wrongly for every later batch.
             if (unknownGrant != null) {
               await UnresolvedDestination.remember(unknownGrant);
             }
@@ -136,8 +200,13 @@ class OutputPlanner {
         byPath[f] = OutputTarget(treeUri: unknownGrant);
         continue;
       }
-      grantByFolder[folder] ??= await _grantFor(folder, f, requestGrant);
-      byPath[f] = grantByFolder[folder]!;
+      var target = grantByFolder[folder];
+      if (target == null) {
+        final resolved = await _grantFor(folder, f, requestGrant);
+        if (resolved.cancelled) return const OutputPlan.cancelled();
+        target = grantByFolder[folder] = resolved.target;
+      }
+      byPath[f] = target;
     }
     return OutputPlan(stagingDir: staging, outputDir: staging, byPath: byPath);
   }
@@ -158,14 +227,27 @@ class OutputPlanner {
   /// prompt and send every later batch to Downloads with no way back.
   ///
   /// A null target tree URI means no access → the caller uses Downloads.
-  static Future<OutputTarget> _grantFor(
+  /// `cancelled` is a different thing entirely: the user was asked and declined
+  /// to answer, so the batch stops instead of picking a folder for them. The
+  /// two must stay distinguishable — conflating them is what sent declined
+  /// batches to Downloads unannounced.
+  static Future<({bool cancelled, OutputTarget target})> _grantFor(
     String folder,
     String sourcePath,
-    Future<String?> Function(String? folder, String? sourcePath)? requestGrant,
+    Future<SaveFolderDecision> Function(String? folder, String? sourcePath)?
+    requestGrant,
   ) async {
+    const downloads = (cancelled: false, target: OutputTarget());
+
     final existing = await SafBridge.existingTreeGrantFor(folder);
     if (existing != null) {
-      return OutputTarget(treeUri: existing.treeUri, subPath: existing.subPath);
+      return (
+        cancelled: false,
+        target: OutputTarget(
+          treeUri: existing.treeUri,
+          subPath: existing.subPath,
+        ),
+      );
     }
 
     // Android forbids ACTION_OPEN_DOCUMENT_TREE grants on the top-level
@@ -174,19 +256,31 @@ class OutputPlanner {
     // to actually grant it — skip straight to the Downloads fallback, which
     // is already how DefaultOutput treats this folder (directly writable,
     // no grant needed).
-    if (_isTopLevelDownloadDir(folder)) return const OutputTarget();
+    // This is the platform saying no, not the user — Downloads is the right
+    // answer and no one needs to be asked.
+    if (_isTopLevelDownloadDir(folder)) return downloads;
 
-    if (requestGrant == null) return const OutputTarget();
-    final picked = await requestGrant(folder, sourcePath);
-    if (picked == null) return const OutputTarget();
+    if (requestGrant == null) return downloads;
+    final decision = await requestGrant(folder, sourcePath);
+    if (decision.isCancelled) {
+      return (cancelled: true, target: const OutputTarget());
+    }
+    final picked = decision.treeUri;
+    if (picked == null) return downloads; // explicitly chose Downloads
 
     final resolved = await SafBridge.existingTreeGrantFor(folder);
     if (resolved == null) {
       // The user picked a folder unrelated to the source, or one the provider
       // can't map to a path — honor their choice at the tree root.
-      return OutputTarget(treeUri: picked);
+      return (cancelled: false, target: OutputTarget(treeUri: picked));
     }
-    return OutputTarget(treeUri: resolved.treeUri, subPath: resolved.subPath);
+    return (
+      cancelled: false,
+      target: OutputTarget(
+        treeUri: resolved.treeUri,
+        subPath: resolved.subPath,
+      ),
+    );
   }
 
   /// True only for the top-level Download directory itself, not a subfolder
