@@ -1,10 +1,15 @@
 name: CI
 
+# `develop` is where work actually lands — feature/fix branches PR into it and
+# only batches of it reach `main`. Gating `main` alone means a develop-bound PR
+# gets no checks at all, and a reviewer reads that absence of signal as absence
+# of problems. Both branches are gated, so every PR is validated once, on its
+# own, before merge.
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
-    branches: [main]
+    branches: [main, develop]
 
 concurrency:
   group: ci-${{ github.ref }}
