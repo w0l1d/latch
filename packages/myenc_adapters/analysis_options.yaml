@@ -1,0 +1,11 @@
+# myenc_adapters depends on Flutter, so it keeps the same lint set as the app:
+# `package:flutter_lints/flutter.yaml`, now resolvable because flutter_lints is
+# a dev_dependency of this package rather than only of the root.
+#
+# This file exists so the analyzer stops walking up to the *root*
+# analysis_options.yaml for files in this tree. It would find the root file but
+# resolve its `package:flutter_lints/...` include against the nearest package
+# config — this package's — so the include failed and these files were analyzed
+# with no lint rules at all, while the root-level recursive `dart format .`
+# warned once per file.
+include: package:flutter_lints/flutter.yaml

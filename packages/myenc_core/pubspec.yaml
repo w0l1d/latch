@@ -8,3 +8,6 @@ environment:
 
 dev_dependencies:
   test: ^1.24.0
+  # Lint metadata only — the pure-Dart counterpart of the app's flutter_lints,
+  # which cannot be depended on here. No Flutter, no import, no code.
+  lints: ^6.0.0
