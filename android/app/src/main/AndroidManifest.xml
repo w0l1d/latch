@@ -6,8 +6,11 @@
          WRITE permission. -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28"/>
+    <!-- appLabel is "latch", or "Latch dev" for a -PdevBuild=true APK — that
+         build also gets its own applicationId, so the two installs sit side by
+         side and the label is what tells them apart. See build.gradle.kts. -->
     <application
-        android:label="latch"
+        android:label="${appLabel}"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:requestLegacyExternalStorage="true"
