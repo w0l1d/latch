@@ -1,0 +1,337 @@
+name: Dev build
+
+# Getting a testable APK onto a device used to mean cutting a release, which
+# filled the release history with dev iterations until "release" stopped meaning
+# anything. This workflow is the other half of that split: it builds a test APK
+# and drops it in the Telegram dev topic while touching none of the things that
+# make a release a release — no pubspec bump, no git tag, no GitHub release.
+#
+#   - push to develop: every batch that lands gets an APK, unasked.
+#   - workflow_dispatch: any branch, on demand ("can you try this build").
+#
+# The APK installs as com.latch.latch.dev (see android/app/build.gradle.kts), so
+# it sits next to a release install instead of replacing it: no uninstall, no
+# wiped passphrase vault, and its SAF grants and prefs are its own.
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+    inputs:
+      note:
+        description: 'Optional note for the Telegram message (what to test)'
+        type: string
+        required: false
+
+# One dev build per ref at a time; a newer push supersedes an in-flight one.
+concurrency:
+  group: dev-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Same gates as ci.yml, deliberately duplicated rather than depended on: a
+  # workflow_dispatch on an arbitrary branch may have no CI run at all, and
+  # shipping a tester a build that fails its own test suite wastes their time
+  # and produces bug reports about bugs already known.
+  gate:
+    name: Format + analyze + test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.44.2
+          cache: true
+
+      - name: Pub get
+        run: flutter pub get
+
+      - name: Pub get myenc_core
+        run: flutter pub get
+        working-directory: packages/myenc_core
+
+      - name: Pub get myenc_adapters
+        run: flutter pub get
+        working-directory: packages/myenc_adapters
+
+      - name: Format check
+        run: dart format --output=none --set-exit-if-changed .
+
+      - name: Analyze app
+        run: flutter analyze --no-pub
+
+      - name: Analyze myenc_core
+        run: flutter analyze --no-pub
+        working-directory: packages/myenc_core
+
+      - name: Analyze myenc_adapters
+        run: flutter analyze --no-pub
+        working-directory: packages/myenc_adapters
+
+      - name: Test myenc_core
+        run: flutter test
+        working-directory: packages/myenc_core
+
+      # sodium 4.x loads libsodium via Dart native assets — flutter test
+      # builds/bundles it automatically; no apt install needed.
+      - name: Test myenc_adapters (real libsodium + golden vectors)
+        run: flutter test
+        working-directory: packages/myenc_adapters
+
+      - name: Test app
+        run: flutter test
+
+  build:
+    name: Build + deliver dev APK
+    needs: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Needed by "Collect build context" below: the unreleased-commit list
+          # is computed against the newest release tag.
+          fetch-depth: 0
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.44.2
+          cache: true
+
+      # Same reasoning as release.yml: a cold ~/.gradle costs ~3 of the ~9
+      # build minutes on downloads alone. Keyed on the inputs that decide those
+      # downloads, with the release jobs' caches as a fallback — the dependency
+      # set is identical, only the applicationId differs.
+      - name: Cache Gradle
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-dev-${{ hashFiles('android/gradle/wrapper/gradle-wrapper.properties', 'android/**/*.gradle*', 'pubspec.lock') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-dev-
+            gradle-${{ runner.os }}-arm64-v8a-
+            gradle-${{ runner.os }}-
+
+      - name: Pub get
+        run: flutter pub get
+
+      # A dev build has no tag to take a version from, so it is named after what
+      # it actually is: the pubspec base version, marked dev, plus the short SHA
+      # that identifies the code. That string is what a tester reads back off
+      # the device, so it has to be enough to find the commit.
+      - name: Compute dev version
+        id: version
+        run: |
+          BASE=$(grep -m1 '^version:' pubspec.yaml | sed -E 's/^version: *([0-9]+\.[0-9]+\.[0-9]+).*/\1/')
+          if ! [[ "$BASE" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::could not read a MAJOR.MINOR.PATCH version out of pubspec.yaml (got '$BASE')"
+            exit 1
+          fi
+          SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+          # Slug for file names: branch refs contain '/' (feat/foo).
+          BRANCH_SLUG=$(echo "${GITHUB_REF_NAME}" | tr '/' '-')
+
+          {
+            echo "base=$BASE"
+            echo "short_sha=$SHORT_SHA"
+            echo "branch_slug=$BRANCH_SLUG"
+            echo "version_name=${BASE}-dev.${SHORT_SHA}"
+            echo "apk_name=latch-dev-${BRANCH_SLUG}-${SHORT_SHA}-arm64-v8a.apk"
+          } >> "$GITHUB_OUTPUT"
+
+      # arm64-only, --release, and --split-per-abi, for the reasons release.yml
+      # records at length: a fat APK bundling every ABI ran ~54MB, past
+      # Telegram's ~50MB document cap, and --split-per-abi is what produces the
+      # ABI-suffixed output name. --release rather than --debug because a debug
+      # APK is far larger and slower than the thing being tested; the release
+      # build type is debug-signed anyway, so it installs without ceremony.
+      #
+      # -PdevBuild=true is the only difference from a release build: it moves the
+      # applicationId to com.latch.latch.dev so this installs alongside one.
+      # --build-number is the run number, monotonic per workflow, so a newer dev
+      # APK always upgrades an older one rather than being refused.
+      - name: Build dev APK
+        env:
+          VERSION_NAME: ${{ steps.version.outputs.version_name }}
+        run: |
+          flutter build apk --release --split-per-abi \
+            --target-platform android-arm64 \
+            --android-project-arg devBuild=true \
+            --build-name="$VERSION_NAME" \
+            --build-number="${{ github.run_number }}"
+
+      # The applicationId suffix is the whole point of the side-by-side install
+      # and it lives in Gradle, where nothing else would catch it going wrong —
+      # a dev APK that reports com.latch.latch would silently replace the
+      # release the tester is comparing against.
+      - name: Validate APK is a dev build
+        env:
+          VERSION_NAME: ${{ steps.version.outputs.version_name }}
+        run: |
+          AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt | sort -V | tail -1)
+          if [ -z "$AAPT" ]; then
+            echo "::error::aapt not found under \$ANDROID_HOME/build-tools"
+            exit 1
+          fi
+
+          BADGING=$("$AAPT" dump badging build/app/outputs/flutter-apk/app-arm64-v8a-release.apk)
+          PKG=$(echo "$BADGING" | grep -oP "package: name='\K[^']+")
+          APK_VERSION_NAME=$(echo "$BADGING" | grep -oP "versionName='\K[^']+")
+
+          if [ "$PKG" != "com.latch.latch.dev" ]; then
+            echo "::error::dev APK reports package '$PKG', expected com.latch.latch.dev — it would overwrite a release install"
+            exit 1
+          fi
+          if [ "$APK_VERSION_NAME" != "$VERSION_NAME" ]; then
+            echo "::error::dev APK reports version '$APK_VERSION_NAME', expected $VERSION_NAME"
+            exit 1
+          fi
+          echo "dev APK validated: $PKG $APK_VERSION_NAME"
+
+      - name: Stage APK
+        id: apk
+        env:
+          APK_NAME: ${{ steps.version.outputs.apk_name }}
+        run: |
+          mkdir -p dist
+          APK="dist/$APK_NAME"
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "$APK"
+          SIZE=$(stat -c %s "$APK")
+          echo "path=$APK" >> "$GITHUB_OUTPUT"
+          echo "size=$SIZE" >> "$GITHUB_OUTPUT"
+          echo "size_mb=$(( SIZE / 1000000 ))" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(sha256sum "$APK" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          # Telegram's bot API rejects documents over 50MB outright. Decide here
+          # rather than in the upload step so the fallback is a plain skip, not
+          # a failed build with no artifact anywhere.
+          if [ "$SIZE" -gt 50000000 ]; then
+            echo "too_big=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "too_big=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Only when Telegram can't take it. Artifacts bill against the account's
+      # shared storage quota (which release.yml found full once), so this is
+      # best-effort: better a warning than a lost build.
+      - name: Upload APK to the workflow run (too large for Telegram)
+        if: steps.apk.outputs.too_big == 'true'
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.version.outputs.apk_name }}
+          path: ${{ steps.apk.outputs.path }}
+          retention-days: 14
+
+      - name: Warn that the APK bypassed Telegram
+        if: steps.apk.outputs.too_big == 'true'
+        run: |
+          echo "::warning::APK is ${{ steps.apk.outputs.size_mb }}MB, over Telegram's 50MB document cap — attached to this run instead."
+
+      # What a tester needs to know about the build, gathered where git is: the
+      # change it carries, and everything on this branch that no release has
+      # shipped yet. Kept out of the caption (1024 chars) — it goes in the
+      # follow-up message.
+      - name: Collect build context
+        id: context
+        if: steps.apk.outputs.too_big != 'true'
+        run: |
+          echo "subject=$(git log -1 --pretty=%s)" >> "$GITHUB_OUTPUT"
+          echo "author=$(git log -1 --pretty=%an)" >> "$GITHUB_OUTPUT"
+
+          # Commits on this ref that the newest release tag doesn't contain —
+          # i.e. what is unreleased. No tags yet (or an unrelated history) falls
+          # back to the last 10 commits, which is still a useful "what's new".
+          LATEST_TAG=$(git tag --list 'v*.*.*-*' --sort=-v:refname | head -1)
+          if [ -n "$LATEST_TAG" ] && git merge-base --is-ancestor "$LATEST_TAG" HEAD 2>/dev/null; then
+            RANGE="${LATEST_TAG}..HEAD"
+            echo "range_label=since $LATEST_TAG" >> "$GITHUB_OUTPUT"
+          else
+            RANGE="-10"
+            echo "range_label=last 10 commits" >> "$GITHUB_OUTPUT"
+          fi
+          {
+            echo "log<<CHANGELOG_EOF"
+            git log "$RANGE" --no-merges --pretty='%h %s' | head -15
+            echo "CHANGELOG_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      # Caption is HTML parse mode, so every interpolated value is escaped with
+      # jq's @html before it reaches the request — a commit subject containing
+      # '<' or '&' would otherwise make Telegram reject the whole message.
+      #
+      # The "not a release" line is not decoration: a bare APK in a channel is
+      # indistinguishable from a release artifact, and someone will install it
+      # thinking it is one.
+      - name: Post dev APK to Telegram
+        if: steps.apk.outputs.too_big != 'true'
+        env:
+          # Straight into the request, never echoed.
+          TELEGRAM_BOT_TOKEN: ${{ secrets.BOTFATHER_TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: '-1003694191301'
+          THREAD_ID: '53'
+          SUBJECT: ${{ steps.context.outputs.subject }}
+          AUTHOR: ${{ steps.context.outputs.author }}
+          CHANGELOG: ${{ steps.context.outputs.log }}
+          RANGE_LABEL: ${{ steps.context.outputs.range_label }}
+          NOTE: ${{ github.event.inputs.note }}
+          # Everything below reaches the shell as data, never as an expression
+          # spliced into the script — a branch name is attacker-shaped input.
+          VERSION_NAME: ${{ steps.version.outputs.version_name }}
+          SHORT_SHA: ${{ steps.version.outputs.short_sha }}
+          APK_PATH: ${{ steps.apk.outputs.path }}
+          APK_SHA256: ${{ steps.apk.outputs.sha256 }}
+          APK_SIZE_MB: ${{ steps.apk.outputs.size_mb }}
+        run: |
+          API="https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}"
+          esc() { jq -Rrs '@html' <<<"$1" | sed -e 's/[[:space:]]*$//'; }
+
+          RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          COMMIT_LINK="https://github.com/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}"
+
+          CAPTION=$'🧪 <b>Latch dev build — NOT a release</b>\n'
+          CAPTION+=$'\n<b>Version:</b> <code>'"$(esc "$VERSION_NAME")"$'</code>'
+          CAPTION+=$'\n<b>Branch:</b> <code>'"$(esc "${GITHUB_REF_NAME}")"$'</code>'
+          CAPTION+=$'\n<b>Commit:</b> <a href="'"$COMMIT_LINK"$'">'"$(esc "$SHORT_SHA")"$'</a> by '"$(esc "$AUTHOR")"
+          CAPTION+=$'\n<b>Installs as:</b> <code>com.latch.latch.dev</code> (alongside a release build)'
+          CAPTION+=$'\n\n📝 '"$(esc "$SUBJECT")"
+
+          RESPONSE=$(curl -sS \
+            -F "chat_id=${CHAT_ID}" \
+            -F "message_thread_id=${THREAD_ID}" \
+            -F "document=@${APK_PATH}" \
+            -F "caption=${CAPTION}" \
+            -F "parse_mode=HTML" \
+            "${API}/sendDocument")
+          echo "$RESPONSE"
+          if ! echo "$RESPONSE" | grep -q '"ok":true'; then
+            echo "::error::Telegram sendDocument failed: $RESPONSE"
+            exit 1
+          fi
+
+          # Follow-up rather than one giant caption: the changelog and checksum
+          # would blow past Telegram's 1024-character caption limit.
+          MSG=$'<b>What\'s in it</b> ('"$(esc "$RANGE_LABEL")"$')\n<pre>'"$(esc "$CHANGELOG")"$'</pre>'
+          if [ -n "${NOTE:-}" ]; then
+            MSG+=$'\n<b>To test:</b> '"$(esc "$NOTE")"
+          fi
+          MSG+=$'\n<b>SHA-256:</b> <code>'"$APK_SHA256"$'</code>'
+          MSG+=$'\n<b>Size:</b> '"$APK_SIZE_MB"$' MB · <a href="'"$RUN_URL"$'">build log</a>'
+
+          RESPONSE=$(curl -sS -X POST \
+            -H 'Content-Type: application/json' \
+            -d "$(jq -n \
+                  --arg chat_id "$CHAT_ID" \
+                  --argjson thread "$THREAD_ID" \
+                  --arg text "$MSG" \
+                  '{chat_id: $chat_id, message_thread_id: $thread, text: $text, parse_mode: "HTML", disable_web_page_preview: true}')" \
+            "${API}/sendMessage")
+          echo "$RESPONSE"
+          if ! echo "$RESPONSE" | grep -q '"ok":true'; then
+            echo "::error::Telegram sendMessage failed: $RESPONSE"
+            exit 1
+          fi
