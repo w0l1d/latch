@@ -22,6 +22,17 @@ String userMessageForError(Object error) {
     return 'This file was created by a newer version of Latch. '
         'Please update the app.';
   }
+  // Authentic, undamaged, and written by a build that knows a payload shape
+  // this one does not. Saying "damaged" here would send the user hunting for a
+  // backup they do not need — so this gets its own copy (FR-020h).
+  if (error is UnknownPayloadKindError) {
+    return 'This file holds something a newer version of Latch knows how to '
+        'open. The file is fine — please update the app.';
+  }
+  if (error is UnsafeArchiveEntryError) {
+    return 'This folder could not be restored safely: '
+        '"${error.entryPath}" ${error.reason}. Nothing was written.';
+  }
 
   // String-form errors (reported by the worker isolate via SendPort).
   final msg = error.toString();
@@ -41,6 +52,20 @@ String userMessageForError(Object error) {
   }
   if (msg.contains('StorageFullError')) {
     return 'Not enough storage space to write the file.';
+  }
+  if (msg.contains('UnknownPayloadKindError')) {
+    return 'This file holds something a newer version of Latch knows how to '
+        'open. The file is fine — please update the app.';
+  }
+  if (msg.contains('UnsafeArchiveEntryError')) {
+    // The worker hands this back as text, so recover the entry path from the
+    // quoted portion rather than dropping to the generic message — naming the
+    // entry is the whole point of the error.
+    final quoted = RegExp(r'"([^"]*)"').firstMatch(msg)?.group(1);
+    return quoted == null
+        ? 'This folder could not be restored safely. Nothing was written.'
+        : 'This folder could not be restored safely: an entry named '
+              '"$quoted" is not safe to write. Nothing was written.';
   }
 
   return 'Something went wrong. The files were not changed.';

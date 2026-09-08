@@ -6,6 +6,14 @@ publish_to: none
 environment:
   sdk: ^3.12.2
 
+dependencies:
+  # The only runtime dependency of this package. Pure Dart, streaming, and
+  # PAX-capable — verified free of dart:io and Flutter imports before adoption,
+  # because this package must stay usable without either. Used for the packed
+  # folder payload of .latch v2; Python's stdlib tarfile is an independent
+  # oracle for the same format, which is why tar was chosen over a bespoke one.
+  tar: ^2.0.2
+
 dev_dependencies:
   test: ^1.24.0
   # Lint metadata only — the pure-Dart counterpart of the app's flutter_lints,
