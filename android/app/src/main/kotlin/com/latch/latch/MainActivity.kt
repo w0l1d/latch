@@ -154,6 +154,21 @@ class MainActivity : FlutterFragmentActivity() {
                                 val uri = call.argument<String>("uri")!!
                                 runOnUiThread { result.success(isTreeGrantLive(uri)) }
                             }
+                            // Every folder grant the app holds, for the Settings
+                            // list that shows them and lets one be revoked. Queried
+                            // on this worker thread (display-name lookups hit
+                            // providers) and only delivered on the UI thread.
+                            "listTreeGrants" -> {
+                                val grants = listTreeGrants()
+                                runOnUiThread { result.success(grants) }
+                            }
+                            // Give a folder grant back. The one place the app
+                            // shrinks the persisted table it otherwise only grows.
+                            "releaseTreeGrant" -> {
+                                val uri = call.argument<String>("uri")!!
+                                val released = releaseTreeGrant(uri)
+                                runOnUiThread { result.success(released) }
+                            }
                             // Create a new document in a granted tree and copy the
                             // staged file into it. Returns the new document URI and
                             // a human display path.
@@ -510,6 +525,79 @@ class MainActivity : FlutterFragmentActivity() {
         return contentResolver.persistedUriPermissions.any {
             it.isWritePermission && it.uri == target
         }
+    }
+
+    // Every writable folder grant the app currently holds, newest first, plus
+    // the platform's ceiling on how many it may hold.
+    //
+    // Only tree grants are listed, and only writable ones: the app takes no
+    // other kind, and the question the Settings list answers is "which folders
+    // can Latch save into". A grant whose folder can't be named as a path
+    // (SD volumes, cloud providers) still gets a label from the tree
+    // document's own display name, so it can be recognized and revoked rather
+    // than sitting there as an opaque content:// URI.
+    private fun listTreeGrants(): Map<String, Any?> {
+        val grants = mutableListOf<Map<String, Any?>>()
+        for (perm in contentResolver.persistedUriPermissions) {
+            if (!perm.isWritePermission) continue
+            val uri = perm.uri
+            if (!DocumentsContract.isTreeUri(uri)) continue
+            val path = runCatching { treeUriToPath(uri) }.getOrNull()
+            val docId = runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull()
+            grants.add(
+                mapOf(
+                    "uri" to uri.toString(),
+                    "path" to path,
+                    "label" to (path ?: treeDisplayName(uri) ?: docId ?: uri.toString()),
+                    "grantedAt" to perm.persistedTime,
+                ),
+            )
+        }
+        // persistedUriPermissions has no documented order; newest first is what
+        // the list wants, and persistedTime is what the platform records.
+        grants.sortByDescending { it["grantedAt"] as? Long ?: 0L }
+        return mapOf("grants" to grants, "limit" to persistedGrantLimit())
+    }
+
+    // MAX_PERSISTED_URI_GRANTS in AOSP's UriGrantsManagerService: 128, raised
+    // to 512 in Android 11. It is @hide with no public accessor, so the value
+    // is mirrored here — and used only to tell the user how much headroom is
+    // left. Nothing gates on it: if a future release changes the number, a
+    // slightly wrong "of 512" is the entire consequence.
+    private fun persistedGrantLimit(): Int =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) 512 else 128
+
+    // The granted folder's own display name, for grants that front no path.
+    // Best-effort: a provider that has since gone away just yields null.
+    private fun treeDisplayName(treeUri: Uri): String? = runCatching {
+        val docUri = DocumentsContract.buildDocumentUriUsingTree(
+            treeUri,
+            DocumentsContract.getTreeDocumentId(treeUri),
+        )
+        contentResolver.query(
+            docUri,
+            arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME),
+            null, null, null,
+        )?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+    }.getOrNull()
+
+    // Hand a folder grant back to the platform.
+    //
+    // Reports what persistedUriPermissions says afterwards rather than whether
+    // the call threw — same reason existingTreeGrant re-reads that table every
+    // batch: the platform's answer is the only one that decides whether the
+    // next save prompts. A device that refuses to release still reports the
+    // grant, so the UI says so instead of showing a row it failed to remove.
+    private fun releaseTreeGrant(treeUri: String): Boolean {
+        val uri = Uri.parse(treeUri)
+        runCatching {
+            contentResolver.releasePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+            )
+        }
+        return contentResolver.persistedUriPermissions.none { it.uri == uri }
     }
 
     // Address a folder nested inside a granted tree. The externalstorage

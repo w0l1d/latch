@@ -87,8 +87,23 @@ fallback. `OutputPlanner._isTopLevelDownloadDir` short-circuits it.
   call; on Android an exception escaping an activity-result callback leaves a parked
   `MethodChannel.Result` unanswered forever, which hangs the batch.
 
-Latch accumulates one grant per distinct source folder and never releases any —
-monotonic against that cap. Not urgent, but real.
+Latch takes one grant per distinct source folder. It used to release none, which was
+monotonic growth against that cap (issue #67): at the ceiling the platform drops the
+*oldest* grant, so a long-time user silently starts getting the "choose a folder" prompt
+again for folders they already granted, and the dropped one is not necessarily one they
+stopped caring about.
+
+**Settings → Save folders** (`lib/features/settings/save_folders_screen.dart`) is the
+answer, and deliberately the only one: it lists the grants the app holds and lets the
+user revoke any of them. The app does not evict on its own terms — deciding which grant
+is "least useful" needs history the app refuses to keep (see the no-cache rule below),
+and a wrong automatic revoke costs the user a prompt they didn't ask for. The mirrored
+cap is shown as headroom (`SafTreeGrants.limit`, 0 = unknown) and **nothing gates on
+it**: `MAX_PERSISTED_URI_GRANTS` is `@hide` with no public accessor, so if a future
+release changes the number, a slightly wrong "of 512" is the entire consequence.
+`releaseTreeGrant` reports what `persistedUriPermissions` says *after* the release
+rather than whether the call threw — devices that refuse to release exist (above), and
+the UI must not claim a revoke that didn't happen.
 
 ### `contentResolver.persistedUriPermissions` is the only grant record worth keeping
 

@@ -167,6 +167,47 @@ class SafBridge {
     }
   }
 
+  /// Every folder grant Android currently holds for this app, newest first.
+  ///
+  /// The app takes one grant per distinct source folder and, until this
+  /// existed, never gave one back — so the set only grew, against a platform
+  /// ceiling ([SafTreeGrants.limit]) that silently drops the oldest grant when
+  /// reached. This is the read side of making that visible; [releaseTreeGrant]
+  /// is the only place the app shrinks it.
+  ///
+  /// Reads the platform's table live, like every other grant question here.
+  /// Best-effort: any failure yields an empty list, which reads as "no folder
+  /// access" rather than an error screen. No `Platform.isAndroid` guard —
+  /// off Android there is no handler for the channel, which throws and lands
+  /// in exactly the same place.
+  static Future<SafTreeGrants> listTreeGrants() async {
+    try {
+      final m = await channel.invokeMethod<Map>('listTreeGrants');
+      if (m == null) return SafTreeGrants.empty;
+      return SafTreeGrants.fromMap(m);
+    } catch (_) {
+      return SafTreeGrants.empty;
+    }
+  }
+
+  /// Give back the folder grant on [treeUri]. Returns whether Android has
+  /// actually stopped holding it — the platform table is checked after the
+  /// release, so a device that refuses reports false instead of the UI
+  /// claiming a revoke that didn't happen.
+  ///
+  /// Revoking is not destructive: nothing already written is touched, and the
+  /// next save into that folder simply asks for the folder again.
+  static Future<bool> releaseTreeGrant(String treeUri) async {
+    try {
+      final ok = await channel.invokeMethod<bool>('releaseTreeGrant', {
+        'uri': treeUri,
+      });
+      return ok ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Create [displayName] inside the granted [treeUri] and copy [srcPath] into
   /// it. [subPath] targets a folder nested inside the grant (empty = the tree
   /// root). Returns the created document's URI and a human-readable display
@@ -208,4 +249,73 @@ class SafBridge {
       return false;
     }
   }
+}
+
+/// One folder grant the app holds, as Android reports it.
+class SafTreeGrant {
+  /// The persisted tree URI — the identity used to revoke it.
+  final String uri;
+
+  /// Filesystem path the grant fronts, or null for providers that front no
+  /// real folder (SD volumes addressed by id, cloud providers).
+  final String? path;
+
+  /// What to show the user: the path when there is one, else the granted
+  /// folder's own display name, else its document id. Never empty, because a
+  /// row the user can't recognize is a row they can't decide about.
+  final String label;
+
+  /// When the grant was persisted, per the platform's own record.
+  final DateTime? grantedAt;
+
+  const SafTreeGrant({
+    required this.uri,
+    required this.path,
+    required this.label,
+    required this.grantedAt,
+  });
+
+  factory SafTreeGrant.fromMap(Map m) {
+    final at = m['grantedAt'];
+    return SafTreeGrant(
+      uri: m['uri'] as String,
+      path: m['path'] as String?,
+      label: (m['label'] as String?) ?? (m['uri'] as String),
+      grantedAt: at is int && at > 0
+          ? DateTime.fromMillisecondsSinceEpoch(at)
+          : null,
+    );
+  }
+}
+
+/// The grants the app holds, with the platform's ceiling on how many it may.
+class SafTreeGrants {
+  final List<SafTreeGrant> grants;
+
+  /// AOSP's `MAX_PERSISTED_URI_GRANTS` (128, or 512 from API 30). It has no
+  /// public accessor, so this is a mirrored constant — shown as headroom, and
+  /// never gated on. 0 means "unknown", i.e. don't claim a number.
+  final int limit;
+
+  const SafTreeGrants({required this.grants, required this.limit});
+
+  /// No folder access, and no claim about the ceiling.
+  static const empty = SafTreeGrants(grants: [], limit: 0);
+
+  /// Parses the platform's reply. Rows that aren't maps, and a missing limit,
+  /// are dropped rather than thrown on: a device that answers oddly should
+  /// still render whatever it did answer.
+  factory SafTreeGrants.fromMap(Map m) => SafTreeGrants(
+    grants: ((m['grants'] as List?) ?? const [])
+        .whereType<Map>()
+        .map(SafTreeGrant.fromMap)
+        .toList(),
+    limit: (m['limit'] as int?) ?? 0,
+  );
+
+  int get count => grants.length;
+
+  /// Whether the app is close enough to the ceiling that the user should be
+  /// told before the platform starts dropping their oldest folders for them.
+  bool get nearLimit => limit > 0 && count >= (limit * 0.8).floor();
 }

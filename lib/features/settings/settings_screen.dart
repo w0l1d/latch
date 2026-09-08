@@ -6,6 +6,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/app_crypto.dart';
 import '../../core/build_info.dart';
+import '../../core/saf_bridge.dart';
 import '../../shared/theme/app_theme.dart';
 
 /// Presets for the KDF cost selector.
@@ -43,6 +44,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   int _storedCount = 0;
   String _version = '';
   String _packageName = '';
+  int _saveFolderCount = 0;
 
   bool _loaded = false;
 
@@ -50,6 +52,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     _load();
+    _loadSaveFolderCount();
+  }
+
+  /// Read separately from [_load] and never awaited by it: this is the one
+  /// value that comes from a platform channel, and the rest of the screen must
+  /// not wait on it (or blank out if the channel never answers).
+  Future<void> _loadSaveFolderCount() async {
+    if (!Platform.isAndroid) return;
+    // Android's persisted-permission table, read live — the bridge answers an
+    // empty result rather than throwing on any failure.
+    final count = (await SafBridge.listTreeGrants()).count;
+    if (!mounted) return;
+    setState(() => _saveFolderCount = count);
   }
 
   Future<void> _load() async {
@@ -232,6 +247,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   }
                 : null,
           ),
+          // Android only: this is the SAF grant table, which no other platform
+          // has. Elsewhere the app writes beside the original with no grant at
+          // all, so there would be nothing to list or revoke.
+          if (Platform.isAndroid)
+            _NavTile(
+              title: 'Save folders',
+              subtitle: _saveFolderCount == 0
+                  ? 'No folder access yet'
+                  : '$_saveFolderCount folder${_saveFolderCount == 1 ? '' : 's'} Latch can save into',
+              onTap: () async {
+                await context.push('/settings/save-folders');
+                // Refresh the count when returning — a revoke changes it.
+                _load();
+              },
+            ),
           _InfoTile(
             title: 'Output location',
             value: Platform.isAndroid

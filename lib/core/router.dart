@@ -23,6 +23,7 @@ import '../features/settings/change_passphrase_screen.dart';
 import '../features/settings/secure_delete_screen.dart';
 import '../features/settings/sharing_keys_screen.dart';
 import '../features/settings/add_recipient_screen.dart';
+import '../features/settings/save_folders_screen.dart';
 
 final router = GoRouter(
   initialLocation: '/onboarding/welcome',
@@ -212,6 +213,10 @@ final router = GoRouter(
     GoRoute(
       path: '/settings/add-recipient',
       builder: (ctx, st) => const AddRecipientScreen(),
+    ),
+    GoRoute(
+      path: '/settings/save-folders',
+      builder: (ctx, st) => const SaveFoldersScreen(),
     ),
   ],
 );
