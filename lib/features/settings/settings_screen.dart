@@ -1,9 +1,11 @@
 import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/app_crypto.dart';
+import '../../core/build_info.dart';
 import '../../shared/theme/app_theme.dart';
 
 /// Presets for the KDF cost selector.
@@ -40,6 +42,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _kdfCost = 'Auto';
   int _storedCount = 0;
   String _version = '';
+  String _packageName = '';
 
   bool _loaded = false;
 
@@ -70,9 +73,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!mounted) return;
 
     String version = '';
+    String packageName = '';
     try {
       final info = await PackageInfo.fromPlatform();
       version = '${info.version}+${info.buildNumber}';
+      // Carried only for the copyable build line: since #75 a device can hold
+      // the release and the dev build at once, and the applicationId is the
+      // only thing that tells a bug report which of the two it came from.
+      packageName = info.packageName;
     } catch (_) {}
 
     if (!mounted) return;
@@ -85,8 +93,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _kdfCost = label;
       _storedCount = count;
       _version = version;
+      _packageName = packageName;
       _loaded = true;
     });
+  }
+
+  /// Everything needed to identify this binary, on one pasteable line.
+  ///
+  /// Deliberately more than the row displays: the row is a glance, the copy is
+  /// evidence. Parts that a build genuinely does not have (no SHA in a local
+  /// build, no package name if the platform channel failed) are omitted rather
+  /// than shown empty, so the line never implies a value it doesn't hold.
+  String _buildReportLine() {
+    final parts = <String>[
+      if (_version.isNotEmpty) 'Latch $_version',
+      BuildInfo.label,
+      if (BuildInfo.sha.isNotEmpty) 'sha ${BuildInfo.sha}',
+      if (_packageName.isNotEmpty) _packageName,
+    ];
+    return parts.join(' · ');
   }
 
   /// Applies a KDF preset. "Auto" restores the values calibrated during
@@ -217,6 +242,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           _SectionHeader('About'),
           _InfoTile(title: 'Version', value: _version),
+          // Tap-to-copy: the whole reason this row exists is to end up pasted
+          // into a bug report, and no one retypes a commit SHA correctly.
+          _InfoTile(
+            title: 'Build',
+            value: BuildInfo.label,
+            copyText: _buildReportLine(),
+            copyConfirmation: 'Build details copied',
+          ),
           _InfoTile(title: 'File format', value: '.latch (v1)'),
           const SizedBox(height: 32),
         ],
@@ -297,12 +330,34 @@ class _InfoTile extends StatelessWidget {
   final String title;
   final String value;
 
-  const _InfoTile({required this.title, required this.value});
+  /// When set, tapping the row copies this (not [value] — the copy can carry
+  /// more than the row has room to show) and confirms with a snackbar.
+  final String? copyText;
+  final String? copyConfirmation;
+
+  const _InfoTile({
+    required this.title,
+    required this.value,
+    this.copyText,
+    this.copyConfirmation,
+  });
+
+  Future<void> _copy(BuildContext context) async {
+    final text = copyText;
+    if (text == null || text.isEmpty) return;
+    final messenger = ScaffoldMessenger.of(context);
+    await Clipboard.setData(ClipboardData(text: text));
+    messenger.showSnackBar(
+      SnackBar(content: Text(copyConfirmation ?? 'Copied')),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final copyable = copyText != null && copyText!.isNotEmpty;
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+      onTap: copyable ? () => _copy(context) : null,
       title: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -315,6 +370,15 @@ class _InfoTile extends StatelessWidget {
               style: Theme.of(context).textTheme.bodyMedium,
             ),
           ),
+          if (copyable) ...[
+            const SizedBox(width: 8),
+            const Icon(
+              Icons.copy,
+              size: 16,
+              color: LatchColors.muted,
+              semanticLabel: 'Copy',
+            ),
+          ],
         ],
       ),
     );
