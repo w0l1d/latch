@@ -256,12 +256,26 @@ jobs:
       # what gives the output its ABI-suffixed name and the offset versionCode
       # the check below expects (verified: android-arm alone still yields
       # app-armeabi-v7a-release.apk with versionCode 1<build_number>).
+      #
+      # The --dart-define trio is the app's only record of which build it is.
+      # --build-name carries the semver but not the tag's date segment, so
+      # v1.0.6-2026.09.08.1 and v1.0.6-2026.07.20.1 install as the same
+      # "1.0.6+1"; the SHA never reaches the app at all. These land in
+      # lib/core/build_info.dart and show up in Settings → About.
       - name: Build release APK (${{ matrix.abi }})
+        env:
+          TAG_NAME: ${{ needs.version.outputs.tag_name }}
+          VERSION_NAME: ${{ needs.version.outputs.version_name }}
+          BUILD_NUMBER: ${{ needs.version.outputs.build_number }}
+          SHORT_SHA: ${{ needs.version.outputs.short_sha }}
         run: |
           flutter build apk --release --split-per-abi \
             --target-platform ${{ matrix.target_platform }} \
-            --build-name="${{ needs.version.outputs.version_name }}" \
-            --build-number="${{ needs.version.outputs.build_number }}"
+            --build-name="$VERSION_NAME" \
+            --build-number="$BUILD_NUMBER" \
+            --dart-define=LATCH_BUILD_TAG="$TAG_NAME" \
+            --dart-define=LATCH_BUILD_SHA="$SHORT_SHA" \
+            --dart-define=LATCH_BUILD_CHANNEL=release
 
       - name: Validate built APK matches tag
         run: |

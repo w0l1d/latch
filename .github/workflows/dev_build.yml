@@ -155,15 +155,25 @@ jobs:
       # applicationId to com.latch.latch.dev so this installs alongside one.
       # --build-number is the run number, monotonic per workflow, so a newer dev
       # APK always upgrades an older one rather than being refused.
+      #
+      # The --dart-define trio is what Settings → About reads (see
+      # lib/core/build_info.dart). CHANNEL=dev is the part that matters here: a
+      # device can hold this and a release at once, and the two must not be
+      # confusable in a screenshot.
       - name: Build dev APK
         env:
           VERSION_NAME: ${{ steps.version.outputs.version_name }}
+          SHORT_SHA: ${{ steps.version.outputs.short_sha }}
+          RUN_NUMBER: ${{ github.run_number }}
         run: |
           flutter build apk --release --split-per-abi \
             --target-platform android-arm64 \
             --android-project-arg devBuild=true \
             --build-name="$VERSION_NAME" \
-            --build-number="${{ github.run_number }}"
+            --build-number="$RUN_NUMBER" \
+            --dart-define=LATCH_BUILD_TAG="$VERSION_NAME" \
+            --dart-define=LATCH_BUILD_SHA="$SHORT_SHA" \
+            --dart-define=LATCH_BUILD_CHANNEL=dev
 
       # The applicationId suffix is the whole point of the side-by-side install
       # and it lives in Gradle, where nothing else would catch it going wrong —
@@ -192,6 +202,25 @@ jobs:
             exit 1
           fi
           echo "dev APK validated: $PKG $APK_VERSION_NAME"
+
+      # String.fromEnvironment fails silently: read outside a const context, or
+      # with the define dropped from the build line, it just returns its default
+      # and the app claims "local build" — the one thing this provenance row
+      # exists to prevent, and invisible in a build log. So confirm the value is
+      # actually compiled in. Only libapp.so is searched: the tag also appears
+      # in the manifest as versionName, so grepping the whole APK would pass
+      # even with the defines gone.
+      - name: Validate build provenance is compiled in
+        env:
+          VERSION_NAME: ${{ steps.version.outputs.version_name }}
+        run: |
+          unzip -o -q build/app/outputs/flutter-apk/app-arm64-v8a-release.apk \
+            'lib/arm64-v8a/libapp.so' -d /tmp/apk-provenance
+          if ! grep -aqF "$VERSION_NAME" /tmp/apk-provenance/lib/arm64-v8a/libapp.so; then
+            echo "::error::LATCH_BUILD_TAG ('$VERSION_NAME') is not in the compiled Dart snapshot — the --dart-define did not reach BuildInfo, so the app will report 'local build'"
+            exit 1
+          fi
+          echo "build provenance compiled in: $VERSION_NAME"
 
       - name: Stage APK
         id: apk
