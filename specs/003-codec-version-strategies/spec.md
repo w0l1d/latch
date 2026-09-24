@@ -6,7 +6,7 @@
 
 **Created**: 2026-08-27
 
-**Status**: Draft
+**Status**: Shipped — merged into `develop` by PR #63 (2026-09-02)
 
 **Input**: User description: "Refactor MyencCodec into a version-dispatching façade with per-version strategy objects (v1 extracted as _V1Strategy), totality invariant, pre-refactor compatibility fixtures, rewrap round-trip guard."
 

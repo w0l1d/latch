@@ -6,7 +6,7 @@
 
 **Created**: 2026-08-26
 
-**Status**: Draft
+**Status**: Shipped — merged into `develop` by PR #59, with the follow-up in PR #61 (2026-08-27)
 
 **Input**: User description: "There is no central place that answers 'what does container version N mean?'. Version handling is one integer and one comparison spread across five sites in `packages/myenc_core`. Replace it with a single version table that states which versions exist and fails closed on the rest. Scope: `packages/myenc_core` only. No wire-format change. No `.latch` byte moves."
 

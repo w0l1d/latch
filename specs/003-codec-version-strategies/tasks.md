@@ -1,5 +1,11 @@
 # Tasks: Codec Version Strategies
 
+**Status**: ✅ Shipped — merged into `develop` by PR #63 (2026-09-02). All 17 tasks done.
+Checked off retroactively: the boxes were never ticked at merge time, so this file read as
+17 tasks of unstarted work sitting on top of a landed refactor. Anyone planning from it
+should read the code, not the plan — `format_strategy.dart`, `format_strategy_v1.dart`, the
+thinned `myenc_codec.dart` façade, and the four test suites named below are all on `develop`.
+
 **Feature branch**: `refactor/core-versioned-codec-seam` (off `develop`, after PR #61 merges)
 
 **Execution rule**: fixtures are generated on the untouched code and committed first — every
@@ -8,38 +14,38 @@ vectors after Phase 2 means the refactor leaked behaviour: revert, don't fix.
 
 ## Phase 1: Setup
 
-- [ ] T001 Create branch `refactor/core-versioned-codec-seam` from `develop` (blocked on PR #61 merge approval)
+- [x] T001 Create branch `refactor/core-versioned-codec-seam` from `develop` (blocked on PR #61 merge approval)
 
 ## Phase 2: Foundational — pre-refactor fixtures (on untouched code)
 
-- [ ] T002 [P] [US2] Generate the header corpus (shape matrix: zero/one/multiple wraps, encrypted-filename present/absent, boundary chunk sizes, flag variants → encoded hex) and the pinning test in `packages/myenc_core/test/fixtures/` + `packages/myenc_core/test/fixtures_header_corpus_test.dart`
-- [ ] T003 [P] [US1] Generate the compatibility corpus (raw files: empty, 1 byte, small, >1 chunk, binary; `.latch` fixtures encrypted by the current code with a known test passphrase; manifest of raw-file SHA-256 hashes) in `packages/myenc_adapters/test/fixtures/compat_v1/`
-- [ ] T004 [P] [US1] Write `packages/myenc_adapters/test/compat_v1_test.dart`: decrypt every fixture and assert plaintext hash == manifest; wrong-passphrase fixture fails fast at the key wrap; tampered-body fixture fails at a chunk tag with no partial plaintext
-- [ ] T005 Commit 0 — fixtures + tests, green on untouched code (baseline counts: core 86, adapters 36, app 143)
+- [x] T002 [P] [US2] Generate the header corpus (shape matrix: zero/one/multiple wraps, encrypted-filename present/absent, boundary chunk sizes, flag variants → encoded hex) and the pinning test in `packages/myenc_core/test/fixtures/` + `packages/myenc_core/test/fixtures_header_corpus_test.dart`
+- [x] T003 [P] [US1] Generate the compatibility corpus (raw files: empty, 1 byte, small, >1 chunk, binary; `.latch` fixtures encrypted by the current code with a known test passphrase; manifest of raw-file SHA-256 hashes) in `packages/myenc_adapters/test/fixtures/compat_v1/`
+- [x] T004 [P] [US1] Write `packages/myenc_adapters/test/compat_v1_test.dart`: decrypt every fixture and assert plaintext hash == manifest; wrong-passphrase fixture fails fast at the key wrap; tampered-body fixture fails at a chunk tag with no partial plaintext
+- [x] T005 Commit 0 — fixtures + tests, green on untouched code (baseline counts: core 86, adapters 36, app 143)
 
 ## Phase 3: US1+US2 — the extraction (neutrality proof)
 
-- [ ] T006 [US2] Move the v1 decode/encode body verbatim from `packages/myenc_core/lib/src/format/myenc_codec.dart` into `_V1Strategy` in `packages/myenc_core/lib/src/format/format_strategy_v1.dart`; the façade keeps minimum length + magic + version byte + `require()` gate and dispatches
-- [ ] T007 Commit 1 — extraction. Acceptance: `codec_freeze_test.dart`, golden vectors, header corpus, and compat corpus all pass with zero edits
+- [x] T006 [US2] Move the v1 decode/encode body verbatim from `packages/myenc_core/lib/src/format/myenc_codec.dart` into `_V1Strategy` in `packages/myenc_core/lib/src/format/format_strategy_v1.dart`; the façade keeps minimum length + magic + version byte + `require()` gate and dispatches
+- [x] T007 Commit 1 — extraction. Acceptance: `codec_freeze_test.dart`, golden vectors, header corpus, and compat corpus all pass with zero edits
 
 ## Phase 4: US3+US4 — the machinery
 
-- [ ] T008 [P] [US3] Create `FormatVersionStrategy` contract (pure `decode(bytes, offset) → (FileHeader, consumed)` / `encode(FileHeader) → bytes`) and the dispatch table keyed by `FormatVersion` entries in `packages/myenc_core/lib/src/format/format_strategy.dart`; export through the package public API
-- [ ] T009 [P] [US3] Write the totality test in `packages/myenc_core/test/format_strategy_totality_test.dart`: dispatch key set == `FormatVersionRegistry.all` value set, both directions
-- [ ] T010 [P] [US4] Write the rewrap round-trip test in `packages/myenc_core/test/`: parse → re-encode via the public `encodeHeader` → version byte and version-specific fields byte-identical
-- [ ] T011 Commit 2 — machinery (contract + dispatch + totality + rewrap guards)
+- [x] T008 [P] [US3] Create `FormatVersionStrategy` contract (pure `decode(bytes, offset) → (FileHeader, consumed)` / `encode(FileHeader) → bytes`) and the dispatch table keyed by `FormatVersion` entries in `packages/myenc_core/lib/src/format/format_strategy.dart`; export through the package public API
+- [x] T009 [P] [US3] Write the totality test in `packages/myenc_core/test/format_strategy_totality_test.dart`: dispatch key set == `FormatVersionRegistry.all` value set, both directions
+- [x] T010 [P] [US4] Write the rewrap round-trip test in `packages/myenc_core/test/`: parse → re-encode via the public `encodeHeader` → version byte and version-specific fields byte-identical
+- [x] T011 Commit 2 — machinery (contract + dispatch + totality + rewrap guards)
 
 ## Phase 5: US2 — attach the v1 battery to the strategy
 
-- [ ] T012 [P] [US2] Move the v1 exhaustive battery (round-trips, per-field corruption, every-prefix truncation sweep, single-byte mutation sweep, random-garbage property tests) from `packages/myenc_core/test/codec_test.dart` into `packages/myenc_core/test/format_strategy_v1_test.dart`, targeting the strategy directly
-- [ ] T013 [P] [US2] Keep the façade-level tests in `packages/myenc_core/test/codec_test.dart`: magic mismatch, version gate / `VersionTooNewError`, dispatch correctness, truncation at the prefix
-- [ ] T014 Commit 3 — test reorganization (counts may only rise; `codec_freeze_test.dart` stays untouched)
+- [x] T012 [P] [US2] Move the v1 exhaustive battery (round-trips, per-field corruption, every-prefix truncation sweep, single-byte mutation sweep, random-garbage property tests) from `packages/myenc_core/test/codec_test.dart` into `packages/myenc_core/test/format_strategy_v1_test.dart`, targeting the strategy directly
+- [x] T013 [P] [US2] Keep the façade-level tests in `packages/myenc_core/test/codec_test.dart`: magic mismatch, version gate / `VersionTooNewError`, dispatch correctness, truncation at the prefix
+- [x] T014 Commit 3 — test reorganization (counts may only rise; `codec_freeze_test.dart` stays untouched)
 
 ## Phase 6: Polish & cross-cutting
 
-- [ ] T015 SC-004 negative demonstration: temporarily remove the v1 strategy → totality test goes red → restore; record the evidence in the PR description
-- [ ] T016 Run the full gates: `dart format .` + `flutter analyze --no-pub` + `flutter test` in all three packages; verify counts ≥ baseline plus the new suites; Android gate N/A (no Kotlin touched)
-- [ ] T017 Open the PR against `develop`; body references `specs/003-codec-version-strategies/`, PRs #59/#61, BL-001/BL-004, and the four-commit discipline
+- [x] T015 SC-004 negative demonstration: temporarily remove the v1 strategy → totality test goes red → restore; record the evidence in the PR description
+- [x] T016 Run the full gates: `dart format .` + `flutter analyze --no-pub` + `flutter test` in all three packages; verify counts ≥ baseline plus the new suites; Android gate N/A (no Kotlin touched)
+- [x] T017 Open the PR against `develop`; body references `specs/003-codec-version-strategies/`, PRs #59/#61, BL-001/BL-004, and the four-commit discipline
 
 ## Dependencies
 
