@@ -198,5 +198,111 @@ void main() {
       expect(calls.single.method, 'existingTreeGrant');
       expect(calls.single.arguments, {'folder': '/storage/x/Documents/Work'});
     });
+
+    test(
+      'listTreeGrants parses the platform reply, newest row first',
+      () async {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(SafBridge.channel, (call) async {
+              calls.add(call);
+              return {
+                'grants': [
+                  {
+                    'uri': 'content://tree/primary%3ADocuments',
+                    'path': '/storage/emulated/0/Documents',
+                    'label': '/storage/emulated/0/Documents',
+                    'grantedAt': 1700000000000,
+                  },
+                  {
+                    'uri': 'content://tree/cloud%3Aabc',
+                    'path': null,
+                    'label': 'Team drive',
+                    'grantedAt': 0,
+                  },
+                ],
+                'limit': 512,
+              };
+            });
+
+        final grants = await SafBridge.listTreeGrants();
+        expect(calls.single.method, 'listTreeGrants');
+        expect(grants.count, 2);
+        expect(grants.limit, 512);
+        expect(grants.grants.first.path, '/storage/emulated/0/Documents');
+        expect(
+          grants.grants.first.grantedAt,
+          DateTime.fromMillisecondsSinceEpoch(1700000000000),
+        );
+        // A provider that fronts no folder still gets a usable row.
+        expect(grants.grants.last.path, isNull);
+        expect(grants.grants.last.label, 'Team drive');
+        expect(grants.grants.last.grantedAt, isNull);
+        expect(grants.nearLimit, isFalse);
+      },
+    );
+
+    test('listTreeGrants reads as no access on platform failure', () async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SafBridge.channel, (call) async {
+            throw PlatformException(code: 'saf_error');
+          });
+      final grants = await SafBridge.listTreeGrants();
+      expect(grants.grants, isEmpty);
+      // Never claim a ceiling the platform didn't report.
+      expect(grants.limit, 0);
+      expect(grants.nearLimit, isFalse);
+    });
+
+    test('SafTreeGrants.fromMap survives a malformed reply', () {
+      final grants = SafTreeGrants.fromMap({
+        'grants': [
+          'not a row',
+          {'uri': 'content://tree/x'},
+        ],
+      });
+      expect(grants.count, 1);
+      // Label falls back to the URI so no row is unidentifiable.
+      expect(grants.grants.single.label, 'content://tree/x');
+      expect(grants.limit, 0);
+    });
+
+    test('nearLimit only fires within 80% of a known ceiling', () {
+      SafTreeGrants at(int n, int limit) => SafTreeGrants(
+        grants: List.generate(
+          n,
+          (i) => SafTreeGrant(
+            uri: 'content://tree/$i',
+            path: null,
+            label: '$i',
+            grantedAt: null,
+          ),
+        ),
+        limit: limit,
+      );
+      expect(at(101, 128).nearLimit, isFalse);
+      expect(at(102, 128).nearLimit, isTrue);
+      // Unknown ceiling must never warn.
+      expect(at(600, 0).nearLimit, isFalse);
+    });
+
+    test(
+      'releaseTreeGrant reports the platform answer, never throws',
+      () async {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(SafBridge.channel, (call) async {
+              calls.add(call);
+              return false;
+            });
+        expect(await SafBridge.releaseTreeGrant('content://tree/x'), isFalse);
+        expect(calls.single.method, 'releaseTreeGrant');
+        expect(calls.single.arguments, {'uri': 'content://tree/x'});
+
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(SafBridge.channel, (call) async {
+              throw PlatformException(code: 'saf_error');
+            });
+        expect(await SafBridge.releaseTreeGrant('content://tree/x'), isFalse);
+      },
+    );
   });
 }
