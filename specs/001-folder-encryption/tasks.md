@@ -240,9 +240,21 @@ rather than partially captured.
 **Independent Test**: On an API 30+ device, grant a folder, protect it, restore
 it. Confirm the restore destination is a granted path or app-private storage and
 never Downloads. Then select a cloud-provider folder and confirm a clear refusal.
+Confirm the whole encrypt-beside-the-originals path prompted for access exactly
+once, and that the folder is listed — accurately — in Settings → Save folders.
+
+> **Revisited 2026-09-29.** PRs #66, #74 and #78 landed after this phase was
+> written; see `research.md` R7 as rewritten. Two findings changed the work:
+> `pickTree` takes read **and** write permission, so selecting the folder already
+> grants what output placement needs (T053a); and every persisted grant now
+> surfaces in a settings screen that calls them all save destinations, which a
+> source-only folder is not (T056a).
 
 ### Tests for User Story 5
 
+- [ ] T052a [P] [US5] Add a widget/unit test asserting an encrypt-beside-the-originals folder operation prompts for folder access exactly **once** — the selection — and that a repeat operation on the same folder prompts zero times, because `existingTreeGrantFor` finds the grant selection already took — SC-019, FR-034a
+- [ ] T052b [P] [US5] Add a test that declining the destination prompt during a folder operation yields a cancelled plan: zero bytes at the destination, zero staged bytes, no remembered preference, and the next identical operation asks again — SC-021, FR-037a
+- [ ] T052c [P] [US5] Add a test that a folder operation whose grant was revoked before it starts re-prompts rather than failing obscurely or using the shared fallback unasked — SC-022
 - [ ] T051 [P] [US5] Extend `android/app/src/test/kotlin/.../ExternalStorageDocIdsTest.kt` if T053 touches the id↔path mapping — the two directions must stay exact inverses, and drift is invisible in a running build (Principle V)
 - [ ] T052 [P] [US5] Add a test asserting a folder restore never resolves to Downloads, and that an unresolvable source tree produces a refusal rather than a Downloads fallback — FR-036, FR-005
 
@@ -250,9 +262,14 @@ never Downloads. Then select a cloud-provider folder and confirm a clear refusal
 
 - [ ] T053 [US5] Wire Android folder selection through the existing `SafBridge.pickTree` → `treeUriToPath` path in `lib/core/saf_bridge.dart`, reusing the existing grant machinery and adding no new prefs cache — Android's persisted-permission table stays the only grant record (FR-035)
 - [ ] T054 [US5] Refuse a selection whose `content://` tree cannot be resolved to a real filesystem path, with copy explaining why, because the crypto worker is plain `dart:io` and cannot walk a SAF tree (FR-005, FR-034, research.md R7)
+- [ ] T053a [US5] Make output placement recognise the grant selection already took, so the ordinary "encrypt this folder, put the `.latch` beside it" path never shows the save-folder prompt. `SafBridge.pickTree` takes `FLAG_GRANT_READ_URI_PERMISSION or FLAG_GRANT_WRITE_URI_PERMISSION` and `existingTreeGrantFor` matches a grant covering the folder or an ancestor, so this should be recognition, not a new code path — if it needs one, say why in the PR (FR-034a, SC-019)
+- [ ] T053b [US5] Take no grant for a folder the app already holds one covering, and add none of this feature's own grant bookkeeping. The persisted table only grows until the user gives something back, and at the platform ceiling Android drops the oldest grant silently (FR-035b, FR-035)
+- [ ] T054a [US5] Route any destination prompt a folder operation shows through the existing three-outcome decision, cancellation included, and confirm a dismissed dialog reads as cancel rather than as consent to the shared fallback. For a **restore** the shared-fallback answer must not be offered at all, since FR-036 forbids it — that prompt has two answers, a granted folder or cancel (FR-037a, research.md R7)
 - [ ] T055 [US5] State the Downloads divergence in the restore UI copy in `lib/features/decrypt/` — single-file decrypt may fall back to Downloads with a banner, a folder restore may not, and a user who has seen the former will otherwise expect it (FR-036)
+- [ ] T056a [US5] Correct what `lib/features/settings/save_folders_screen.dart` claims, now that a grant may be held only because a folder was encrypted: the screen title, the row copy, and the revoke dialog's "Latch will lose write access to …" must describe the access actually held rather than assuming every grant is a save destination (FR-035a, SC-020). Do **not** solve this by recording per-grant provenance in the app — that is the grant bookkeeping FR-035 forbids, and the platform cannot supply the intent either, since it records the grant and not the reason. Change what the screen claims
 
-**Checkpoint**: All five stories are independently functional.
+**Checkpoint**: All five stories are independently functional, folder access is
+asked for once, and every folder the app can reach is listed accurately.
 
 ---
 

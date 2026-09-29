@@ -199,6 +199,9 @@ a security regression, not a cosmetic one.
 
 ## R7. Android — folder selection and restore destination
 
+*Revisited 2026-09-29, after PRs #66, #74 and #78 changed the grant machinery
+this decision rests on. The core decision stands; three things around it changed.*
+
 **Decision.** Folder selection uses the existing SAF tree grant
 (`SafBridge.pickTree` → `treeUriToPath`). The feature requires a **resolvable
 real filesystem path** for both the source folder and the restore destination.
@@ -214,13 +217,62 @@ system cannot safely process, and FR-034 requires *selection* to go through the
 platform's folder-grant mechanism — which it does. Refusing loudly is compliant;
 silently capturing a partial tree is not (FR-011, FR-032).
 
+**The refusal case is narrower than it reads.** The unresolvable-source problem
+documented for single files does **not** transfer wholesale to folders. It exists
+because `ACTION_OPEN_DOCUMENT` hands back a document URI with no parent pointer,
+so the *folder* cannot be named. Folder selection uses
+`ACTION_OPEN_DOCUMENT_TREE`, which hands back the chosen folder's own document
+id — path-shaped (`primary:Docs/Work`) for the external-storage provider that
+backs ordinary on-device folders. `ExternalStorageDocIds` maps that to a real
+path directly. So the common case resolves, and the refusal is reserved for cloud
+and virtual providers, where refusing is the honest answer anyway (US5 scenario 4
+already requires it, because such a folder cannot be fully read).
+
+**The source grant is read *and* write, which removes a prompt.**
+`pickTree` takes `FLAG_GRANT_READ_URI_PERMISSION or
+FLAG_GRANT_WRITE_URI_PERMISSION` (`MainActivity.kt`). Selecting a folder to
+encrypt therefore already carries write access to that folder, and
+`existingTreeGrantFor` — which matches a grant covering the folder *or an
+ancestor* — will find it when output placement runs. The ordinary case, "encrypt
+this folder, put the `.latch` next to it", asks for access **once**, at selection
+(FR-034a, SC-019). Anything that prompts a second time for the folder the user
+just picked is a defect, not a platform constraint.
+
+**Consequence #78 created: the grant shows up in "Save folders".** Persisted
+grants are one undifferentiated pool. `SafTreeGrant` records uri, path, label and
+grant time — nothing about why the grant was taken — and the settings screen is
+titled **Save folders** with revoke copy reading *"Latch will lose write access
+to …"*. A folder the user only ever encrypted would appear there described as a
+save destination, which is inaccurate. FR-035a requires this be fixed; **how** is
+a plan decision, and the cheap correct option is to change what the screen claims
+rather than to start recording per-grant provenance, which would be exactly the
+app-side grant bookkeeping FR-035 forbids. Note the platform cannot answer "why"
+either: it records the grant, not the intent.
+
+**Grant-cap pressure is real and one-directional.** The persisted table only
+grows until the user gives something back, and at the platform ceiling Android
+drops the *oldest* grant silently. Folder encryption is a new consumer of that
+pool, so FR-035b forbids taking a grant the app already covers — `existingTreeGrantFor`
+is the check, and it already matches ancestors, so a user who granted a parent
+folder once is not re-prompted per child.
+
+**Cancellation is now a real outcome (#74).** The destination prompt answers
+granted / explicitly-chose-fallback / cancelled, and cancelling produces a
+cancelled plan: nothing written, nothing staged, nothing remembered, and a
+dismissed dialog reads as cancel rather than as consent. Folder operations
+inherit this unchanged (FR-037a). This matters more for folders than for files:
+planning runs before the worker, so a cancelled folder operation has not yet
+packed anything, and the cheapest correct behaviour is also the safest one.
+
 **Restore destination — a deliberate divergence from single-file decrypt.**
 Single-file decrypt may fall back to Downloads with a banner. A folder restore
 **MUST NOT**: FR-036 forbids restored plaintext passing through any shared or
 world-readable location. So the destination is either a resolvable granted path
 or **app-private storage** — never Downloads. This difference must be stated in
 the UI copy, or a user will reasonably expect the Downloads fallback they have
-seen before.
+seen before. Note this also means the "use the shared fallback" answer of the
+three-outcome prompt is **not offered** for a restore; the prompt a restore shows
+has two answers, a granted folder or cancel.
 
 ---
 

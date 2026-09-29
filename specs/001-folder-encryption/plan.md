@@ -138,13 +138,27 @@ lib/
 │   ├── app_crypto.dart           # MODIFY: encryptFolder / restoreFolder; sweep staged DIRS
 │   ├── isolate_worker.dart       # MODIFY: cmd 'pack_encrypt', 'decrypt_unpack'
 │   ├── folder_scan.dart          # NEW: enumerate + total size + unpreservable report
-│   └── output_plan.dart          # MODIFY: folder destination rules (never Downloads)
+│   ├── output_plan.dart          # MODIFY: folder destination rules (never Downloads);
+│   │                             #   reuse the read+write grant selection already took
+│   └── saf_bridge.dart           # UNCHANGED — pickTree/existingTreeGrantFor suffice
 ├── features/encrypt/             # MODIFY: folder pick, folder review screen
 ├── features/decrypt/             # MODIFY: folder restore destination + metadata report
+├── features/settings/
+│   └── save_folders_screen.dart  # MODIFY: a grant may now be held only because a
+│                                 #   folder was encrypted — the screen must stop
+│                                 #   calling every grant a save destination
 └── shared/error_messages.dart    # MODIFY: copy for the new typed errors
 
 android/app/src/main/kotlin/.../MainActivity.kt   # MODIFY only if selection needs it
 ```
+
+**Revisited 2026-09-29.** This map was drawn before PRs #66, #74 and #78. Two
+entries changed as a result: `output_plan.dart`'s folder work is now mostly
+*recognising* the grant that folder selection already took (it is read **and**
+write), rather than adding a destination path; and `save_folders_screen.dart`
+joins the map, because this feature makes it possible to hold a folder grant for
+a folder the user only ever encrypted, which that screen currently describes as a
+save destination. See `research.md` R7.
 
 **Structure Decision.** The existing three-package hexagonal split is kept
 exactly as-is; this feature adds files, it does not move any. Packing, unpacking,

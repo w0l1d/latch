@@ -61,6 +61,20 @@ exists.
 - Q: Who owns fail-closed on an unknown version — this feature or the shipped registry? → A: The registry, already. This feature inherits that behaviour and must not add a second version gate. Its own new rejection is the unknown *payload-kind*, which is a different failure at a different stage.
 - Q: What protects v1 from this feature? → A: The freeze guards and the pre-refactor compatibility corpora that 002 and 003 committed, which must keep passing unedited. A guard that needs editing means v1 moved, which is a bug to revert.
 
+### Session 2026-09-29 — Android folder access, after #66, #74 and #78
+
+Three platform changes shipped into `develop` after this spec was written, all
+touching the folder-grant machinery this feature's Android story rests on: the
+picker is now seeded from the source document (#66), declining the save-folder
+prompt now cancels the batch instead of silently using Downloads (#74), and
+**Settings → Save folders** now lists and revokes every persisted grant (#78).
+
+- Q: Selecting a source folder takes a persisted tree grant, and that grant is read **and** write. Does that make the source folder's grant a separate thing from the output folder's? → A: No — it is the same grant, and that is a simplification, not a problem. Picking a folder to encrypt already carries the write access needed to put output beside the originals, so the common folder case never reaches the save-folder prompt at all.
+- Q: That grant then appears in a settings screen called "Save folders", whose copy says Latch will lose *write* access. Is that acceptable? → A: No. Whatever the app shows the user about which folders it can reach must describe the access it actually holds. A folder the user only ever encrypted must not be presented as somewhere Latch saves files.
+- Q: Should a source-folder grant be persisted at all, or taken for the operation only? → A: Persisted, using the same mechanism as everywhere else. A transient grant would mean re-picking the folder on every operation, and would put this feature's access outside the one list the user can audit and revoke — the opposite of what #78 exists for.
+- Q: Does the three-answer save-folder prompt apply to folder operations? → A: Yes, unchanged, including cancellation. A declined prompt cancels the operation, writes nothing and remembers nothing.
+- Q: FR-035 forbids the app keeping its own record of which folder maps to which grant, but `UnresolvedDestination` shipped and does remember something. Contradiction? → A: No. FR-035 forbids caching a *grant*, which can go stale and silently misroute output. Remembering a destination the user *chose*, with liveness re-asked of the platform on every use, is a different thing and stays permitted.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Latch a folder and get it back (Priority: P1)
@@ -260,6 +274,16 @@ behaviour for each location.
 5. **Given** a successful folder encryption on Android, **When** output cannot be
    written beside the originals, **Then** the output goes to the documented
    fallback location and the user is told where it went.
+6. **Given** a user encrypting a folder with output beside the originals, **When**
+   the operation runs, **Then** access is requested exactly once — at selection —
+   and a repeat operation on the same folder requests none at all.
+7. **Given** a folder the user has only ever encrypted, **When** they open the
+   app's folder-access settings, **Then** that folder is listed and described by
+   the access actually held, not as a place Latch saves files.
+8. **Given** a folder operation that asks the user to choose a destination,
+   **When** the user declines or dismisses the prompt, **Then** the operation is
+   cancelled with nothing written, nothing staged and nothing remembered — never
+   silently redirected to the shared fallback.
 
 ---
 
@@ -275,6 +299,12 @@ behaviour for each location.
   output of itself.
 - The folder or an entry inside it changes — file added, removed, renamed, or
   written to — *while* the operation is running.
+- The user revokes, in the app's own folder-access settings, the grant that a
+  folder the app is mid-operation on depends on; or revokes it between selecting
+  the folder and starting the operation.
+- The platform discards the app's oldest folder grant on its own, because a
+  folder operation pushed the app past the platform's ceiling on how many it may
+  hold.
 - The user selects a folder that is a symlink, or that contains a symlink loop
   producing infinite recursion during enumeration.
 - The folder contains special filesystem objects that are neither regular files
@@ -539,13 +569,44 @@ behaviour for each location.
 - **FR-034**: On Android, folder selection MUST use the platform's folder-grant
   mechanism, MUST NOT require broad all-files access, and MUST explain to the user
   what is being requested before the system prompt appears.
+- **FR-034a**: The grant obtained when the user selects a source folder MUST be
+  the same kind of persisted folder grant the rest of the app already uses, taken
+  through the same mechanism, and MUST NOT be a parallel or transient access path
+  known only to this feature. Because that grant carries write access to the
+  selected folder, a folder operation whose output lands beside the originals
+  MUST recognise the grant it already holds and MUST NOT prompt the user a second
+  time for the folder they just picked.
 - **FR-035**: The system MUST NOT retain its own record of which folder maps to
   which platform grant; the platform's own record of persisted grants MUST remain
-  the only source of truth.
+  the only source of truth. This prohibits caching a *grant*, which can outlive
+  the permission it names and silently misroute an operation. It does NOT
+  prohibit remembering a destination the **user chose** for a source whose folder
+  the platform will not name, provided the grant's liveness is re-asked of the
+  platform on every use and a revoked grant is forgotten and re-prompted — the
+  behaviour already shipped for single files, which this feature inherits
+  unchanged rather than re-deciding.
+- **FR-035a**: Wherever the app shows the user which folders it can reach, the
+  list MUST account for folders held only because they were encrypted, and MUST
+  describe the access actually held rather than assuming every grant is a save
+  destination. Revoking a grant MUST state what the user loses in terms that
+  match how that folder is used. A folder the user has only ever encrypted MUST
+  NOT be presented as a place Latch saves files.
+- **FR-035b**: Because folder operations consume the same limited pool of
+  persisted grants as output placement, and the platform silently discards the
+  oldest grant once its ceiling is reached, this feature MUST NOT take a grant it
+  does not need. In particular it MUST NOT take a second grant for a folder
+  already covered by one the app holds.
 - **FR-036**: On Android, restored plaintext MUST NOT pass through any shared or
   public location on its way to the destination.
 - **FR-037**: Output placement for folder encryption MUST follow the same rules
   and the same user-visible fallback reporting as the existing per-file behaviour.
+- **FR-037a**: Where a folder operation asks the user to choose a destination, the
+  choice MUST have the same three outcomes the existing flow has — a granted
+  folder, an explicitly chosen shared fallback, or cancellation — and MUST NOT
+  collapse declining into choosing. Cancelling MUST abort the operation before
+  anything is written, MUST leave nothing staged, MUST record no preference, and
+  MUST return the user where cancelling the operation itself would. A dismissed
+  prompt MUST read as cancellation, never as consent to the fallback.
 
 **Constraints inherited from the constitution**
 
@@ -623,6 +684,21 @@ behaviour for each location.
   define is rejected with a "newer version" message, emits zero payload bytes, and
   is never confused with a wrong passphrase or a corrupt container. Verified with a
   hand-built fixture for at least one undefined kind value.
+- **SC-019**: A folder encrypted on Android with output beside the originals
+  prompts the user for folder access exactly **once** — the selection itself — and
+  never a second time for the same folder, verified by counting prompts across a
+  first and a repeat operation on the same folder.
+- **SC-020**: Every folder the app holds access to appears in the app's
+  folder-access settings, including one held only because it was encrypted, and
+  each row states the access actually held. No row describes a folder the user has
+  only encrypted as a place Latch saves files.
+- **SC-021**: Declining the destination prompt during a folder operation leaves
+  zero bytes written at the destination, zero staged bytes on disk, and no
+  remembered preference — verified by re-running the same operation and being
+  asked again.
+- **SC-022**: A folder operation whose grant is revoked before it starts re-asks
+  the user rather than failing obscurely or writing to the shared fallback
+  unasked.
 - **SC-016**: Every container version this build accepts is declared in exactly
   one place. Searching the codec for a version-byte comparison against a literal
   returns nothing outside that declaration, and removing a version's layout while
@@ -662,6 +738,12 @@ Anything here that would be expensive to get wrong is a candidate for
   a requirement of this feature.
 - **No deduplication** across entries, and no attempt to detect that a folder has
   been latched before.
+- **A source-folder grant is persisted, not transient.** Selecting a folder to
+  encrypt takes the same persisted grant the rest of the app uses, so the folder
+  stays reachable for a later operation and stays visible in the one list where
+  the user can audit and revoke it. The alternative — grant access for the
+  duration of one operation only — was rejected because it would put this
+  feature's access outside that list.
 - **The folder is expected to be stable during the operation.** Concurrent
   modification is treated as an error condition to detect and report, not a
   scenario to support.
@@ -693,7 +775,12 @@ Anything here that would be expensive to get wrong is a candidate for
 
 - The existing encrypt and decrypt flows, output-placement behaviour, and
   Android folder-grant mechanism, all of which this feature extends rather than
-  replaces.
+  replaces. Three parts of that machinery changed after this spec was written and
+  are depended on in their current form: the picker seeded from the source
+  document (PR #66), the destination prompt's three outcomes including
+  cancellation (PR #74), and the folder-access settings screen that lists and
+  revokes persisted grants (PR #78). FR-034a, FR-035a, FR-035b and FR-037a rest
+  on them.
 - The frozen `.latch` v1 format and its freeze guards, which constrain FR-012 and
   FR-013 and must pass unmodified.
 - **Feature 002 — central format-version registry** (`specs/002-format-version-registry`,

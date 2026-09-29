@@ -181,3 +181,60 @@ longer exists):
 and the v1 compatibility corpora, unedited.
 
 **Status**: ready for `/speckit-plan` re-run or direct continuation at T008.
+
+---
+
+### Validation findings (iteration 5 — platform refresh, 2026-09-29)
+
+Second pass of the same refresh, widened from version management to **every**
+change that landed in `develop` after the spec was authored. Reviewed all
+thirteen non-merge commits; four touch this feature's ground, and three of those
+had gone unaccounted for. All checklist items above still pass.
+
+**What was checked against the code, not assumed:**
+
+- `SafBridge.pickTree` → `MainActivity.kt` takes
+  `FLAG_GRANT_READ_URI_PERMISSION or FLAG_GRANT_WRITE_URI_PERMISSION`. So a
+  source-folder grant is also a write grant, and `existingTreeGrantFor` (which
+  matches the folder *or an ancestor*) will find it during output placement. The
+  ordinary case should prompt once, not twice → FR-034a, SC-019, T052a, T053a.
+- `SafTreeGrant` carries uri, path, label and grant time — **nothing** about why
+  the grant was taken — and `save_folders_screen.dart` is titled "Save folders"
+  with revoke copy *"Latch will lose write access to …"*. A folder held only
+  because it was encrypted would be described inaccurately → FR-035a, SC-020,
+  T056a. Recorded explicitly that the fix is to change what the screen claims,
+  **not** to record per-grant provenance, which FR-035 forbids and which the
+  platform cannot supply either.
+- `OutputPlan.cancelled` / `SaveFolderOutcome.{granted,useDownloads,cancelled}`
+  exist (#74). Folder flows must inherit all three, and a restore must not offer
+  the shared-fallback answer at all, since FR-036 forbids it → FR-037a, SC-021,
+  T052b, T054a.
+- The `UnresolvedDestination` precedent (#66) appeared to contradict FR-035.
+  It does not: FR-035 forbids caching a *grant*; remembering a user-chosen
+  *destination* with liveness re-asked each use is a different thing. FR-035 now
+  says so, so a future reader does not "fix" the contradiction the wrong way.
+
+**Requirement Completeness — still passes.** No new `[NEEDS CLARIFICATION]`
+markers; the six questions these changes raised were resolved in the second
+2026-09-29 clarification session and encoded as FR-034a, FR-035 (amended),
+FR-035a, FR-035b and FR-037a. Two new edge cases (a grant revoked mid-operation
+or between selection and start; the platform silently dropping the oldest grant at
+its ceiling). Four new acceptance scenarios on US5.
+
+**Feature Readiness — still passes.** FR-034a → SC-019, FR-035a → SC-020,
+FR-037a → SC-021, the revoked-grant edge case → SC-022.
+
+**One decision deliberately left as-is.** R7's rule — refuse a folder whose tree
+cannot be resolved to a real path, because the crypto worker is plain `dart:io` —
+still stands. What changed is its *scope*: `ACTION_OPEN_DOCUMENT_TREE` returns the
+chosen folder's own document id, which is path-shaped for ordinary on-device
+folders, so the unresolvable-source problem that dominates single-file picking
+barely applies to folders. R7 now says this, so the refusal is not read as the
+common case.
+
+**Sibling artifacts updated:** `research.md` R7 rewritten; `plan.md` file map
+(+`save_folders_screen.dart`, `saf_bridge.dart` marked unchanged) and a revisit
+note; `tasks.md` US5 phase gains T052a–c, T053a, T053b, T054a, T056a and a
+revisit note. Task count 63 → 72, of which 7 are done.
+
+**Status**: ready to continue at T008. No blocking questions.
