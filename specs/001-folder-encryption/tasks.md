@@ -34,10 +34,10 @@ for all three):
 
 **Purpose**: Get the one new dependency and the new error vocabulary in place.
 
-- [ ] T001 Add `tar: ^2.0.2` to `dependencies` in `packages/myenc_core/pubspec.yaml`, then run `flutter pub get` at the repo root to resolve the path-deps; confirm `packages/myenc_core/lib/` still has zero `dart:io` and zero Flutter imports
-- [ ] T002 Add `UnknownPayloadKindError` (carries the offending byte value) and `UnsafeArchiveEntryError` (carries the offending relative path) to the `sealed class LatchError` hierarchy in `packages/myenc_core/lib/src/format/myenc_errors.dart`
-- [ ] T003 Export the new errors and the forthcoming preamble/pack symbols from `packages/myenc_core/lib/myenc_core.dart`
-- [ ] T004 Add human copy for both new errors to `userMessageForError` in `lib/shared/error_messages.dart` — "made by a newer version of Latch" for the unknown-kind case, distinct from the existing corruption and wrong-passphrase copy; never interpolate raw exception text
+- [X] T001 Add `tar: ^2.0.2` to `dependencies` in `packages/myenc_core/pubspec.yaml`, then run `flutter pub get` at the repo root to resolve the path-deps; confirm `packages/myenc_core/lib/` still has zero `dart:io` and zero Flutter imports
+- [X] T002 Add `UnknownPayloadKindError` (carries the offending byte value) and `UnsafeArchiveEntryError` (carries the offending relative path) to the `sealed class LatchError` hierarchy in `packages/myenc_core/lib/src/format/myenc_errors.dart`
+- [X] T003 Export the new errors and the forthcoming preamble/pack symbols from `packages/myenc_core/lib/myenc_core.dart`
+- [X] T004 Add human copy for both new errors to `userMessageForError` in `lib/shared/error_messages.dart` — "made by a newer version of Latch" for the unknown-kind case, distinct from the existing corruption and wrong-passphrase copy; never interpolate raw exception text
 
 **Checkpoint**: `flutter analyze --no-pub` clean in all three packages.
 
@@ -53,31 +53,52 @@ user-visible yet.
 in particular is a security fix that must land before any UI can trigger a
 restore.
 
-- [ ] T005 Create `packages/myenc_core/lib/src/format/payload_preamble.dart` with the extensible `PayloadKind` enum (`singleFile` `0x01`, `packedFolder` `0x02`; `0x00` reserved and invalid) plus fixed-width 8-byte encode/decode, per `contracts/payload-preamble.md` §3
-- [ ] T006 Implement the ordered validation of `contracts/payload-preamble.md` §5 in `payload_preamble.dart`: bad magic → `CorruptedFileError`; undefined kind, non-zero compression, non-zero reserved → `UnknownPayloadKindError`; kind/pack-format disagreement → `CorruptedFileError`. Stop at the first failure and never return a partially-parsed preamble
-- [ ] T007 [P] Add `packages/myenc_core/test/payload_preamble_test.dart` covering every branch of T006, including `0x00` kind, an undefined kind, a non-zero reserved byte, a truncated preamble, and the exact error type raised for each — SC-015, FR-020g, FR-020h
-- [ ] T008 Widen the accepted format version to `{1, 2}` in `packages/myenc_core/lib/src/format/file_header.dart` and `myenc_codec.dart`, changing **only** the version gate. Unknown versions must still raise `VersionTooNewError`. Do not touch a single field of the v1 layout and do not repurpose flag bits 1–7
-- [ ] T009 Run `packages/myenc_core/test/codec_freeze_test.dart` and `packages/myenc_adapters/test/golden_vectors_test.dart` and confirm both pass **with the test files unmodified**. If either fails, the v1 layout changed — revert, do not edit the test (Principle II, FR-013, SC-009)
+- [X] T005 Create `packages/myenc_core/lib/src/format/payload_preamble.dart` with the extensible `PayloadKind` enum (`singleFile` `0x01`, `packedFolder` `0x02`; `0x00` reserved and invalid) plus fixed-width 8-byte encode/decode, per `contracts/payload-preamble.md` §3
+- [X] T006 Implement the ordered validation of `contracts/payload-preamble.md` §5 in `payload_preamble.dart`: bad magic → `CorruptedFileError`; undefined kind, non-zero compression, non-zero reserved → `UnknownPayloadKindError`; kind/pack-format disagreement → `CorruptedFileError`. Stop at the first failure and never return a partially-parsed preamble
+- [X] T007 [P] Add `packages/myenc_core/test/payload_preamble_test.dart` covering every branch of T006, including `0x00` kind, an undefined kind, a non-zero reserved byte, a truncated preamble, and the exact error type raised for each — SC-015, FR-020g, FR-020h
+- [ ] T008 Register version 2 as one row in `FormatVersionRegistry.all`
+  (`packages/myenc_core/lib/src/format/format_version.dart`) and add its layout as
+  one `FormatVersionStrategy` in
+  `packages/myenc_core/lib/src/format/format_strategy_v2.dart`, keyed into
+  `formatVersionStrategies`. v2's header layout is **identical to v1's** — the
+  preamble lives in the ciphertext, not the header — so the strategy may delegate
+  to `V1Strategy` rather than restate offsets. Add no version comparison anywhere:
+  the fail-closed refusal of unknown versions already lives in
+  `FormatVersionRegistry.require` and `MyencCodec.decodeHeader`, and must not be
+  duplicated (FR-013a, FR-013d)
+- [ ] T008a Leave `FormatVersionRegistry.writeDefault` at v1. Registering v2
+  widens what can be *read* and must not change what single-file containers are
+  *written* as (FR-013b). Add a test pinning `writeDefault.number == 1` with the
+  reason in its name, so a later "tidy-up" that derives it from `all`'s maximum
+  fails loudly instead of silently orphaning every older install
+- [ ] T008b Add `packages/myenc_core/test/format_version_totality_test.dart`
+  coverage for v2 — or extend the existing totality test from specs/003 if it
+  already iterates the registry — asserting the registry's version set and
+  `formatVersionStrategies`' key set agree in **both** directions. A registered
+  version with no strategy must be a red test, never a runtime failure on a user's
+  file (FR-013a)
+- [ ] T009 Run `packages/myenc_core/test/codec_freeze_test.dart`,
+  `packages/myenc_adapters/test/golden_vectors_test.dart`, and the compatibility
+  corpora committed by specs/002 and specs/003, and confirm all pass **with the
+  test files and their expected values unmodified**. If any fails, the v1 layout
+  moved — revert, do not edit the test (Principle II, FR-013, FR-013e, SC-009,
+  SC-018)
 
-> **⛔ T009 IS BLOCKED — do not proceed past this line.** T009 fails, but *not*
-> because the v1 layout moved: every byte-layout assertion in
-> `codec_freeze_test.dart` passes and both golden vectors still decrypt. What
-> fails is line 133, which hardcodes `2` as its example of an unknown version —
-> stale the moment v2 is defined. The root cause is that `myenc_core` has no
-> central place to ask what a version means, so the guard pinned one instance of
-> the fail-closed rule instead of the rule itself. Editing that number here
-> would treat the symptom and would be exactly the "edit the test to make it
-> pass" move Principle II forbids.
+> **✅ The former T009 blocker is resolved.** It is kept here as the record of
+> why the version machinery exists. The guard used to hardcode `2` as its example
+> of an unknown version, which went stale the moment v2 was defined, because
+> `myenc_core` had no central place to ask what a version means. Both refactors
+> that fixed it have since shipped into `develop`:
+> **[specs/002-format-version-registry](../002-format-version-registry/spec.md)**
+> (the registry, PRs #59 and #61) and
+> **[specs/003-codec-version-strategies](../003-codec-version-strategies/spec.md)**
+> (the per-version strategy seam and the totality invariant, PR #63).
 >
-> Resolve it as a separate, behaviour-preserving refactor first:
-> **[specs/002-format-version-registry/refactor-brief.md](../002-format-version-registry/refactor-brief.md)**.
-> That brief also lists the interim edits currently sitting on this branch
-> (`maxReadableVersion` / `versionWithPayloadPreamble` on `FileHeader`, the
-> one-line gate in `myenc_codec.dart`, `test/version_gate_test.dart`) which it
-> supersedes — either land 002 and rebase this branch onto it, or revert those
-> edits here and let 002 introduce v2.
->
-> T012–T016 do **not** depend on the version gate and may proceed meanwhile.
+> The interim edits this branch once carried — `maxReadableVersion` /
+> `versionWithPayloadPreamble` on `FileHeader`, the hand-rolled gate in
+> `myenc_codec.dart`, and `test/version_gate_test.dart` — were dropped in commit
+> `fefc408` as superseded. Do not reintroduce them in any form; T008 is now
+> additive only.
 - [ ] T010 Teach `EnvelopeService.encrypt` in `packages/myenc_core/lib/src/domain/envelope_service.dart` to prepend the preamble to the plaintext stream and write version `0x02` when a preamble is requested; when none is requested it must emit v1 byte-identically to today (FR-014)
 - [ ] T011 Teach `EnvelopeService.decrypt` in the same file to consume and validate the preamble when the header version is `2`, and to treat a v1 container as `singleFile` with no preamble. Preamble validation must run after the first chunk authenticates and must emit zero payload bytes on failure (`contracts/payload-preamble.md` §6)
 - [ ] T012 [P] Create `packages/myenc_core/lib/src/ports/directory_io_port.dart` with the interface in `contracts/ports.md` §1. `createSymlink`/`setModified`/`setExecutable` return `bool` rather than throwing, because a platform refusal is the normal path in the Android and iOS sandboxes

@@ -2,9 +2,15 @@
 
 **Feature Branch**: `001-folder-encryption`
 
+**Base**: `develop` — rebased 2026-09-29, after features 002 and 003 shipped
+
 **Created**: 2026-08-26
 
-**Status**: Draft
+**Last updated**: 2026-09-29
+
+**Status**: Specified; implementation started. The payload preamble and its two
+failure types exist in `packages/myenc_core` (WIP, not wired into the codec). No
+container is written as v2 yet.
 
 **Input**: User description: "I want to implement a new feature where we could select a folder instead of files, and latch the whole folder with its content, with the possibility on decryption to restore it to exactly its previous state."
 
@@ -40,6 +46,20 @@ protected file, by design.
 - Q: When one entry of many cannot be read, does the operation abort or complete-and-report? → A: Abort the whole operation and report which entry caused it.
 - Q: Beyond structure, names and content, what else must survive a round trip? → A: Modification times, the executable bit, and symlinks kept as links. Creation times, full POSIX permissions, and extended attributes are out of scope; where a platform cannot apply an in-scope item, restore content correctly and report what could not be applied.
 - Q: Should the folder-vs-file indicator be a boolean or an extensible value? → A: An extensible enumerated payload-kind with room for future kinds. Exactly two are valid now (single opaque file, packed folder); any other value must fail closed as "made by a newer version", distinct from wrong-passphrase and corrupt.
+
+### Session 2026-09-29 — version management
+
+Features **002 (central format-version registry)** and **003 (codec version
+strategies)** shipped into `develop` after this spec was written. They changed
+*how* a new container version comes into existence, which FR-013 had described in
+the abstract. These answers replace that abstraction with the mechanism that now
+exists.
+
+- Q: FR-013 says a new container signal arrives by "bumping the version byte and adding a new reader". What is that concretely, now that 002 and 003 have shipped? → A: One row in the central version registry plus one strategy object holding that version's layout. The feature adds those two things; it does not build, replicate, or bypass version machinery, and it holds no version comparison of its own.
+- Q: Does adding v2 to the registry change what version *new* containers are stamped with? → A: No. What the build can read and what it writes are separately stated and must move separately. Adding v2 makes v2 readable and nothing else.
+- Q: Then which version does a writer stamp? → A: The lowest version that can carry the payload, decided per container. A single opaque file stays v1 forever, so installs that predate this feature keep opening ordinary files; only a packed folder is written as v2.
+- Q: Who owns fail-closed on an unknown version — this feature or the shipped registry? → A: The registry, already. This feature inherits that behaviour and must not add a second version gate. Its own new rejection is the unknown *payload-kind*, which is a different failure at a different stage.
+- Q: What protects v1 from this feature? → A: The freeze guards and the pre-refactor compatibility corpora that 002 and 003 committed, which must keep passing unedited. A guard that needs editing means v1 moved, which is a bug to revert.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -336,9 +356,44 @@ behaviour for each location.
   the whole folder rather than one file.
 - **FR-013**: The `.latch` v1 wire layout MUST NOT change in any byte. If this
   feature needs a container-level signal that cannot be expressed within v1 —
-  including any use of v1's reserved flag bits — it MUST be introduced by bumping
-  the version byte and adding a new reader, and readers MUST fail closed on
-  versions they do not recognise.
+  including any use of v1's reserved flag bits — it MUST be introduced as a new
+  container version, and readers MUST fail closed on versions they do not
+  recognise.
+- **FR-013a**: A new container version MUST be introduced through the shipped
+  version machinery: one entry in the central version registry (feature 002)
+  declaring that the version exists, and one strategy object (feature 003) owning
+  that version's layout. This feature MUST NOT introduce a second place that
+  answers "which versions exist", MUST NOT compare a version byte against a
+  literal anywhere, and MUST NOT add a version gate of its own. The invariant that
+  every registered version has a strategy and every strategy a registered version
+  MUST continue to hold, and MUST remain enforced as a failing test rather than as
+  a runtime failure on a user's file.
+- **FR-013b**: What this build can *read* and what it *writes* MUST remain
+  separately stated and separately movable. Registering a new version MUST make
+  that version readable and MUST NOT, by that act alone, change the version
+  stamped on any container the build already writes. A container that an existing
+  install can open today MUST NOT become unopenable by it because a newer version
+  was registered.
+- **FR-013c**: A writer MUST stamp the **lowest** container version capable of
+  carrying that container's payload, decided per container rather than globally.
+  Concretely: a single opaque file MUST continue to be written at the version it
+  is written at today, so installs predating this feature keep opening ordinary
+  files; only a payload that cannot be expressed at that version — a packed
+  folder — MUST be written at the new version.
+- **FR-013d**: Refusing an unrecognised container version is the shipped
+  registry's behaviour and MUST be inherited unchanged, not reimplemented. It is
+  distinct from this feature's own new rejection, the unknown payload-kind of
+  FR-020g: the first refuses a container the build cannot parse at all, before any
+  key is used; the second refuses a payload shape the build does not understand,
+  after authentication. Both MUST fail closed and both MUST emit zero payload
+  bytes, and the user copy for each MUST be reachable through the existing
+  message-mapping layer rather than by showing raw exception text.
+- **FR-013e**: The existing freeze guards and the compatibility corpora committed
+  by features 002 and 003 MUST keep passing **unedited** throughout this feature's
+  implementation. Containers written before this feature MUST decode to identical
+  results, and the same header inputs MUST encode to identical bytes. A guard that
+  requires editing is evidence that v1 moved, and is a defect to revert rather
+  than a test to update.
 - **FR-014**: Existing single-file containers MUST continue to encrypt and decrypt
   with unchanged behaviour, and every container written before this feature MUST
   remain restorable.
@@ -568,6 +623,18 @@ behaviour for each location.
   define is rejected with a "newer version" message, emits zero payload bytes, and
   is never confused with a wrong passphrase or a corrupt container. Verified with a
   hand-built fixture for at least one undefined kind value.
+- **SC-016**: Every container version this build accepts is declared in exactly
+  one place. Searching the codec for a version-byte comparison against a literal
+  returns nothing outside that declaration, and removing a version's layout while
+  leaving it declared (or the reverse) turns a test red before anything is built.
+- **SC-017**: Protecting a single opaque file after this feature ships produces a
+  container byte-identical in version stamp to one produced before it, and an
+  install predating this feature opens it normally. Only a protected folder is
+  refused by that older install, and it is refused with the "update the app"
+  message rather than a corruption message or a crash.
+- **SC-018**: Every container written before this feature restores to an identical
+  result afterwards, verified by the committed compatibility corpora and freeze
+  guards passing without a single edit to their expected values.
 - **SC-014**: A fidelity fixture containing files with distinct known modification
   times, an executable file, and a symbolic link to another entry inside the tree
   round-trips with modification times preserved to the platform's granularity, the
@@ -611,6 +678,16 @@ Anything here that would be expensive to get wrong is a candidate for
 - **Restore is expected to be same-platform in the common case.** Cross-platform
   restore must fail loudly on names it cannot write, not silently rewrite them.
 - **Empty selected folder** is permitted and round-trips to an empty folder.
+- **The version machinery already exists.** The central version registry and the
+  per-version strategy seam shipped into `develop` ahead of this feature, so
+  introducing a container version is adding a row and a strategy, not building
+  the mechanism that makes versions possible. This feature is the registry's
+  first real customer; if adding a version turns out to need more than those two
+  additions, that is a finding about the seam, not licence to route around it.
+- **Adding a payload kind never costs a version bump.** Payload-kind is
+  extensible by construction (FR-020g), so a future payload shape is a new kind
+  rather than a new container version. Only a change the container format itself
+  cannot express justifies another version.
 
 ## Dependencies
 
@@ -619,6 +696,16 @@ Anything here that would be expensive to get wrong is a candidate for
   replaces.
 - The frozen `.latch` v1 format and its freeze guards, which constrain FR-012 and
   FR-013 and must pass unmodified.
+- **Feature 002 — central format-version registry** (`specs/002-format-version-registry`,
+  shipped into `develop`). Supplies the single authority on which container
+  versions exist, the fail-closed refusal of the rest, and the deliberate
+  separation between the read boundary and the version new containers are stamped
+  with. FR-013a, FR-013b and FR-013d depend on it directly.
+- **Feature 003 — codec version strategies** (`specs/003-codec-version-strategies`,
+  shipped into `develop`). Supplies the per-version strategy seam a new layout
+  slots into, the totality invariant that catches a registered version with no
+  layout, and the compatibility corpora that prove v1 did not move. FR-013a and
+  FR-013e depend on it directly.
 - The existing background-work model that keeps the interface responsive, which
   FR-026 to FR-030 depend on.
 
@@ -639,5 +726,12 @@ Resolved in the 2026-08-26 clarification session (see **Clarifications** above):
    executable bit, and symlinks preserved as links; creation times, full POSIX
    permissions, and extended attributes out of scope (FR-020a, FR-020e).
 
+5. ~~**How a new container version is introduced**~~ — resolved in the 2026-09-29
+   session, once features 002 and 003 shipped: one registry row plus one strategy
+   object, with the read boundary and the write version moving separately, and a
+   writer stamping the lowest version its payload permits (FR-013a to FR-013e).
+
 **No open questions remain.** The spec is ready for `/speckit-plan`. The packing
-format selected there MUST be able to carry everything FR-020a puts in scope.
+format selected there MUST be able to carry everything FR-020a puts in scope, and
+the plan MUST express the container-version work as a registry row plus a strategy
+object rather than as new version handling.

@@ -127,3 +127,57 @@ v1.0.0:
 - "No implementation details" — the spec deliberately does **not** state how the
   tree is serialised, how many containers exist, or which format version is used.
   Those are `/speckit-plan` decisions gated on Question 1.
+
+---
+
+### Validation findings (iteration 4 — version-management refresh, 2026-09-29)
+
+Re-validated after features **002 (format-version registry)** and **003 (codec
+version strategies)** shipped into `develop` and this branch was rebased onto
+them. Every item above still passes. What changed and why it still passes:
+
+**Content Quality — still passes.**
+
+- FR-013a to FR-013e name the version *registry* and the per-version *strategy
+  object*. Judged to pass "no implementation details" for the same reason the
+  spec already names `.latch` v1 and its freeze guards: these are shipped,
+  separately-specified constraints this feature must work within (see
+  Dependencies), not mechanisms this spec is choosing. No file paths, no APIs and
+  no type signatures appear in spec.md — those live in `plan.md` and `tasks.md`,
+  where they belong.
+- FR-013c (write the lowest version the payload permits) reads as a technical
+  rule but is a user-facing compatibility promise: it is what keeps an install
+  that predates this feature able to open ordinary files. Stated as an outcome in
+  SC-017.
+
+**Requirement Completeness — still passes.**
+
+- No new `[NEEDS CLARIFICATION]` markers. The five version-management questions
+  raised by 002/003 shipping were resolved in the 2026-09-29 clarification
+  session and encoded as FR-013a to FR-013e, not deferred.
+- New success criteria SC-016 to SC-018 are measurable and verifiable without
+  knowing the implementation: one declaration site, an older install still
+  opening single-file containers, and the committed corpora passing unedited.
+- Dependencies now name 002 and 003 explicitly, with which requirements rest on
+  each.
+
+**Feature Readiness — still passes.**
+
+- Every new requirement has an acceptance criterion: FR-013a → SC-016, FR-013b
+  and FR-013c → SC-017, FR-013e → SC-018, FR-013d → SC-015 (already present).
+
+**Sibling artifacts updated to match** (they described version handling that no
+longer exists):
+
+- `plan.md` — file map and the Principle II constitution row.
+- `tasks.md` — T001–T007 marked shipped (commit `fefc408`); T008 rewritten as
+  "one registry row + one strategy object"; T008a and T008b added for the
+  write-default pin and the totality invariant; the former T009 blocker note
+  replaced with the record of its resolution.
+
+**Verification run after the rebase**, all three packages: `flutter analyze
+--no-pub` clean and `flutter test` green in `packages/myenc_core` (126 tests),
+`packages/myenc_adapters` (77), and the app (180) — including the freeze guard
+and the v1 compatibility corpora, unedited.
+
+**Status**: ready for `/speckit-plan` re-run or direct continuation at T008.

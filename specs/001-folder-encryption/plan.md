@@ -64,7 +64,7 @@ folder per operation (FR-001).
 | Principle | Gate | Verdict |
 |---|---|---|
 | **I. Offline, Stateless, No Recovery** | No network, no account, no recovery path, no persistent state describing protected folders | **PASS** — FR-038/039/040 forbid all three; the design adds no storage and no service call. |
-| **II. `.latch` v1 Is Frozen** | No v1 byte changes; new capability arrives via a version bump with fail-closed readers | **PASS** — the payload preamble lives inside the ciphertext, so `MyencCodec` header encoding is untouched. Version byte `0x01`→`0x02` for folder containers only. `codec_freeze_test.dart` and the existing golden vectors pass **unmodified**; the reserved v1 flag bits are **not** repurposed. |
+| **II. `.latch` v1 Is Frozen** | No v1 byte changes; new capability arrives via a version bump with fail-closed readers | **PASS** — the payload preamble lives inside the ciphertext, so `MyencCodec` header encoding is untouched. Version byte `0x01`→`0x02` for folder containers only; single files stay v1 (FR-013c). Since features 002 and 003 shipped, the bump is one registry row plus one strategy object, and fail-closed on unknown versions is inherited from `FormatVersionRegistry.require` rather than written here (FR-013a, FR-013d). `codec_freeze_test.dart`, the golden vectors, and 002/003's compatibility corpora pass **unmodified**; the reserved v1 flag bits are **not** repurposed. |
 | **III. Hexagonal Purity** | `myenc_core` free of Flutter and `dart:io`; platform contact only through ports | **PASS with one tracked cost** — `package:tar` is pure Dart with no `dart:io` (verified in the published 2.0.2 archive) so it may live in the core, but it is the core's first non-test dependency. See Complexity Tracking. All filesystem contact enters through the new `DirectoryIoPort`. |
 | **IV. Fail Closed, No Partial Plaintext** | Wrong passphrase fails at the wrap; corruption fails at a chunk tag; decrypt output staged and revealed only on success; teardown sweeps the temp | **PASS, with one required fix** — a folder restore stages into a temporary directory renamed into place on success. `AppCrypto._runBatch` currently sweeps a single `<outPath>.tmp` *file*; it MUST learn to sweep a staged *directory* recursively, or a cancelled restore leaves partial plaintext. Tracked as a P1 task, not an afterthought. |
 | **V. Independent Verification** | Crypto pinned by an oracle Dart did not produce; isolate ordering pinned with plain `test()`; exact-inverse mappings unit-tested | **PASS** — tar's PAX subset is readable and writable by Python's stdlib `tarfile`, so `tool/gen_golden_vectors.py` can produce a folder container Dart never touched. This is the decisive reason tar beat a custom pack format. Batch ordering stays in `test/app_crypto_batch_test.dart` under plain `test()`. |
@@ -115,8 +115,11 @@ specs/001-folder-encryption/
 ```text
 packages/myenc_core/lib/src/
 ├── format/
-│   ├── file_header.dart          # MODIFY: accept version 2 alongside 1
-│   ├── myenc_codec.dart          # MODIFY: version gate only — layout untouched
+│   ├── format_version.dart       # MODIFY: one row — register v2 in `all`; writeDefault stays v1
+│   ├── format_strategy.dart      # MODIFY: one entry — key v2 into formatVersionStrategies
+│   ├── format_strategy_v2.dart   # NEW: v2 header layout (identical to v1; may delegate)
+│   ├── file_header.dart          # UNCHANGED — no version constant lives here any more
+│   ├── myenc_codec.dart          # UNCHANGED — the façade already dispatches by registry
 │   ├── payload_preamble.dart     # NEW: 8-byte preamble, PayloadKind enum
 │   └── myenc_errors.dart         # MODIFY: UnknownPayloadKindError, UnsafeArchiveEntryError
 ├── domain/
