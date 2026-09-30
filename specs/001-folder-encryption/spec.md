@@ -75,6 +75,17 @@ prompt now cancels the batch instead of silently using Downloads (#74), and
 - Q: Does the three-answer save-folder prompt apply to folder operations? → A: Yes, unchanged, including cancellation. A declined prompt cancels the operation, writes nothing and remembers nothing.
 - Q: FR-035 forbids the app keeping its own record of which folder maps to which grant, but `UnresolvedDestination` shipped and does remember something. Contradiction? → A: No. FR-035 forbids caching a *grant*, which can go stale and silently misroute output. Remembering a destination the user *chose*, with liveness re-asked of the platform on every use, is a different thing and stays permitted.
 
+### Session 2026-09-29 — edge cases without requirements
+
+The **Edge Cases** section listed cases that no functional requirement answered.
+These answers close that gap; each names the requirement it produced.
+
+- Q: When a folder is too big to fit — in the staging area or at the destination — should Latch check free space before starting, or discover it when a write fails? → A: Both. A pre-flight estimate refuses up front and names the shortfall and where it is, because the Android path stages the whole container in app-private cache before copying it to the granted folder and therefore needs roughly twice the container size. A pre-flight estimate can still be wrong — another app may consume the disk mid-run — so running out anyway MUST abort, clean up every partial byte under FR-029, and be reported as a space problem rather than a generic write failure (FR-029a).
+- Q: When enumeration finds an entry that is neither a regular file nor a directory — a device node, socket, FIFO, or a macOS bundle — does the operation skip it or abort? → A: Skip only the filesystem plumbing that cannot be meaningfully captured (devices, sockets, FIFOs), and report every skipped entry to the user by relative path; a macOS bundle is an ordinary directory on disk and MUST be captured in full, not treated as a single opaque item. Silence is what makes a skip dangerous, so no skip may be silent (FR-002a). Critically, anything not captured MUST NOT be deleted: where the user chose to delete the originals, the deletion covers only entries the container actually holds, and every skipped entry is left in place (FR-002b).
+- Q: If the tree changes while the operation is running — an entry added, deleted, renamed, or written to — what does the container end up holding? → A: The operation aborts. Latch has no snapshot facility on any supported platform, so "the tree as it was at listing time" is not available to capture; detecting the change and stopping is. The report MUST identify the entry by relative path **and say what changed about it** — that it disappeared, was replaced by a different kind of entry, grew, shrank, or was modified while being read — because "something changed" leaves the user unable to judge whether their data is at risk or another program simply touched a log file (FR-031a).
+- Q: When the user asks for the originals to be deleted after a folder is protected, how thoroughly is the original folder destroyed? → A: By default, shred each captured file through the existing secure-delete path and then remove the directories, so the tree's *names* disappear too — a path like `Tax returns/2019/settlement.pdf` leaks plenty even with every byte gone. The user MUST be told plainly what each mode actually does, including that overwriting cannot be guaranteed on flash storage, and MUST be able to change the default in advanced settings rather than being asked on every operation (FR-041, FR-041a). A stored preference is not a violation of FR-040: it describes a user choice, not the user's folders.
+- Q: Does Latch impose a maximum folder size or file count, and what happens above it? → A: No app-imposed cap. Latch's own design does not need one — memory stays bounded by FR-027 and the container streams — so inventing a ceiling would mean picking a number the project cannot justify. Above a threshold the pre-flight screen warns that the selection is large and says what to expect, and the user may proceed (FR-003a). Genuine limits are still refused with a specific reason rather than discovered hours in: insufficient space (FR-029a) and a container that would exceed what the destination filesystem can hold (FR-005a).
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Latch a folder and get it back (Priority: P1)
@@ -298,7 +309,7 @@ behaviour for each location.
   written to (self-containment), or contains a previously produced `.latch`
   output of itself.
 - The folder or an entry inside it changes — file added, removed, renamed, or
-  written to — *while* the operation is running.
+  written to — *while* the operation is running (FR-031a).
 - The user revokes, in the app's own folder-access settings, the grant that a
   folder the app is mid-operation on depends on; or revokes it between selecting
   the folder and starting the operation.
@@ -309,9 +320,9 @@ behaviour for each location.
   producing infinite recursion during enumeration.
 - The folder contains special filesystem objects that are neither regular files
   nor directories (devices, sockets, FIFOs, macOS packages/bundles presented as
-  single items).
-- Total entry count or total size exceeds any hard limit the platform or the app
-  imposes.
+  single items) (FR-002a).
+- Total entry count or total size is very large, or the resulting container would
+  exceed the destination filesystem's maximum file size (FR-003a, FR-005a).
 
 **Naming & fidelity**
 
@@ -326,7 +337,8 @@ behaviour for each location.
 
 **Failure & interruption**
 
-- Destination runs out of free space part-way through encryption or restore.
+- Destination or staging area runs out of free space, either before the
+  operation starts or part-way through it (FR-029a).
 - The restore destination is read-only, or the app loses its write grant
   mid-operation.
 - One entry is unreadable in an otherwise healthy tree (User Story 4).
@@ -349,9 +361,24 @@ behaviour for each location.
   losing the ability to select files.
 - **FR-002**: The system MUST include, by default, every regular file and every
   directory at every depth beneath the selected folder.
+- **FR-002a**: Where an entry is neither a regular file nor a directory — a
+  device node, socket, or FIFO — the system MUST skip it rather than abort, and
+  MUST report every skipped entry to the user by its relative path as part of the
+  operation's outcome. No skip may be silent. A directory that a platform merely
+  *presents* as a single item, such as a macOS application bundle, is an ordinary
+  directory for this purpose and MUST be captured in full under FR-002.
+- **FR-002b**: Where the user has chosen to delete the originals after
+  encryption, the deletion MUST cover only entries the container actually holds.
+  Any entry skipped under FR-002a, and anything else not captured, MUST be left
+  in place. The system MUST NOT delete a source it did not protect.
 - **FR-003**: Before encryption begins, the system MUST show the user what was
   found — at minimum the total number of files, the number of directories, and the
   total size — so they can confirm the selection matches their intent.
+- **FR-003a**: The system MUST NOT impose its own ceiling on entry count or total
+  size. Where a selection is large enough that the operation will take
+  substantial time, the pre-flight information of FR-003 MUST say so and indicate
+  what the user should expect, and the user MUST be able to proceed. A warning is
+  not a refusal.
 - **FR-004**: Before encryption begins, the system MUST tell the user which
   categories of content or metadata present in the selected folder will **not** be
   preserved by a restore, and allow them to cancel.
@@ -359,6 +386,12 @@ behaviour for each location.
   including a folder that contains the intended output destination, and a folder
   it cannot fully enumerate — with a specific reason, rather than proceeding with
   partial coverage.
+- **FR-005a**: Limits that genuinely exist MUST be refused with a specific
+  reason naming the limit, and MUST be detected before the work begins wherever
+  the platform makes that possible rather than after hours of processing. These
+  are the destination's own constraints, not Latch's: insufficient free space
+  (FR-029a) and a container that would exceed the maximum file size the
+  destination filesystem or the platform's own file-writing mechanism supports.
 - **FR-006**: The system MUST detect and refuse to follow cycles during
   enumeration, so a symlink loop cannot cause unbounded work.
 
@@ -374,10 +407,15 @@ behaviour for each location.
   and the tree shape MUST NOT be readable from the output without the passphrase.
 - **FR-010**: The system MUST record the original name of the selected folder so a
   restore can recreate the folder under that name.
-- **FR-011**: Every protected folder that exists MUST be a complete capture of the
-  folder as it was read. Because any unreadable entry aborts the whole operation
-  (FR-031), a partial capture MUST never be written, and there is therefore no
-  "incomplete capture" state for a restore to surface.
+- **FR-011**: Every protected folder that exists MUST be a complete capture of
+  everything in scope under FR-002 — every regular file and every directory —
+  as it was read. Because any unreadable entry aborts the whole operation
+  (FR-031), as does an entry that changes mid-operation (FR-031a), a partial
+  capture MUST never be written, and there is therefore no "incomplete capture"
+  state for a restore to surface. The special filesystem objects skipped under
+  FR-002a are outside that scope rather than gaps in it, which is precisely why
+  FR-002a requires each one to be reported to the user and FR-002b forbids
+  deleting any of them.
 - **FR-012**: A latched folder MUST produce exactly ONE protected container for
   the whole folder — never one container per file. The user hands a single file to
   a recipient, and the tree shape and entry names are concealed inside that one
@@ -548,6 +586,14 @@ behaviour for each location.
   complete, restorable result.
 - **FR-030**: Heavy work MUST NOT block the user interface for the duration of the
   operation.
+- **FR-029a**: Before a folder operation begins, the system MUST estimate the
+  free space it requires — at the destination, and separately at any staging
+  location the platform requires it to write through first — and MUST refuse to
+  start when the available space is insufficient, telling the user how much is
+  short and which location is short of it. Because that estimate can be
+  overtaken by other activity on the device, exhausting space mid-operation MUST
+  still abort under FR-029's cleanup rule and MUST be reported to the user as a
+  space problem, distinct from a generic write failure.
 
 **Partial failure**
 
@@ -556,10 +602,20 @@ behaviour for each location.
   work MUST be removed, and the user MUST be told which entry caused the abort,
   identified by its relative path. Originals MUST NOT be deleted when an operation
   aborts, regardless of the user's "delete originals" choice.
+- **FR-031a**: If an entry changes between being listed and being read — it no
+  longer exists, its type has changed, or its size or modification time differs
+  from what was recorded at listing — the operation MUST abort under FR-031's
+  rules. The report MUST identify the entry by its relative path **and state the
+  nature of the change** in human copy: that it disappeared, that it is now a
+  different kind of entry, that it grew or shrank, or that it was modified while
+  being read. Reporting only that "the folder changed" is insufficient, because
+  the user cannot then tell whether their data is at risk or a background process
+  merely touched an unimportant file.
 - **FR-032**: The system MUST NOT produce output that presents itself as a
   complete capture of the folder when it is not. Under FR-031's abort rule this
-  means no container is written at all unless every discovered entry was
-  captured.
+  means no container is written at all unless every discovered in-scope entry was
+  captured, and the outcome MUST disclose anything skipped under FR-002a rather
+  than let the user infer that nothing was.
 - **FR-033**: All per-entry failures MUST be reported to the user in human copy,
   identifying the affected entry by its relative path. Raw exception text MUST NOT
   be shown.
@@ -616,7 +672,27 @@ behaviour for each location.
   recovery code, no hint, no reset, and no unlock path other than the existing
   passphrase, device-bound, and recipient wraps.
 - **FR-040**: The feature MUST NOT introduce persistent state describing the
-  user's folders. Latch stays stateless between operations.
+  user's folders. Latch stays stateless between operations. A stored *setting*
+  such as the deletion default of FR-041a is not such state: it records a choice
+  the user made about the app's behaviour, not anything about their folders,
+  their contents, their names, or where they are.
+
+**Deleting originals**
+
+- **FR-041**: Where the user chooses to delete the originals after a folder is
+  successfully protected, the default MUST be to shred each captured file using
+  the same secure-delete path the app already applies to single files, and then
+  to remove the now-empty directories, so that entry and directory **names** are
+  destroyed along with content. Names alone can disclose as much as content, so a
+  deletion that leaves the tree's structure behind is not sufficient by default.
+  Subject always to FR-002b: only captured entries are deleted.
+- **FR-041a**: The user MUST be able to change this default in the app's advanced
+  settings, choosing between shredding and ordinary deletion. Wherever the choice
+  is presented, the copy MUST state plainly what each mode does and what it does
+  not guarantee — specifically that overwriting cannot be guaranteed to destroy
+  the original bytes on flash storage, because wear levelling may relocate
+  writes, and that ordinary deletion removes the entries without overwriting
+  anything. The choice MUST NOT be posed as a question on every operation.
 
 ### Key Entities
 
@@ -717,6 +793,34 @@ behaviour for each location.
   executable bit intact, and the link still a link — on every platform that
   supports each item. On platforms that do not, names, structure and content are
   still correct and the unappliable items are reported to the user.
+- **SC-023**: A folder operation started with too little free space is refused
+  before any work begins, with a message naming the shortfall and the location
+  that is short; and a folder operation whose space is exhausted mid-run aborts,
+  leaves zero partial bytes at the destination and zero in staging, and is
+  reported as a space problem rather than a generic failure. Verified on a
+  constrained volume for both the destination and the staging location.
+- **SC-024**: A fixture tree containing a device node, a socket and a FIFO
+  alongside ordinary files latches successfully; every skipped entry is named to
+  the user by relative path; a macOS bundle in the same tree round-trips as a
+  complete directory rather than one opaque item; and when the same operation is
+  run with "delete originals" chosen, every skipped entry is still present on
+  disk afterwards while the captured originals are gone.
+- **SC-025**: For each mutation kind — an entry deleted, replaced by a different
+  entry type, appended to, and truncated, each applied mid-operation — the
+  operation aborts, no container and no staged remnant survives, no original is
+  deleted, and the message names both the entry's relative path and which of
+  those things happened to it.
+- **SC-026**: After a successful folder encryption with "delete originals"
+  chosen under the default mode, a filesystem inspection finds no original file
+  content and no original directory or entry names remaining; the settings screen
+  offers both modes with copy stating what each does and its limits; and changing
+  the default there changes the behaviour of the next operation without the user
+  being prompted during it.
+- **SC-027**: No selection is refused for being large alone: a tree well beyond
+  the 10,000-file and 10 GB figures used elsewhere here is accepted, warned about
+  before it starts, and completes. A selection whose container would exceed the
+  destination filesystem's maximum file size is refused before any work begins,
+  with a message naming that limit rather than a generic failure.
 
 ## Assumptions
 
@@ -817,6 +921,24 @@ Resolved in the 2026-08-26 clarification session (see **Clarifications** above):
    session, once features 002 and 003 shipped: one registry row plus one strategy
    object, with the read boundary and the write version moving separately, and a
    writer stamping the lowest version its payload permits (FR-013a to FR-013e).
+
+Resolved in the 2026-09-29 edge-case session (see **Clarifications** above), all
+of which were listed as edge cases that no requirement answered:
+
+6. ~~**Running out of space**~~ — resolved: pre-flight refusal naming the
+   shortfall and its location, plus safe abort if space runs out anyway
+   (FR-029a).
+7. ~~**Special filesystem objects**~~ — resolved: skip devices, sockets and
+   FIFOs and report every skip; bundles are ordinary directories and are captured
+   in full; nothing skipped is ever deleted (FR-002a, FR-002b).
+8. ~~**The tree changing mid-operation**~~ — resolved: abort, naming the entry
+   and what changed about it (FR-031a).
+9. ~~**What "delete originals" destroys**~~ — resolved: shred contents then
+   remove directories so names go too, with the mode changeable in advanced
+   settings and honest copy about flash storage (FR-041, FR-041a).
+10. ~~**A maximum folder size or file count**~~ — resolved: no app-imposed cap;
+    warn above a threshold, refuse only genuine platform limits (FR-003a,
+    FR-005a).
 
 **No open questions remain.** The spec is ready for `/speckit-plan`. The packing
 format selected there MUST be able to carry everything FR-020a puts in scope, and

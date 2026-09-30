@@ -238,3 +238,142 @@ note; `tasks.md` US5 phase gains T052a–c, T053a, T053b, T054a, T056a and a
 revisit note. Task count 63 → 72, of which 7 are done.
 
 **Status**: ready to continue at T008. No blocking questions.
+
+---
+
+## Iteration 6 — 2026-09-29, `/speckit-clarify` on the unanswered edge cases
+
+**Trigger.** The spec said "No open questions remain", and that was true of what it
+had explicitly decided. But the **Edge Cases** section listed cases that no
+functional requirement answered — the section had been used as a list of things
+to think about rather than a list of things decided. Five were material enough to
+change implementation, task decomposition or acceptance tests.
+
+**Result: 16/16 items still passing.** No item changed state. Five clarifications
+were asked and integrated, each producing at least one requirement and one
+measurable outcome:
+
+| Question | Requirements added | Outcome |
+|---|---|---|
+| Out of space, before or during | FR-029a | SC-023 |
+| Devices/sockets/FIFOs/bundles | FR-002a, FR-002b | SC-024 |
+| Tree changing mid-operation | FR-031a | SC-025 |
+| What "delete originals" destroys | FR-041, FR-041a | SC-026 |
+| A maximum folder size or count | FR-003a, FR-005a | SC-027 |
+
+**Two contradictions were resolved rather than left to surface in review.**
+
+1. FR-002 ("every regular file and every directory") implied special files are
+   dropped silently, while FR-031 demanded a loud abort on anything not captured
+   — and FR-031's stated reason is that a user who deletes originals trusting an
+   incomplete container loses data. FR-002a resolves it in favour of that safety
+   argument without treating a socket as user data, and **FR-002b** generalises
+   the guard the user asked for: Latch never deletes a source it did not protect.
+2. FR-011 and FR-032 promised a "complete capture", which FR-002a's skips would
+   have made literally false. Both were reworded to "everything in scope under
+   FR-002", with skips framed as outside that scope rather than gaps in it —
+   which is exactly why FR-002a must report them and FR-002b must not delete
+   them.
+
+**One boundary restated deliberately.** FR-041a introduces a stored setting, and
+FR-040 forbids persistent state. FR-040 now says why these differ: a setting
+records a choice about the app's behaviour, not anything about the user's
+folders. This is the same distinction FR-035 already draws against
+`UnresolvedDestination`, and it is written down for the same reason — so a later
+reader does not mistake it for a violation.
+
+**Borderline item, documented honestly.** "No implementation details" — FR-029a
+refers to "any staging location the platform requires it to write through" and
+FR-041a to flash storage and wear levelling. Both were judged acceptable: neither
+names a framework, API or language, and both describe a physical or platform
+reality the user-visible behaviour depends on. Removing them would make the
+requirements less testable, not more technology-agnostic.
+
+**Sibling artifacts NOT yet updated.** `plan.md`, `tasks.md`, `research.md` and
+`data-model.md` do not yet reflect these ten new requirements — notably the
+pre-flight space estimate, the skip-and-report path, mid-operation change
+detection, and the deletion-mode setting, which add UI and settings work that the
+current 72-task breakdown does not contain.
+
+**Status**: spec ready. Re-run `/speckit-plan` (or `/speckit-tasks`) before
+resuming implementation, so the new requirements reach the task list.
+
+---
+
+## Iteration 7 — 2026-09-29, `/speckit-plan` re-run after the clarification round
+
+**Status: 16/16 → 16/16.** No checkbox changed state; this run touched the design
+artifacts, not the spec.
+
+The gap recorded at the end of Iteration 6 — plan and design artifacts not
+reflecting the ten new requirements — is now closed:
+
+| Artifact | What changed |
+|---|---|
+| `plan.md` | Summary; Technical Context (Storage now states the one stored key and why it is not FR-040 state; Scale/Scope now states the no-cap rule and Android's 2× need); Constitution rows I and IV; a second "revisited" note; four new app files, one new port and its adapter in the source map; phases P2b and P3b; a third Complexity Tracking violation (the free-space probe's platform surface) |
+| `research.md` | New R10 (free space — no Dart API exists, so a port, with `null` = proceed), R11 (change detection, its five kinds, and its irreducible TOCTOU window), R12 (skip-not-refuse, and why deletion consumes the manifest), R13 (deletion mode, default, and where the setting lives); three new open risks |
+| `data-model.md` | `UnpreservableItem`, `EntryStamp`/`SourceChangeKind`, `PreflightEstimate`, `CapturedManifest`, `DeletionMode`; `FolderSelection` gains `snapshot` and a reworded completeness invariant |
+| `contracts/ports.md` | `FreeSpacePort`; `DirectoryIoPort.stat`; `InsufficientSpaceError` and `SourceChangedError`; the pre-flight-runs-on-the-main-isolate rule and the manifest hand-off |
+| `quickstart.md` | S14 (space refused early, and the unprobeable case), S15 (skips reported and never deleted, incl. the macOS bundle check), S16 (five change kinds), S17 (deletion mode) |
+
+**One requirement is not fully satisfiable as written.** FR-005a asks for a
+pre-flight refusal when the container would exceed the destination filesystem's
+maximum file size (the 4 GiB FAT32 case). That limit is not discoverable through
+SAF or `dart:io` — see research R10 and open risk 4. The design detects it at
+write time and gives it a specific message rather than a generic write failure,
+which is the achievable half. **Needs a decision before `/speckit-tasks`**: accept
+the deviation and reword FR-005a, or add a filesystem-type probe.
+
+**`tasks.md` is still the pre-clarification 72-task breakdown** and does not
+contain the pre-flight check, the skip-and-report path, change detection, or the
+deletion-mode work. Run `/speckit-tasks` before resuming implementation at T008.
+
+### Iteration 7a — API verification pass
+
+Research R10/R11/R12 rested on three assumptions about `dart:io`. All three were
+checked against the SDK sources and a live probe rather than left as assumptions.
+Two held; **one was wrong and changed the design**:
+
+| Assumption | Verdict |
+|---|---|
+| `dart:io` has no free-space API | **Confirmed.** Exhaustive grep of `lib/io/` for `freeSpace`/`statvfs`/`statfs`/`availableSpace`/`diskSpace`/`totalSpace`: zero matches. `FileStat` exposes per-entry data only. |
+| `FileSystemEntityType` can name sockets and FIFOs | **Confirmed.** `unixDomainSock` and `pipe` exist. |
+| `FileSystemEntityType` can name device nodes | **WRONG.** There is no device value. `/dev/null` stats as `notFound`, `size == -1`, indistinguishable from a path that does not exist — while `Directory.listSync` still yields it as a `File`. |
+
+The third finding is not cosmetic: taken naively it would have inverted FR-002a
+and FR-031a against each other — a device node aborting the operation as
+"disappeared", and a genuinely deleted file being silently skipped. The fix is an
+ordering rule (classify at enumeration, where the listing is in hand; detect
+change at read time) now recorded in R12, `data-model.md`, `contracts/ports.md`
+and quickstart S15.
+
+`UnpreservableItem.reason` lost its `deviceNode` value as a result — the honest
+name is `unrepresentable`, because the platform will not tell us more.
+
+**Context7 could not answer any of these** (R14): its Dart corpus is dart.dev
+guide prose, not `api.dart.dev`, and `package:tar` is not indexed at all. Recorded
+so the search is not repeated.
+
+## Iteration 7b — FR-005a resolved by measurement (2026-09-29)
+
+FR-005a was flagged in Iteration 7 as **not achievable as written**: a
+destination filesystem's maximum file size looked undiscoverable. That flag is
+now **withdrawn** — the requirement stands unchanged.
+
+| Claim | Verdict |
+|---|---|
+| No Android API reports a filesystem type | **Confirmed**, read from `android.jar` API 37 with `javap`. `StructStatVfs` has `f_namemax` (filename length) and nothing else; `StatFs` is block counts only; `StorageVolume` offers `isRemovable`/`isEmulated`/`getUuid` and no type. `/proc/mounts` reports `fuse` under scoped storage. |
+| Therefore the limit cannot be pre-flighted | **WRONG.** It can be *provoked*. Allocating the estimated size and reading the errno answers the question without naming the filesystem. |
+| Dart surfaces the raw errno | **Confirmed.** `FileSystemException.osError.errorCode` returned `2`/`ENOENT` on a missing path. |
+| The probe is cheap | **Confirmed on a real FAT32 volume.** ≥4 GiB refused with `EFBIG` in 21–321 µs leaving a zero-length file; on APFS 8 GiB and 1 PiB succeed in 0 ms using 0 B (sparse). Slow only where success needs a real zero-fill — 3 GiB on FAT32 took 3.7 s — which is why the probe is gated at >4 GiB, where FAT32 refuses instead of filling. |
+
+Recorded in research R15, `contracts/ports.md` (`canHoldSingleFile`), `plan.md`,
+and quickstart S14. Open risk 4 is closed; its residue is implementation
+discipline, not an unknown: gate at >4 GiB, time it out, tell `EFBIG` from
+`ENOSPC`, and run it natively against the SAF destination rather than in Dart
+against the staging cache.
+
+The general lesson is the one Iteration 7a already taught in a different key:
+**a capability question the documentation answers "no" may still be answerable by
+experiment.** Both times the correct move was to run the thing rather than read
+about it.

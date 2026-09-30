@@ -107,7 +107,17 @@ path, and an empty path.
 **Expected:** each aborts with `UnsafeArchiveEntryError` naming the offending
 relative path, and **zero bytes** are written outside the destination root.
 
-**Discharges:** SC-013, FR-020d.
+Then the normalisation pair, which needs a real destination rather than a
+hand-built stream: pack two entries in one directory whose names are byte-distinct
+but NFC-equivalent (`e` + U+0301 vs U+00E9), and restore onto a folding filesystem
+— APFS on macOS, or any case-insensitive destination for the case variant. The
+restore MUST abort naming **both** paths. Silently overwriting the first with the
+second is the failure this checks for, because it loses data while reporting
+success. Names are never normalised at pack time (FR-018, R2), so the container
+itself must hold both entries verbatim — confirm that first, or the test is
+passing for the wrong reason.
+
+**Discharges:** SC-013, FR-020d, FR-018, R2.
 
 ---
 
@@ -160,6 +170,19 @@ container; and for the restore, the staging directory is gone — **no partial
 plaintext anywhere reachable**. Verify the staged *directory* sweep specifically:
 `AppCrypto._runBatch` previously swept only a single `.tmp` file, so this is the
 case that regresses silently if the fix is dropped.
+
+Then the same sweep from the other trigger: truncate a folder container on a
+chunk boundary and restore it. It **is** rejected — `createPullChunked` is built
+with `requireFinalized: true`, so a stream that ends without the FINAL tag raises
+`CorruptedFileError('missing FINAL tag')` even when every surviving byte
+authenticates, including the case where all data chunks are present and only the
+empty FINAL chunk was cut (pinned in
+`packages/myenc_adapters/test/sodium_crypto_adapter_test.dart`). But the chunks
+that survived **are emitted before that error**, so the unpacker will already
+have written part of the tree into staging. The rejection is what stops a
+truncated container restoring as a silently truncated folder; the recursive
+staged-directory sweep is what stops the partial tree surviving the rejection.
+Both are required — neither alone is sufficient.
 
 **Discharges:** SC-007, FR-028, FR-029, Principle IV.
 
@@ -217,3 +240,101 @@ Count the taps from the home screen to starting protection on a folder.
 folder-contents confirmation that FR-003 and FR-004 require.
 
 **Discharges:** SC-004.
+
+---
+
+## S14. Space is refused before the work, not after it
+
+Point a folder encryption at a destination with less free space than the
+container needs. On Android, run it twice: once short at the **destination**,
+once short in the **staging cache** (fill the cache volume, leave the destination
+roomy).
+
+**Expected:** refusal **before** any work begins; the message names the shortfall
+in bytes *and* which of the two locations is short. Nothing is staged, nothing is
+written, nothing is swept — the check runs before the worker is spawned.
+
+Then the unprobeable case: on a destination whose free space the platform will
+not report, the operation **proceeds** and, if it runs out mid-run, aborts under
+FR-029 and is reported as a **space** problem, not a generic write failure. A
+probe returning "unknown" must never refuse.
+
+Then the maximum-file-size refusal, which is a **separate** check with a separate
+message. Build a FAT32 volume — `hdiutil create -size 6g -fs MS-DOS -type SPARSE`
+on macOS, `mkfs.vfat` on Linux — and aim a >4 GiB container at it.
+
+**Expected:** refused before any work begins, with a message about the
+destination not accepting a file this large — **not** the free-space message, and
+not a generic write failure. The refusal must arrive in well under a second: it
+comes from `EFBIG` on an attempted allocation, not from a zero-fill. Then repeat
+under 4 GiB on the same volume and confirm it is **not** refused. On a normal
+volume, confirm a >4 GiB container is accepted and that the probe leaves no file
+behind either way.
+
+**Discharges:** SC-023, FR-029a, FR-005a, R10, R15.
+
+---
+
+## S15. Skips are reported, and skips are never deleted
+
+Build a tree containing a regular file, a subdirectory, a symlink, a FIFO
+(`mkfifo`) and a unix socket. Protect it with "delete originals" **on**.
+
+**Expected:** the FIFO and the socket are **skipped**, each named by relative
+path, shown before encryption starts *and* in the outcome. The operation
+succeeds. Afterwards, the file, directory and symlink are gone; **the FIFO and
+the socket are still there**, and so is the directory holding them — deletion
+iterates the captured manifest, never a fresh walk.
+
+Then the case the platform will not name for you: symlink or copy a **device
+node** into the tree (`ln /dev/null ./dev-probe` where permitted, or run the
+selection over a directory containing one). `dart:io` reports it as `notFound`,
+identically to a deleted file — the classifier must skip it *because it appeared
+in the directory listing*, and must **not** abort as "disappeared". Then delete a
+regular file between enumeration and read in the same tree: that one **must**
+abort. Both in one run is the real test, because the two cases share a stat
+result and only the enumeration context separates them (R12).
+
+On macOS, add a `.app` bundle: it is captured **in full, entry by entry**, as an
+ordinary directory. If it appears in the skip report, bundle detection has crept
+in and must come out.
+
+**Discharges:** SC-024, SC-026, FR-002a, FR-002b, R12.
+
+---
+
+## S16. A source that moves under the operation
+
+Five runs, one per change kind, each mutating an entry after enumeration but
+before or during its read: delete it; replace the file with a directory; append
+to it; truncate it; and rewrite it in place at the same length.
+
+**Expected:** every run aborts; each report names the **relative path and what
+changed** — disappeared, became a directory, grew, shrank, was modified while
+being read. "The folder changed" alone fails this scenario. No container is left
+behind, and no original is deleted.
+
+The same-length rewrite is the weakest case (1-second mtime granularity can hide
+it); it is the one to check on the target filesystem rather than assume.
+
+**Discharges:** SC-025, FR-031a, R11.
+
+---
+
+## S17. Deletion mode — default, reachable, and honest
+
+Protect a folder at the default setting, then change the mode in advanced
+settings and protect another.
+
+**Expected:** the default shreds each captured file through the existing
+secure-delete path and then removes the emptied directories, so **entry and
+directory names are gone**, not just contents — check the parent listing, not
+just the file. A directory still holding a skipped entry (S15) is left in place.
+The setting is reachable in advanced settings, states what each mode does **and**
+that overwriting cannot be guaranteed on flash storage, and is **never** posed as
+a question during an operation.
+
+Deletion must run only after the container is written and verified: kill the app
+mid-encryption and confirm every original survives.
+
+**Discharges:** SC-026, FR-041, FR-041a, FR-002b.

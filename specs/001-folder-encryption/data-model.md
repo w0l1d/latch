@@ -1,8 +1,10 @@
 # Phase 1 Data Model: Folder Encryption (UC-13)
 
 Entities below are the concrete form of the spec's Key Entities. Each field
-names the requirement that constrains it. Nothing here is persisted — every
-structure is in-memory for the duration of one operation (FR-040).
+names the requirement that constrains it. Everything here except `DeletionMode`
+is in-memory for the duration of one operation and is never written down
+(FR-040); `DeletionMode` is a single stored enum naming a user preference, not a
+folder (FR-041a).
 
 ---
 
@@ -80,13 +82,124 @@ The result of enumeration, shown to the user **before** anything is encrypted
 | `rootName` | `String` | Recorded so a restore can rebuild under the original name (FR-010). |
 | `entryCount` | `int` | Files + directories + symlinks that will be packed. |
 | `totalBytes` | `int` | Needed *before* the stream starts so progress can be a fraction (FR-026, SC-005). |
-| `unpreservable` | `List<UnpreservableItem>` | Devices, sockets, FIFOs — named and shown, never silently dropped (FR-004). |
-| `refusal` | `SelectionRefusal?` | Non-null means the selection is refused outright (FR-005): a symlink cycle (FR-006), an unresolvable Android `content://` tree (R7), or an unreadable entry (FR-031). |
+| `unpreservable` | `List<UnpreservableItem>` | Devices, sockets, FIFOs — **skipped**, named by relative path, shown before encryption starts and again in the outcome. Never silently dropped (FR-002a, FR-004). |
+| `snapshot` | `Map<String, EntryStamp>` | Per-entry `(kind, sizeBytes, modified)` recorded at enumeration, compared again at read time to detect a source changing underneath the operation (FR-031a, R11). |
+| `refusal` | `SelectionRefusal?` | Non-null means the selection is refused outright (FR-005, FR-005a): a symlink cycle (FR-006), an unresolvable Android `content://` tree (R7), an unreadable entry (FR-031), or a known space shortfall (FR-029a). |
 
 **Invariant.** Encryption may only start from a `FolderSelection` with
-`refusal == null`. There is no "partial selection" state — FR-011 and FR-032 make
-every container that exists a complete capture, so incompleteness can only ever
-be a refusal, never an output.
+`refusal == null`. There is no "partial selection" state: every container that
+exists holds **everything in scope under FR-002** (FR-011, FR-032). Entries
+skipped under FR-002a are *outside* that scope, not gaps in it — which is why
+they are reported to the user before the operation starts, so the scope they are
+consenting to is the scope they can see.
+
+**`entryCount` and `totalBytes` are uncapped** (FR-003a). A selection large enough
+to be worth mentioning produces a warning in the review screen; a warning is not
+a refusal, and there is no threshold at which the app declines on its own
+judgement. Only a platform limit refuses (FR-005a).
+
+---
+
+## UnpreservableItem
+
+One entry the format cannot represent, skipped rather than fatal (FR-002a).
+
+| Field | Type | Notes |
+|---|---|---|
+| `relativePath` | `String` | Relative to the selection root — the user must be able to find it. |
+| `reason` | `socket` \| `fifo` \| `unrepresentable` | Named concretely; "unsupported" alone is not a report. |
+
+`socket` and `fifo` come straight from `FileSystemEntityType`. **`unrepresentable`
+is the device-node case and cannot be named more precisely**: `dart:io` has no
+device value in `FileSystemEntityType`, and a character device stats as
+`notFound` exactly like a path that does not exist. The classifier identifies it
+as *present in the directory listing but stat-invisible* — a real condition with
+no more specific name available (R12). User-facing copy must therefore say what
+was observed ("this item could not be read as a file") and not guess at a kind.
+
+**A skip is never silent** and never a failure. macOS bundles are **not** in this
+enum: a `.app` or `.photoslibrary` is an ordinary directory and is captured in
+full under FR-002 (R12).
+
+---
+
+## EntryStamp / SourceChangeKind
+
+The FR-031a change-detection pair. `EntryStamp` is `(kind, sizeBytes, modified)`,
+recorded per entry at enumeration.
+
+| `SourceChangeKind` | Meaning reported to the user |
+|---|---|
+| `disappeared` | The entry no longer exists. Only ever raised for an entry that classified cleanly at enumeration — a `notFound` stat is ambiguous on its own (R12). |
+| `kindChanged` | A file became a directory or a symlink, or vice versa. |
+| `grew` | More bytes than declared. |
+| `shrank` | Fewer bytes than declared. |
+| `modifiedWhileReading` | Same size, different modification time. |
+
+**Ordering rule (load-bearing).** Classification happens **at enumeration**, where
+the directory listing is in hand; change detection happens at read time against
+the recorded `EntryStamp`. Reversing this inverts two requirements simultaneously
+— a device node would abort as "disappeared" (violating FR-002a) and a genuinely
+deleted file would be skipped (violating FR-031a). See R12.
+
+**Rule.** Any of these aborts the whole operation and the report MUST carry the
+**relative path and the kind**. "The folder changed" is not a conforming report
+(FR-031a). Detection is best-effort against an unclosable TOCTOU window (R11);
+the byte-count comparison is the load-bearing check, the mtime comparison is
+supplementary.
+
+---
+
+## PreflightEstimate
+
+Computed before any work begins (FR-029a), never persisted.
+
+| Field | Type | Notes |
+|---|---|---|
+| `estimatedContainerBytes` | `int` | `totalBytes` + tar header/padding/trailer + secretstream MAC overhead, rounded **up** with a margin. Optimism here produces the mid-run failure this check exists to prevent. |
+| `destinationFreeBytes` | `int?` | `null` = the platform would not say (R10). |
+| `stagingFreeBytes` | `int?` | Android only; `null` elsewhere, where there is no staging step. |
+| `shortfall` | `Shortfall?` | Non-null ⇒ refuse. Carries the **number of bytes short and which location** — destination or staging — because on Android they are routinely different volumes (FR-029a). |
+| `largeSelectionWarning` | `bool` | Advisory only; never gates (FR-003a). |
+
+**A `null` free-space reading is "proceed", not "refuse".** The guarantee FR-029a
+buys is *refuse early where the platform will answer*; FR-029's mid-run abort
+stays the backstop and must remain correct.
+
+---
+
+## CapturedManifest
+
+The list of entries the finished container demonstrably holds. Produced by the
+pack, consumed by `OriginalDeletion`.
+
+**Invariant (FR-002b).** Deletion of originals iterates **this**, never a fresh
+walk of the source tree. A fresh walk would re-find the skipped socket and
+anything that appeared after enumeration, and delete a source the container does
+not protect. Consuming the manifest makes that structurally impossible rather
+than merely guarded against.
+
+---
+
+## DeletionMode
+
+The one persisted value this feature adds (FR-041a). A `shared_preferences` enum;
+it names no folder and reveals nothing about what was protected, so it does not
+conflict with FR-040.
+
+| Value | Behaviour |
+|---|---|
+| `shredThenRemoveDirs` | **Default.** Each captured file is shredded through the existing secure-delete path; the emptied directories are then removed bottom-up, so entry and directory *names* die with the contents (FR-041). A directory still holding a skipped entry is left in place. |
+| `plainDelete` | Ordinary deletion. Faster, recoverable by forensic tools. |
+| `keepOriginals` | Nothing is deleted. |
+
+**Rules.** The setting lives in advanced settings and MUST NOT be posed as a
+question on every operation — a per-run prompt trains dismissal, which is how the
+destructive option gets chosen by reflex. The copy MUST state what each mode does
+**and its limits**: overwriting cannot be guaranteed on flash storage, because
+wear levelling may leave the original block intact and the app cannot see the
+mapping (FR-041a). Deletion runs only after the container is written and
+verified, and only over the `CapturedManifest`.
 
 ---
 
