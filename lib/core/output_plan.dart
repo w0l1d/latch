@@ -4,6 +4,7 @@ import 'package:myenc_adapters/myenc_adapters.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'app_crypto.dart';
+import 'bulk_plan.dart';
 import 'default_output.dart';
 import 'saf_bridge.dart';
 import 'unresolved_destination.dart';
@@ -110,10 +111,24 @@ class RelocatedOutput {
   /// fallback and non-Android outputs, where [path] is used instead.
   final String? treeUri;
 
+  /// The file could not be placed and Downloads was not allowed (decrypt):
+  /// the staged copy was deleted and [path] is the intended name, not a file.
+  final bool failed;
+
+  /// The input this output came from.
+  final String? sourcePath;
+
+  /// The output is still the staged copy in the app cache (no destination
+  /// could be found). Its input must not be removed on the strength of it.
+  final bool keptInCache;
+
   const RelocatedOutput(
     this.path, {
     this.fellBackToDownloads = false,
     this.treeUri,
+    this.failed = false,
+    this.sourcePath,
+    this.keptInCache = false,
   });
 }
 
@@ -207,6 +222,62 @@ class OutputPlanner {
         target = grantByFolder[folder] = resolved.target;
       }
       byPath[f] = target;
+    }
+    return OutputPlan(stagingDir: staging, outputDir: staging, byPath: byPath);
+  }
+
+  /// Plans a folder batch whose outputs mirror the source tree under [root].
+  ///
+  /// Android: one grant for [root] (an existing one first, including a covering
+  /// ancestor; the prompt only as a last resort), then every file's target is
+  /// that grant plus the file's own relative folder, so a mirrored tree is
+  /// recreated inside the granted folder. Elsewhere the worker mirrors straight
+  /// to [explicitDir] (or beside the sources) via each item's relative path.
+  ///
+  /// [allowDownloadsFallback] is true for encrypt (ciphertext is safe to leave
+  /// in Downloads, and the user is told) and false for decrypt: plaintext is
+  /// never dropped somewhere the user did not pick, so an unreachable
+  /// destination cancels the plan instead.
+  static Future<OutputPlan> planBulk({
+    required String root,
+    required List<BulkItem> items,
+    required bool allowDownloadsFallback,
+    String? explicitDir,
+    String? explicitTreeUri,
+    Future<SaveFolderDecision> Function(String? folder, String? sourcePath)?
+    requestGrant,
+    @visibleForTesting bool? platformIsAndroid,
+  }) async {
+    final android = platformIsAndroid ?? Platform.isAndroid;
+    if (!android) return OutputPlan(outputDir: explicitDir);
+
+    final staging = p.join((await getTemporaryDirectory()).path, 'latch_stage');
+    await _resetDir(staging);
+
+    OutputTarget base;
+    if (explicitTreeUri != null) {
+      base = OutputTarget(treeUri: explicitTreeUri);
+    } else {
+      final resolved = await _grantFor(
+        root,
+        items.isEmpty ? root : items.first.sourcePath,
+        requestGrant,
+      );
+      if (resolved.cancelled) return const OutputPlan.cancelled();
+      base = resolved.target;
+    }
+    if (base.treeUri == null && !allowDownloadsFallback) {
+      return const OutputPlan.cancelled();
+    }
+
+    final byPath = <String, OutputTarget>{};
+    for (final item in items) {
+      final dir = p.posix.dirname(item.outRelPath.replaceAll(r'\', '/'));
+      final rel = dir == '.' ? '' : dir;
+      byPath[item.sourcePath] = OutputTarget(
+        treeUri: base.treeUri,
+        subPath: [base.subPath, rel].where((s) => s.isNotEmpty).join('/'),
+      );
     }
     return OutputPlan(stagingDir: staging, outputDir: staging, byPath: byPath);
   }
@@ -311,11 +382,14 @@ Future<List<RelocatedOutput>> relocateStagedOutputs(
   List<BatchResult> results,
   OutputPlan plan, {
   required String Function(String sourcePath) displayNameFor,
+  bool allowDownloadsFallback = true,
   @visibleForTesting Future<String?> Function()? downloadsDir,
 }) async {
   final ok = results.where((r) => r.ok && r.outPath != null).toList();
   if (!plan.isStaged) {
-    return [for (final r in ok) RelocatedOutput(r.outPath!)];
+    return [
+      for (final r in ok) RelocatedOutput(r.outPath!, sourcePath: r.path),
+    ];
   }
 
   final io = FileIoDart();
@@ -344,12 +418,19 @@ Future<List<RelocatedOutput>> relocateStagedOutputs(
             // A grant on an ancestor folder would open the wrong folder, so
             // "Open folder" addresses those by path instead.
             treeUri: target.subPath.isEmpty ? target.treeUri : null,
+            sourcePath: r.path,
           ),
         );
         continue;
       } catch (_) {
         // Grant revoked or write failed — fall through to Downloads.
       }
+    }
+
+    if (!allowDownloadsFallback) {
+      await _deleteQuietly(staged);
+      out.add(RelocatedOutput(name, failed: true, sourcePath: r.path));
+      continue;
     }
 
     // 2. Fallback: move the staged file into public Downloads.
@@ -359,12 +440,14 @@ Future<List<RelocatedOutput>> relocateStagedOutputs(
     }
     if (downloads == null) {
       // No Downloads folder (shouldn't happen on Android) — leave in cache.
-      out.add(RelocatedOutput(staged));
+      out.add(RelocatedOutput(staged, sourcePath: r.path, keptInCache: true));
       continue;
     }
     final dest = io.resolveNameCollision(p.join(downloads, name));
     await _move(staged, dest);
-    out.add(RelocatedOutput(dest, fellBackToDownloads: true));
+    out.add(
+      RelocatedOutput(dest, fellBackToDownloads: true, sourcePath: r.path),
+    );
   }
   return out;
 }

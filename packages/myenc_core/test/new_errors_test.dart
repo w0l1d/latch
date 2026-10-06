@@ -38,4 +38,21 @@ void main() {
       expect(s, contains('escapes the root'));
     });
   });
+
+  group('InsufficientSpaceError', () {
+    test(
+      'is a LatchError carrying the shortfall and which volume is short',
+      () {
+        final e = InsufficientSpaceError(
+          shortfallBytes: 1234,
+          location: SpaceLocation.staging,
+        );
+        expect(e, isA<LatchError>());
+        expect(e.shortfallBytes, 1234);
+        expect(e.location, SpaceLocation.staging);
+        expect(e.toString(), contains('staging'));
+        expect(e.toString(), contains('1234'));
+      },
+    );
+  });
 }

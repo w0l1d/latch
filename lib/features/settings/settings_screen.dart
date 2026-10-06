@@ -247,6 +247,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   }
                 : null,
           ),
+          _NavTile(
+            title: 'Bulk encryption',
+            subtitle: 'How keys are made when locking a whole folder',
+            onTap: () => context.push('/settings/bulk'),
+          ),
           // Android only: this is the SAF grant table, which no other platform
           // has. Elsewhere the app writes beside the original with no grant at
           // all, so there would be nothing to list or revoke.

@@ -1,10 +1,14 @@
 import 'dart:async';
+import 'dart:io' show Directory, File;
 import 'dart:isolate';
 import 'dart:typed_data';
 import 'package:myenc_core/myenc_core.dart';
 import 'package:myenc_adapters/myenc_adapters.dart';
+import 'package:path/path.dart' as p;
 import 'package:sodium/sodium_sumo.dart';
+import 'bulk_plan.dart' show BulkKeyMode;
 import 'crypto_erase.dart';
+import 'verified_delete.dart';
 
 /// Top-level entry point for Isolate.spawn.
 void latchWorker(SendPort mainPort) async {
@@ -49,6 +53,62 @@ void latchWorker(SendPort mainPort) async {
   }
 }
 
+/// A staged bulk run must not remove sources in the worker: the output is
+/// still in the app cache and may yet fail to reach its folder. The main
+/// isolate removes verified sources after relocation instead.
+bool _deferDelete(Map<String, dynamic> task) =>
+    task['outRelPaths'] != null && task['staged'] == true;
+
+/// Destination for one output. Without [outRel] this is the historical
+/// behaviour (`defaultPath` moved into [outputDir]). With [outRel] — bulk
+/// mode — the file lands at `<outputDir>/<outRel>`, parent folders are created
+/// on demand, and a name collision is resolved per output path.
+String _resolveOut(
+  FileIoDart io,
+  String defaultPath,
+  String? outputDir,
+  String? outRel,
+) {
+  if (outRel == null || outputDir == null) {
+    return io.resolveNameCollision(
+      io.resolveOutputPath(defaultPath, outputDir),
+    );
+  }
+  final target = p.joinAll([outputDir, ...outRel.split('/')]);
+  Directory(p.dirname(target)).createSync(recursive: true);
+  return io.resolveNameCollision(target);
+}
+
+List<String?> _outRels(Map<String, dynamic> task, int n) {
+  final raw = task['outRelPaths'] as List?;
+  return raw == null ? List<String?>.filled(n, null) : raw.cast<String?>();
+}
+
+/// Bulk runs only: once a write hits a full volume, the files not yet started
+/// are reported as failed for lack of space (FR-026f) instead of each running
+/// into the same wall. [e] is mapped for the file that actually failed.
+String _spaceFailure(Map<String, dynamic> task) =>
+    '${InsufficientSpaceError(shortfallBytes: 0, location: task['staged'] == true ? SpaceLocation.staging : SpaceLocation.destination)}';
+
+void _failRemaining(
+  Map<String, dynamic> task,
+  SendPort mainPort,
+  List<String> files,
+  int from,
+) {
+  for (var j = from; j < files.length; j++) {
+    mainPort.send({
+      'type': 'file_done',
+      'path': files[j],
+      'ok': false,
+      'error': _spaceFailure(task),
+      'outPath': null,
+      'verified': false,
+      'sourceRemoved': false,
+    });
+  }
+}
+
 Future<void> _encryptBatch(
   SodiumCryptoAdapter crypto,
   FileIoDart io,
@@ -59,11 +119,15 @@ Future<void> _encryptBatch(
   final passphrase = task['passphrase'] as Uint8List;
   final opslimit = task['opslimit'] as int;
   final memlimit = task['memlimit'] as int;
-  final deleteOriginals = task['deleteOriginals'] as bool;
   final outputDir = task['outputDir'] as String?;
   final keyIdHint = task['keyIdHint'] as Uint8List?;
   final deviceKey = task['deviceKey'] as Uint8List?;
+  final verifyDelete = task['verifyDelete'] as bool? ?? false;
+  final bulk = task['outRelPaths'] != null;
+  final deleteOriginals =
+      (task['deleteOriginals'] as bool) && !_deferDelete(task);
   final params = KdfParams(opslimit: opslimit, memlimit: memlimit);
+  final outRels = _outRels(task, files.length);
 
   if (!params.meetsFloor()) {
     throw CorruptedFileError('KDF params below security floor');
@@ -71,41 +135,69 @@ Future<void> _encryptBatch(
 
   final svc = EnvelopeService(crypto);
 
-  for (int i = 0; i < files.length; i++) {
-    final path = files[i];
+  // One Argon2id derivation for the whole run; every file still gets its own
+  // DEK. Scoped to this call so the key never outlives the operation.
+  final BatchWrapKey? batchKey =
+      task['keyMode'] == BulkKeyMode.sharedPerBatch.name
+      ? await BatchWrapKey.derive(
+          crypto,
+          passphrase,
+          opslimit: opslimit,
+          memlimit: memlimit,
+        )
+      : null;
 
-    try {
-      final outPath = await _encryptOne(
-        crypto,
-        io,
-        svc,
-        path,
-        passphrase,
-        params,
-        deleteOriginals,
-        outputDir,
-        keyIdHint,
-        deviceKey,
-        i,
-        files.length,
-        mainPort,
-      );
-      mainPort.send({
-        'type': 'file_done',
-        'path': path,
-        'ok': true,
-        'error': null,
-        'outPath': outPath,
-      });
-    } catch (e) {
-      mainPort.send({
-        'type': 'file_done',
-        'path': path,
-        'ok': false,
-        'error': '$e',
-        'outPath': null,
-      });
+  try {
+    for (int i = 0; i < files.length; i++) {
+      final path = files[i];
+
+      try {
+        final r = await _encryptOne(
+          crypto,
+          io,
+          svc,
+          path,
+          passphrase,
+          params,
+          deleteOriginals,
+          outputDir,
+          keyIdHint,
+          deviceKey,
+          i,
+          files.length,
+          mainPort,
+          outRels[i],
+          verifyDelete,
+          batchKey,
+        );
+        mainPort.send({
+          'type': 'file_done',
+          'path': path,
+          'ok': true,
+          'error': null,
+          'outPath': r.outPath,
+          'verified': r.verified,
+          'sourceRemoved': r.sourceRemoved,
+        });
+      } catch (e) {
+        final full = bulk && e is StorageFullError;
+        mainPort.send({
+          'type': 'file_done',
+          'path': path,
+          'ok': false,
+          'error': full ? _spaceFailure(task) : '$e',
+          'outPath': null,
+          'verified': false,
+          'sourceRemoved': false,
+        });
+        if (full) {
+          _failRemaining(task, mainPort, files, i + 1);
+          break;
+        }
+      }
     }
+  } finally {
+    batchKey?.dispose();
   }
 
   mainPort.send({'type': 'progress', 'pct': 1.0});
@@ -113,7 +205,7 @@ Future<void> _encryptBatch(
 
 /// Returns the path the encrypted file was actually written to (may differ
 /// from `<input>.latch` due to outputDir and collision renaming).
-Future<String> _encryptOne(
+Future<({String outPath, bool verified, bool sourceRemoved})> _encryptOne(
   SodiumCryptoAdapter crypto,
   FileIoDart io,
   EnvelopeService svc,
@@ -127,8 +219,12 @@ Future<String> _encryptOne(
   int index,
   int total,
   SendPort mainPort,
+  String? outRel,
+  bool verifyDelete,
+  BatchWrapKey? batchKey,
 ) async {
   final totalBytes = await io.fileSize(path);
+  final before = verifyDelete ? File(path).statSync() : null;
   int readBytes = 0;
 
   Stream<Uint8List> tracked() async* {
@@ -138,9 +234,7 @@ Future<String> _encryptOne(
     }
   }
 
-  final outPath = io.resolveNameCollision(
-    io.resolveOutputPath('$path.latch', outputDir),
-  );
+  final outPath = _resolveOut(io, '$path.latch', outputDir, outRel);
   // Announce the output before writing so the main isolate can remove the
   // in-flight <outPath>.tmp if the batch is cancelled mid-write.
   mainPort.send({'type': 'file_start', 'outPath': outPath});
@@ -155,6 +249,7 @@ Future<String> _encryptOne(
       params: params,
       keyIdHint: keyIdHint,
       deviceKey: deviceKey,
+      batchKey: batchKey,
     )) {
       sink.add(chunk);
       final fileFrac = totalBytes > 0
@@ -172,6 +267,11 @@ Future<String> _encryptOne(
     // the temp file, then close and rethrow.
     sink.addError(e);
     await sink.close();
+    // Wait for that cleanup: reporting the failure while a partial-plaintext
+    // temp is still on disk would let a caller observe it.
+    try {
+      await writeDone;
+    } catch (_) {}
     rethrow;
   }
   // Close the sink only after the encrypt loop finishes cleanly, then wait
@@ -180,8 +280,35 @@ Future<String> _encryptOne(
   await sink.close();
   await writeDone;
 
+  if (!verifyDelete) {
+    if (deleteOriginals) await io.deleteFile(path);
+    return (outPath: outPath, verified: false, sourceRemoved: deleteOriginals);
+  }
+
+  // The container is only trusted once it reads back as exactly the source.
+  // On any doubt it is the container that goes; the original is never touched.
+  try {
+    final after = File(path).statSync();
+    if (after.size != before!.size || after.modified != before.modified) {
+      throw VerificationFailedError('the file changed while it was encrypted');
+    }
+    await verifyContainerMatchesSource(
+      svc: svc,
+      io: io,
+      containerPath: outPath,
+      sourcePath: path,
+      passphrase: passphrase,
+      deviceKey: deviceKey,
+    );
+  } catch (e) {
+    try {
+      await io.deleteFile(outPath);
+    } catch (_) {}
+    if (e is VerificationFailedError) rethrow;
+    throw VerificationFailedError('$e');
+  }
   if (deleteOriginals) await io.deleteFile(path);
-  return outPath;
+  return (outPath: outPath, verified: true, sourceRemoved: deleteOriginals);
 }
 
 Future<void> _rewrapBatch(
@@ -336,13 +463,18 @@ Future<void> _decryptBatch(
   final deviceKey = task['deviceKey'] as Uint8List?;
   final recipientPublicKey = task['recipientPublicKey'] as Uint8List?;
   final recipientSecretKey = task['recipientSecretKey'] as Uint8List?;
+  final outRels = _outRels(task, files.length);
+  final bulk = task['outRelPaths'] != null;
+  final verifyDelete = task['verifyDelete'] as bool? ?? false;
+  final deleteContainers =
+      (task['deleteOriginals'] as bool? ?? false) && !_deferDelete(task);
   final svc = EnvelopeService(crypto);
 
   for (int i = 0; i < files.length; i++) {
     final path = files[i];
 
     try {
-      final outPath = await _decryptOne(
+      final r = await _decryptOne(
         crypto,
         io,
         svc,
@@ -355,22 +487,34 @@ Future<void> _decryptBatch(
         i,
         files.length,
         mainPort,
+        outRels[i],
+        verifyDelete,
+        deleteContainers,
       );
       mainPort.send({
         'type': 'file_done',
         'path': path,
         'ok': true,
         'error': null,
-        'outPath': outPath,
+        'outPath': r.outPath,
+        if (verifyDelete) 'verified': r.verified,
+        if (verifyDelete) 'sourceRemoved': r.sourceRemoved,
       });
     } catch (e) {
+      final full = bulk && e is StorageFullError;
       mainPort.send({
         'type': 'file_done',
         'path': path,
         'ok': false,
-        'error': '$e',
+        'error': full ? _spaceFailure(task) : '$e',
         'outPath': null,
+        if (verifyDelete) 'verified': false,
+        if (verifyDelete) 'sourceRemoved': false,
       });
+      if (full) {
+        _failRemaining(task, mainPort, files, i + 1);
+        break;
+      }
     }
   }
 
@@ -379,7 +523,7 @@ Future<void> _decryptBatch(
 
 /// Returns the path the plaintext was actually written to (may differ from
 /// the input minus `.latch` due to outputDir and collision renaming).
-Future<String> _decryptOne(
+Future<({String outPath, bool verified, bool sourceRemoved})> _decryptOne(
   SodiumCryptoAdapter crypto,
   FileIoDart io,
   EnvelopeService svc,
@@ -392,8 +536,12 @@ Future<String> _decryptOne(
   int index,
   int total,
   SendPort mainPort,
+  String? outRel,
+  bool verifyDelete,
+  bool deleteContainer,
 ) async {
   final totalBytes = await io.fileSize(path);
+  final before = verifyDelete ? File(path).statSync() : null;
   int readBytes = 0;
 
   Stream<Uint8List> tracked() async* {
@@ -403,8 +551,11 @@ Future<String> _decryptOne(
     }
   }
 
-  final outPath = io.resolveNameCollision(
-    io.resolveOutputPath(io.withoutSuffix(path, '.latch'), outputDir),
+  final outPath = _resolveOut(
+    io,
+    io.withoutSuffix(path, '.latch'),
+    outputDir,
+    outRel,
   );
   // Announce the output before writing so the main isolate can remove the
   // in-flight <outPath>.tmp (partial plaintext!) if the batch is cancelled.
@@ -437,6 +588,11 @@ Future<String> _decryptOne(
     // the temp file, then close and rethrow.
     sink.addError(e);
     await sink.close();
+    // Wait for that cleanup: reporting the failure while a partial-plaintext
+    // temp is still on disk would let a caller observe it.
+    try {
+      await writeDone;
+    } catch (_) {}
     rethrow;
   }
   // Close the sink only after the decrypt loop finishes cleanly, then wait
@@ -444,5 +600,36 @@ Future<String> _decryptOne(
   // the now-closed sink — they propagate directly.
   await sink.close();
   await writeDone;
-  return outPath;
+
+  if (!verifyDelete) {
+    return (outPath: outPath, verified: false, sourceRemoved: false);
+  }
+
+  // The container is only removed once an independent second decrypt of it
+  // matches the restored file. On any doubt the restored plaintext goes and
+  // the container stays.
+  try {
+    final after = File(path).statSync();
+    if (after.size != before!.size || after.modified != before.modified) {
+      throw VerificationFailedError('the file changed while it was decrypted');
+    }
+    await verifyContainerMatchesSource(
+      svc: svc,
+      io: io,
+      containerPath: path,
+      sourcePath: outPath,
+      passphrase: passphrase,
+      deviceKey: deviceKey,
+      recipientPublicKey: recipientPublicKey,
+      recipientSecretKey: recipientSecretKey,
+    );
+  } catch (e) {
+    try {
+      await io.deleteFile(outPath);
+    } catch (_) {}
+    if (e is VerificationFailedError) rethrow;
+    throw VerificationFailedError('$e');
+  }
+  if (deleteContainer) await io.deleteFile(path);
+  return (outPath: outPath, verified: true, sourceRemoved: deleteContainer);
 }

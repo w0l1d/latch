@@ -8,6 +8,10 @@ import '../features/onboarding/loss_moment_screen.dart';
 import '../features/onboarding/ready_screen.dart';
 import '../features/home/home_screen.dart';
 import '../features/encrypt/encrypt_pick_screen.dart';
+import '../features/encrypt/encrypt_folder_screen.dart';
+import '../features/encrypt/encrypt_bulk_progress_screen.dart';
+import '../features/encrypt/encrypt_bulk_result_screen.dart';
+import 'bulk_plan.dart';
 import '../features/encrypt/encrypt_passphrase_screen.dart';
 import '../features/encrypt/encrypt_options_screen.dart';
 import '../features/encrypt/encrypt_review_screen.dart';
@@ -16,6 +20,9 @@ import '../features/encrypt/encrypt_success_screen.dart';
 import '../features/decrypt/decrypt_pick_screen.dart';
 import '../features/decrypt/decrypt_passphrase_screen.dart';
 import '../features/decrypt/decrypt_progress_screen.dart';
+import '../features/decrypt/decrypt_folder_screen.dart';
+import '../features/decrypt/decrypt_bulk_progress_screen.dart';
+import '../features/decrypt/decrypt_bulk_result_screen.dart';
 import '../features/decrypt/decrypt_success_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/settings/passphrase_storage_screen.dart';
@@ -23,6 +30,7 @@ import '../features/settings/change_passphrase_screen.dart';
 import '../features/settings/secure_delete_screen.dart';
 import '../features/settings/sharing_keys_screen.dart';
 import '../features/settings/add_recipient_screen.dart';
+import '../features/settings/bulk_settings_screen.dart';
 import '../features/settings/save_folders_screen.dart';
 
 final router = GoRouter(
@@ -64,9 +72,38 @@ final router = GoRouter(
       builder: (ctx, st) => const EncryptPickScreen(),
     ),
     GoRoute(
+      path: '/encrypt/folder',
+      builder: (ctx, st) => const EncryptFolderScreen(),
+    ),
+    GoRoute(
+      path: '/encrypt/bulk-progress',
+      builder: (ctx, state) {
+        final m = state.extra as Map<String, dynamic>;
+        return EncryptBulkProgressScreen(
+          inventory: m['inventory'] as BulkInventory,
+          passphrase: m['passphrase'] as String,
+          deleteSources: m['deleteSources'] as bool,
+          keyIdHex: m['keyIdHex'] as String?,
+          keyMode: m['keyMode'] as BulkKeyMode?,
+          destination: m['destination'] as BulkDestination?,
+        );
+      },
+    ),
+    GoRoute(
+      path: '/encrypt/bulk-result',
+      builder: (ctx, state) =>
+          EncryptBulkResultScreen(summary: state.extra as BulkRunSummary),
+    ),
+    GoRoute(
       path: '/encrypt/passphrase',
       builder: (ctx, state) {
         final extra = state.extra;
+        if (extra is Map<String, dynamic> && extra['bulk'] is Map) {
+          return EncryptPassphraseScreen(
+            files: extra['files'] as List<String>,
+            bulk: Map<String, dynamic>.from(extra['bulk'] as Map),
+          );
+        }
         final files = extra is List<String> ? extra : <String>[];
         return EncryptPassphraseScreen(files: files);
       },
@@ -164,9 +201,36 @@ final router = GoRouter(
       path: '/decrypt/passphrase',
       builder: (ctx, state) {
         final extra = state.extra;
+        if (extra is Map<String, dynamic> && extra['bulk'] is Map) {
+          return DecryptPassphraseScreen(
+            files: extra['files'] as List<String>,
+            bulk: Map<String, dynamic>.from(extra['bulk'] as Map),
+          );
+        }
         final files = extra is List<String> ? extra : <String>[];
         return DecryptPassphraseScreen(files: files);
       },
+    ),
+    GoRoute(
+      path: '/decrypt/folder',
+      builder: (ctx, st) => const DecryptFolderScreen(),
+    ),
+    GoRoute(
+      path: '/decrypt/bulk-progress',
+      builder: (ctx, state) {
+        final m = state.extra as Map<String, dynamic>;
+        return DecryptBulkProgressScreen(
+          inventory: m['inventory'] as BulkInventory,
+          passphrase: m['passphrase'] as String,
+          deleteSources: m['deleteSources'] as bool,
+          destination: m['destination'] as BulkDestination?,
+        );
+      },
+    ),
+    GoRoute(
+      path: '/decrypt/bulk-result',
+      builder: (ctx, state) =>
+          DecryptBulkResultScreen(summary: state.extra as BulkRunSummary),
     ),
     GoRoute(
       path: '/decrypt/progress',
@@ -213,6 +277,10 @@ final router = GoRouter(
     GoRoute(
       path: '/settings/add-recipient',
       builder: (ctx, st) => const AddRecipientScreen(),
+    ),
+    GoRoute(
+      path: '/settings/bulk',
+      builder: (ctx, st) => const BulkSettingsScreen(),
     ),
     GoRoute(
       path: '/settings/save-folders',

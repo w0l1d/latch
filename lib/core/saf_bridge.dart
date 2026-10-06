@@ -167,6 +167,17 @@ class SafBridge {
     }
   }
 
+  /// Bytes available on the volume holding the real filesystem [path], or null
+  /// when the platform will not say. Null means "proceed", never "refuse": the
+  /// mid-run write failure is the backstop. Never throws.
+  static Future<int?> freeBytesAt(String path) async {
+    try {
+      return await channel.invokeMethod<int>('freeBytes', {'path': path});
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Every folder grant Android currently holds for this app, newest first.
   ///
   /// The app takes one grant per distinct source folder and, until this

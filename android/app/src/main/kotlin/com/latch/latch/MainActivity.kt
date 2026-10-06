@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.StatFs
 import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.util.Log
@@ -144,6 +145,17 @@ class MainActivity : FlutterFragmentActivity() {
                             "existingTreeGrant" -> {
                                 val folder = call.argument<String>("folder")!!
                                 runOnUiThread { result.success(existingTreeGrant(folder)) }
+                            }
+                            // Bytes available to this app on the volume holding a real
+                            // path, for the pre-flight space check. Null when the path
+                            // can't be statted (unresolvable SAF tree, missing folder):
+                            // null means "proceed", never "refuse" or another volume's
+                            // number. Walks up to the nearest existing ancestor so a
+                            // destination that doesn't exist yet still answers.
+                            "freeBytes" -> {
+                                val path = call.argument<String>("path")!!
+                                val free = freeBytes(path)
+                                runOnUiThread { result.success(free) }
                             }
                             // Whether Android still holds a writable grant on this
                             // exact tree. Lets the app reuse a destination the user
@@ -520,6 +532,13 @@ class MainActivity : FlutterFragmentActivity() {
     // tree URI. The platform table stays the single source of truth, so a
     // remembered URI whose grant the user has since revoked reports false and
     // the app asks again instead of silently failing to write.
+    private fun freeBytes(path: String): Long? {
+        var dir: java.io.File? = java.io.File(path)
+        while (dir != null && !dir.exists()) dir = dir.parentFile
+        if (dir == null) return null
+        return runCatching { StatFs(dir.path).availableBytes }.getOrNull()
+    }
+
     private fun isTreeGrantLive(treeUri: String): Boolean {
         val target = Uri.parse(treeUri)
         return contentResolver.persistedUriPermissions.any {
@@ -600,16 +619,6 @@ class MainActivity : FlutterFragmentActivity() {
         return contentResolver.persistedUriPermissions.none { it.uri == uri }
     }
 
-    // Address a folder nested inside a granted tree. The externalstorage
-    // provider's document ids are path-shaped ("primary:Docs"), so a descendant
-    // is the tree's own id plus the relative path.
-    private fun childDocId(treeDocId: String, subPath: String): String =
-        if (treeDocId.endsWith(":") || treeDocId.endsWith("/")) {
-            "$treeDocId$subPath"
-        } else {
-            "$treeDocId/$subPath"
-        }
-
     // Create [displayName] in the granted [treeUri] (resolving collisions the
     // same way FileIoDart.resolveNameCollision does), then copy [srcPath] in.
     // [subPath] targets a folder nested inside the grant — empty means the tree
@@ -623,8 +632,7 @@ class MainActivity : FlutterFragmentActivity() {
         subPath: String,
     ): Map<String, String> {
         val treeDocId = DocumentsContract.getTreeDocumentId(treeUri)
-        val parentDocId =
-            if (subPath.isEmpty()) treeDocId else childDocId(treeDocId, subPath)
+        val parentDocId = ensureFolders(treeUri, treeDocId, SubPathSegments.split(subPath))
         val parent = DocumentsContract.buildDocumentUriUsingTree(treeUri, parentDocId)
         val finalName = uniquify(displayName, childDisplayNames(treeUri, parentDocId))
         val newUri = DocumentsContract.createDocument(contentResolver, parent, mimeType, finalName)
@@ -653,6 +661,47 @@ class MainActivity : FlutterFragmentActivity() {
             "uri" to newUri.toString(),
             "displayPath" to (if (dir != null) "$dir/$finalName" else finalName),
         )
+    }
+
+    // Walk [segments] below [startDocId], reusing a folder that already exists
+    // and creating the ones that don't. Document ids come from the provider's
+    // own answers (the query / createDocument result), never from string
+    // concatenation, so this holds for providers whose ids are not path-shaped.
+    private fun ensureFolders(treeUri: Uri, startDocId: String, segments: List<String>): String {
+        var docId = startDocId
+        for (name in segments) {
+            val existing = findChildFolder(treeUri, docId, name)
+            docId = existing ?: run {
+                val parent = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId)
+                val made = DocumentsContract.createDocument(
+                    contentResolver, parent, DocumentsContract.Document.MIME_TYPE_DIR, name,
+                ) ?: throw IllegalStateException("cannot create folder $name")
+                DocumentsContract.getDocumentId(made)
+            }
+        }
+        return docId
+    }
+
+    private fun findChildFolder(treeUri: Uri, parentDocId: String, name: String): String? {
+        val children = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentDocId)
+        contentResolver.query(
+            children,
+            arrayOf(
+                DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                DocumentsContract.Document.COLUMN_MIME_TYPE,
+            ),
+            null, null, null,
+        )?.use { c ->
+            while (c.moveToNext()) {
+                if (c.getString(1) == name &&
+                    c.getString(2) == DocumentsContract.Document.MIME_TYPE_DIR
+                ) {
+                    return c.getString(0)
+                }
+            }
+        }
+        return null
     }
 
     // Existing child display names in a tree folder, for collision detection.

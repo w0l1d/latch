@@ -8,6 +8,12 @@ String userMessageForError(Object error) {
   if (error is StorageFullError) {
     return 'Not enough storage space to write the file.';
   }
+  if (error is InsufficientSpaceError) {
+    return _spaceMessage(error.location, error.shortfallBytes);
+  }
+  if (error is VerificationFailedError) {
+    return _verificationMessage;
+  }
   if (error is WrongPassphraseError) {
     return 'Incorrect passphrase. Double-check and try again.';
   }
@@ -36,6 +42,18 @@ String userMessageForError(Object error) {
 
   // String-form errors (reported by the worker isolate via SendPort).
   final msg = error.toString();
+  if (msg.contains('InsufficientSpaceError')) {
+    final m = RegExp(
+      r'InsufficientSpaceError: (\w+) is short by (\d+)',
+    ).firstMatch(msg);
+    final loc = m?.group(1) == SpaceLocation.staging.name
+        ? SpaceLocation.staging
+        : SpaceLocation.destination;
+    return _spaceMessage(loc, int.tryParse(m?.group(2) ?? '') ?? 0);
+  }
+  if (msg.contains('VerificationFailedError')) {
+    return _verificationMessage;
+  }
   if (msg.contains('WrongPassphraseError')) {
     return 'Incorrect passphrase. Double-check and try again.';
   }
@@ -70,3 +88,27 @@ String userMessageForError(Object error) {
 
   return 'Something went wrong. The files were not changed.';
 }
+
+String _humanBytes(int b) {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  var v = b.toDouble();
+  var i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  return i == 0 ? '$b B' : '${v.toStringAsFixed(1)} ${units[i]}';
+}
+
+String _spaceMessage(SpaceLocation where, int shortfall) {
+  final place = where == SpaceLocation.staging
+      ? 'the phone\'s working storage'
+      : 'the destination';
+  final by = shortfall > 0 ? ' by about ${_humanBytes(shortfall)}' : '';
+  return 'Not enough free space on $place$by. Free some space and try '
+      'again. Your original files were not changed.';
+}
+
+const _verificationMessage =
+    'The new copy could not be verified, so it was discarded and the '
+    'original was kept untouched. Try again.';

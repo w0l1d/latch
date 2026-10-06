@@ -11,7 +11,12 @@ import '../../core/passphrase_storage_service.dart';
 
 class EncryptPassphraseScreen extends StatefulWidget {
   final List<String> files;
-  const EncryptPassphraseScreen({super.key, required this.files});
+
+  /// Set by the folder flow: `{inventory, deleteSources}`. The options and
+  /// review steps are skipped, because the folder summary already made those
+  /// choices.
+  final Map<String, dynamic>? bulk;
+  const EncryptPassphraseScreen({super.key, required this.files, this.bulk});
 
   @override
   State<EncryptPassphraseScreen> createState() =>
@@ -270,6 +275,21 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
     }
     if (!mounted) return;
     setState(() => _busy = false);
+    final bulk = widget.bulk;
+    if (bulk != null) {
+      context.push(
+        '/encrypt/bulk-progress',
+        extra: {
+          'inventory': bulk['inventory'],
+          'deleteSources': bulk['deleteSources'],
+          'keyMode': bulk['keyMode'],
+          'destination': bulk['destination'],
+          'passphrase': _controller.text,
+          'keyIdHex': keyIdHex,
+        },
+      );
+      return;
+    }
     context.push(
       '/encrypt/options',
       extra: {

@@ -304,5 +304,29 @@ void main() {
         expect(await SafBridge.releaseTreeGrant('content://tree/x'), isFalse);
       },
     );
+
+    test(
+      'freeBytesAt returns the native answer; null on any failure',
+      () async {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(SafBridge.channel, (call) async {
+              calls.add(call);
+              return 123456789;
+            });
+        expect(await SafBridge.freeBytesAt('/storage/emulated/0/x'), 123456789);
+        expect(calls.single.method, 'freeBytes');
+        expect(calls.single.arguments, {'path': '/storage/emulated/0/x'});
+
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(SafBridge.channel, (call) async {
+              throw PlatformException(code: 'saf_error');
+            });
+        expect(await SafBridge.freeBytesAt('/x'), isNull);
+
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(SafBridge.channel, (call) async => null);
+        expect(await SafBridge.freeBytesAt('/x'), isNull);
+      },
+    );
   });
 }

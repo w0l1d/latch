@@ -27,6 +27,22 @@ class DekWrap {
     return WrapEntry(type: WrapType.passphrase, bytes: wrapped);
   }
 
+  /// Wraps [dek] under an already-derived passphrase [kek]. Produces the same
+  /// entry shape as [wrapPassphrase]; used when one KEK serves a whole batch.
+  static WrapEntry wrapPassphraseWithKek({
+    required CryptoPort crypto,
+    required Uint8List dek,
+    required Uint8List kek,
+  }) {
+    if (kek.length != kekLength) {
+      throw CorruptedFileError('KEK must be $kekLength bytes');
+    }
+    return WrapEntry(
+      type: WrapType.passphrase,
+      bytes: crypto.secretboxSeal(dek, kek),
+    );
+  }
+
   // Unwraps a passphrase WrapEntry to recover the DEK.
   // Throws WrongPassphraseError if the passphrase is wrong.
   static Uint8List unwrapPassphrase({

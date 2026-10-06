@@ -106,14 +106,22 @@ void main() {
       );
     });
 
+    testWidgets('intro does not call a grant a save destination (FR-038)', (
+      tester,
+    ) async {
+      mockPlatform(grants: () => []);
+      await pumpScreen(tester);
+
+      expect(find.textContaining('lock or unlock'), findsOneWidget);
+      expect(find.textContaining('may be used for either'), findsOneWidget);
+      expect(find.textContaining('allowed Latch to save into'), findsNothing);
+    });
+
     testWidgets('empty state explains when Latch will ask', (tester) async {
       mockPlatform(grants: () => []);
       await pumpScreen(tester);
 
-      expect(
-        find.textContaining('cannot save to any folder yet'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('has no folder access yet'), findsOneWidget);
       expect(find.byIcon(Icons.link_off), findsNothing);
     });
 
@@ -126,10 +134,7 @@ void main() {
           });
       await pumpScreen(tester);
 
-      expect(
-        find.textContaining('cannot save to any folder yet'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('has no folder access yet'), findsOneWidget);
     });
 
     testWidgets('revoke asks first, and Keep changes nothing', (tester) async {
@@ -140,7 +145,7 @@ void main() {
 
       await tester.tap(find.byIcon(Icons.link_off));
       await tester.pumpAndSettle();
-      expect(find.text('Stop saving to this folder?'), findsOneWidget);
+      expect(find.text('Remove access to this folder?'), findsOneWidget);
       // The dialog must say no file is touched.
       expect(find.textContaining('untouched'), findsOneWidget);
 

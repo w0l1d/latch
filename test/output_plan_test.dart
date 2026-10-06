@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latch/core/app_crypto.dart';
+import 'package:latch/core/bulk_plan.dart';
+import 'package:myenc_core/myenc_core.dart';
 import 'package:latch/core/output_plan.dart';
 import 'package:latch/core/saf_bridge.dart';
 import 'package:path/path.dart' as p;
@@ -794,6 +796,140 @@ void main() {
         displayNameFor: (s) => '${p.basename(s)}.latch',
       );
       expect(out, isEmpty);
+    });
+  });
+
+  group('planBulk (mirrored trees)', () {
+    BulkItem item(String rel, String out) => BulkItem(
+      sourcePath: '/src/$rel',
+      relativePath: rel,
+      sizeBytes: 1,
+      stampAtEnumeration: EntryStamp(
+        kind: EntryKind.file,
+        sizeBytes: 1,
+        modified: DateTime(2026),
+      ),
+      outRelPath: out,
+    );
+
+    final items = [
+      item('a.txt', 'a.txt.latch'),
+      item('x/b.txt', 'x/b.txt.latch'),
+      item('x/y/c.txt', 'x/y/c.txt.latch'),
+    ];
+
+    test('off-Android is unstaged and the worker mirrors itself', () async {
+      final plan = await OutputPlanner.planBulk(
+        root: '/src',
+        items: items,
+        allowDownloadsFallback: true,
+        explicitDir: '/out',
+        platformIsAndroid: false,
+      );
+      expect(plan.isStaged, isFalse);
+      expect(plan.outputDir, '/out');
+    });
+
+    test('a covering ancestor grant maps each file to its relative dir, '
+        'with no prompt', () async {
+      final saf = wireSaf();
+      saf.grants.grant('/storage/emulated/0/Docs', 'content://tree/docs');
+      var prompts = 0;
+      final plan = await OutputPlanner.planBulk(
+        root: '/storage/emulated/0/Docs/Work',
+        items: items,
+        allowDownloadsFallback: true,
+        requestGrant: (_, _) async {
+          prompts++;
+          return const SaveFolderDecision.cancelled();
+        },
+        platformIsAndroid: true,
+      );
+      expect(prompts, 0);
+      expect(plan.byPath['/src/a.txt']!.subPath, 'Work');
+      expect(plan.byPath['/src/x/b.txt']!.subPath, 'Work/x');
+      expect(plan.byPath['/src/x/y/c.txt']!.subPath, 'Work/x/y');
+      expect(plan.byPath['/src/a.txt']!.treeUri, 'content://tree/docs');
+    });
+
+    test(
+      'a grant on the root itself leaves top-level files at the root',
+      () async {
+        final saf = wireSaf();
+        saf.grants.grant('/storage/emulated/0/Docs', 'content://tree/docs');
+        final plan = await OutputPlanner.planBulk(
+          root: '/storage/emulated/0/Docs',
+          items: items,
+          allowDownloadsFallback: true,
+          platformIsAndroid: true,
+        );
+        expect(plan.byPath['/src/a.txt']!.subPath, '');
+        expect(plan.byPath['/src/x/y/c.txt']!.subPath, 'x/y');
+      },
+    );
+
+    test('declining the prompt cancels the plan', () async {
+      wireSaf();
+      final plan = await OutputPlanner.planBulk(
+        root: '/storage/emulated/0/Docs/Work',
+        items: items,
+        allowDownloadsFallback: true,
+        requestGrant: (_, _) async => const SaveFolderDecision.cancelled(),
+        platformIsAndroid: true,
+      );
+      expect(plan.cancelled, isTrue);
+    });
+
+    test(
+      'decrypt never falls back to Downloads: explicit Downloads cancels',
+      () async {
+        wireSaf();
+        final plan = await OutputPlanner.planBulk(
+          root: '/storage/emulated/0/Docs/Work',
+          items: items,
+          allowDownloadsFallback: false,
+          requestGrant: (_, _) async => const SaveFolderDecision.useDownloads(),
+          platformIsAndroid: true,
+        );
+        expect(plan.cancelled, isTrue);
+      },
+    );
+
+    test('encrypt may use Downloads when the user chose it', () async {
+      wireSaf();
+      final plan = await OutputPlanner.planBulk(
+        root: '/storage/emulated/0/Docs/Work',
+        items: items,
+        allowDownloadsFallback: true,
+        requestGrant: (_, _) async => const SaveFolderDecision.useDownloads(),
+        platformIsAndroid: true,
+      );
+      expect(plan.cancelled, isFalse);
+      expect(plan.byPath['/src/a.txt']!.treeUri, isNull);
+    });
+
+    test('relocate without Downloads fallback deletes the staged plaintext '
+        'and reports failure', () async {
+      final staged = File(p.join(tmp.path, 'a.txt'))
+        ..writeAsStringSync('secret');
+      mockSaf((call) async {
+        if (call.method == 'createInTree') throw PlatformException(code: 'x');
+        return null;
+      });
+      final out = await relocateStagedOutputs(
+        [BatchResult(path: '/src/a.latch', ok: true, outPath: staged.path)],
+        OutputPlan(
+          stagingDir: tmp.path,
+          outputDir: tmp.path,
+          byPath: const {
+            '/src/a.latch': OutputTarget(treeUri: 'content://tree/docs'),
+          },
+        ),
+        displayNameFor: (_) => 'a.txt',
+        allowDownloadsFallback: false,
+      );
+      expect(out.single.failed, isTrue);
+      expect(staged.existsSync(), isFalse);
     });
   });
 }

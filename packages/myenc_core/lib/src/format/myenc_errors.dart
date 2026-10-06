@@ -63,3 +63,33 @@ final class UnsafeArchiveEntryError extends LatchError {
   @override
   String toString() => 'UnsafeArchiveEntryError: "$entryPath" $reason';
 }
+
+/// Which volume ran short. On Android the destination and the app-cache
+/// staging area are routinely different volumes, so a refusal must say which.
+enum SpaceLocation { destination, staging }
+
+/// The operation cannot fit. Raised pre-flight where the platform will report
+/// free space, and mapped from the mid-run write failure where it will not, so
+/// exhaustion is never reported as a generic write error.
+final class InsufficientSpaceError extends LatchError {
+  /// Bytes missing at [location]; zero when only known to have run out mid-run.
+  final int shortfallBytes;
+  final SpaceLocation location;
+  InsufficientSpaceError({
+    required this.shortfallBytes,
+    required this.location,
+  });
+  @override
+  String toString() =>
+      'InsufficientSpaceError: ${location.name} is short by $shortfallBytes bytes';
+}
+
+/// A freshly written container did not read back as exactly its source, or the
+/// source changed while it was being encrypted. The container is discarded and
+/// the original kept; this is what stops a bad write from costing the user data.
+final class VerificationFailedError extends LatchError {
+  final String reason;
+  VerificationFailedError(this.reason);
+  @override
+  String toString() => 'VerificationFailedError: $reason';
+}
