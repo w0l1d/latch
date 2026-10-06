@@ -1,6 +1,6 @@
 # Contract: `.latch` v2 Payload Preamble (normative)
 
-**Status:** proposed. Becomes normative in `docs/FORMAT.md` when implemented.
+**Status:** partially implemented. The preamble codec and its validation order (§3, §5) landed in `myenc_core/format/payload_preamble.dart` (001 T005–T007). **Not yet implemented:** registering v2 and emitting/consuming the preamble in `EnvelopeService` (001 T008, T010, T011), so no v2 container can be produced yet. Becomes normative in `docs/FORMAT.md` only once those land. Feature 004 does not use v2 — its containers are plain v1.
 
 This contract defines the **only** difference between `.latch` v1 and v2. It adds
 nothing to the header. Not one byte of the v1 layout in `docs/FORMAT.md` §2–§6

@@ -179,13 +179,14 @@ packages/myenc_core/lib/src/
 │   └── myenc_errors.dart         # (above) + InsufficientSpaceError,
 │                                 #   SourceChangedError, UnpreservableEntrySkipped
 └── ports/
-    ├── directory_io_port.dart    # NEW: walk, mkdir, symlink, setMtime, setExecutable,
-    │                             #   entry kind classification (FR-002a)
-    └── free_space_port.dart      # NEW: freeBytesAt(path) -> int?; null = unknowable
+    ├── directory_io_port.dart    # LANDED by 004: walk, stat, createDirectory
+    │                             #   (+ classification, FR-002a). 001 ADDS: symlink,
+    │                             #   setMtime, setExecutable, rename/delete directory
+    └── free_space_port.dart      # LANDED by 004: freeBytesAt(path) -> int?; null = unknowable
 
 packages/myenc_adapters/lib/src/
-├── directory_io_dart.dart        # NEW: dart:io implementation of DirectoryIoPort
-└── free_space_dart.dart          # NEW: free space + max-file-size probe (R10, R15)
+├── io/directory_io_dart.dart     # LANDED by 004 (walk/stat/createDirectory); 001 extends
+└── io/free_space_dart.dart       # LANDED by 004: free space. 001 ADDS the max-file-size probe (R10, R15)
 
 lib/
 ├── core/
