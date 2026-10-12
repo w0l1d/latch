@@ -39,5 +39,7 @@ Freeze guards (`codec_freeze_test.dart`, golden vectors) MUST pass unedited.
 9. **>10,000 files**: confirmation required; UI stays responsive (frame times).
 10. **Android single grant**: choose a folder once; no second prompt; one entry added
     to Save folders; revisiting the same folder adds none.
-11. **Device read test (carried risk)**: confirm the worker can read/walk the picked
-    folder's real path on API 30+; if not, stop and revisit R6.
+11. **Folder is read through its grant**: pick a folder of non-media files (PDF, txt,
+    zip) on API 30+; every file is counted (not "nothing to lock"), the run asks for
+    no second permission for that folder, and no `latch_src` copies remain in the app
+    cache afterwards. Repeat with "Include subfolders" and with delete-originals.

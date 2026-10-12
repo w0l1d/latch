@@ -116,9 +116,21 @@ bulk plaintext must not land in a shared location silently).
 **Alternatives.** `MANAGE_EXTERNAL_STORAGE` (rejected in CLAUDE.md); writing
 directly into SAF from the worker (impossible).
 
-**Carried risk.** Whether the plain-`dart:io` worker can *read/walk* the picked
-folder's real path on API 30+ is the same untested assumption as 001 R7. Plan the
-device test first and design for it to fail (see tasks phase).
+**Carried risk — resolved the other way (2026-10-07).** The risk was real: a beta
+tester picked a folder and the app saw it as empty, then asked for a grant for the
+folder they had just chosen. `getDirectoryPath` returns a path and persists no
+grant, and scoped storage on API 30+ hides non-media files from plain `dart:io`, so
+both the walk and the worker saw nothing. On Android the folder is therefore picked
+as a **tree grant** (`SafBridge.pickTree`), listed through it (`listTree`), and each
+file is copied to an app-cache dir (`copyToCache`) before the unchanged worker sees
+it (`lib/core/saf_source.dart`). The picked grant is also the output destination
+(`explicitTreeUri`), so there is no second prompt. Source deletion goes through
+`deleteDocumentUri` after the same verified check. Desktop/iOS keep the path flow.
+
+Costs, accepted: staging doubles cache use for the run (the pre-flight space check
+counts it), and one unreadable file aborts the run before anything is written
+(`SourceStagingError`) rather than skipping it. Staged source copies are swept on
+every exit (`latch_src`); for a lock run they are plaintext.
 
 ## R7. Worker protocol: extend task maps, keep messages
 

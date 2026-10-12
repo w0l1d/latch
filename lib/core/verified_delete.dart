@@ -72,9 +72,14 @@ Future<void> verifyContainerMatchesSource({
 /// output was still staged. An input goes only when its output actually
 /// reached a real destination; a failed or cache-only relocation keeps it.
 /// Returns the paths that were removed.
+///
+/// [deleteOne] replaces the plain file delete for inputs that are not what
+/// they seem (a staged copy of a document in a granted folder): it returns
+/// whether the real input is gone, and false leaves it in place.
 Future<Set<String>> removeVerifiedSources({
   required Iterable<String> verifiedPaths,
   required Iterable<RelocatedOutput> relocated,
+  Future<bool> Function(String path)? deleteOne,
 }) async {
   final landed = {
     for (final o in relocated)
@@ -84,6 +89,10 @@ Future<Set<String>> removeVerifiedSources({
   for (final path in verifiedPaths) {
     if (!landed.contains(path)) continue;
     try {
+      if (deleteOne != null) {
+        if (await deleteOne(path)) removed.add(path);
+        continue;
+      }
       await File(path).delete();
       removed.add(path);
     } on FileSystemException {

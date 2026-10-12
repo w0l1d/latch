@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/app_crypto.dart';
 import '../../core/bulk_plan.dart';
 import '../../core/output_plan.dart';
+import '../../core/saf_source.dart';
 import '../../core/save_folder_prompt.dart';
 import '../../core/verified_delete.dart';
 import '../encrypt/encrypt_bulk_progress_screen.dart' show BulkRunSummary;
@@ -40,6 +41,8 @@ class _State extends State<DecryptBulkProgressScreen> {
   StreamSubscription<double>? _sub;
   bool _cancelled = false;
   bool _finished = false;
+  bool _preparing = false;
+  bool _sourceSwept = false;
   final _outcomes = <String, BulkFileOutcome>{};
   OutputPlan? _plan;
 
@@ -72,12 +75,21 @@ class _State extends State<DecryptBulkProgressScreen> {
         recipientPk = kp.publicKey;
         recipientSk = kp.secretKey;
       }
+      if (widget.inventory.sourceTreeUri != null) {
+        setState(() => _preparing = true);
+        await SafSource.stage(
+          _items,
+          isCancelled: () => _cancelled || !mounted,
+        );
+        if (!mounted || _cancelled) return;
+        setState(() => _preparing = false);
+      }
       _plan = await OutputPlanner.planBulk(
         root: widget.inventory.root,
         items: _items,
         allowDownloadsFallback: false,
         explicitDir: _dest.plannerDir,
-        explicitTreeUri: _dest.plannerTreeUri,
+        explicitTreeUri: _dest.plannerTreeUri ?? widget.inventory.sourceTreeUri,
         requestGrant: (folder, sourcePath) async {
           if (!mounted || _cancelled) {
             return const SaveFolderDecision.cancelled();
@@ -85,6 +97,14 @@ class _State extends State<DecryptBulkProgressScreen> {
           return promptSaveFolder(context, folder, sourcePath: sourcePath);
         },
       );
+    } on SourceStagingError catch (e) {
+      if (mounted && !_cancelled) {
+        _fail(
+          'Could not read ${e.relativePath} from the folder, so nothing was '
+          'changed.',
+        );
+      }
+      return;
     } catch (e) {
       if (mounted && !_cancelled) _fail(userMessageForError(e));
       return;
@@ -92,6 +112,7 @@ class _State extends State<DecryptBulkProgressScreen> {
     final plan = _plan!;
     if (plan.cancelled) {
       _cancelled = true;
+      _sweepSource();
       if (mounted) context.pop();
       return;
     }
@@ -178,6 +199,7 @@ class _State extends State<DecryptBulkProgressScreen> {
       if (mounted) _fail(userMessageForError(e));
       return;
     }
+    final byPath = {for (final i in _items) i.sourcePath: i};
     if (widget.deleteSources) {
       final removed = await removeVerifiedSources(
         verifiedPaths: [
@@ -185,6 +207,9 @@ class _State extends State<DecryptBulkProgressScreen> {
             if (o.ok && o.verified && !o.sourceRemoved) o.path,
         ],
         relocated: outputs,
+        deleteOne: widget.inventory.sourceTreeUri == null
+            ? null
+            : (path) => SafSource.deleteSource(byPath[path]!),
       );
       for (final path in removed) {
         final o = _outcomes[path]!;
@@ -198,6 +223,7 @@ class _State extends State<DecryptBulkProgressScreen> {
         );
       }
     }
+    _sweepSource();
     if (!mounted) return;
     context.pushReplacement(
       '/decrypt/bulk-result',
@@ -214,6 +240,8 @@ class _State extends State<DecryptBulkProgressScreen> {
   }
 
   void _fail(String message) {
+    _sub?.cancel();
+    _sweepSource();
     showLatchAlert(
       context,
       tone: LatchAlertTone.danger,
@@ -228,9 +256,18 @@ class _State extends State<DecryptBulkProgressScreen> {
     );
   }
 
+  /// Staged copies of the user's files are removed on every way out; for a
+  /// lock run they are plaintext.
+  void _sweepSource() {
+    if (_sourceSwept || widget.inventory.sourceTreeUri == null) return;
+    _sourceSwept = true;
+    SafSource.sweep(widget.inventory.root);
+  }
+
   @override
   void dispose() {
     _sub?.cancel();
+    _sweepSource();
     super.dispose();
   }
 
@@ -244,6 +281,7 @@ class _State extends State<DecryptBulkProgressScreen> {
         if (!didPop) {
           _cancelled = true;
           _sub?.cancel();
+          _sweepSource();
           context.pop();
         }
       },
@@ -255,7 +293,9 @@ class _State extends State<DecryptBulkProgressScreen> {
               children: [
                 const Spacer(),
                 Text(
-                  'Unlocking $total files…',
+                  _preparing
+                      ? 'Reading your files…'
+                      : 'Unlocking $total files…',
                   style: Theme.of(context).textTheme.displayMedium,
                   textAlign: TextAlign.center,
                 ),
@@ -279,6 +319,7 @@ class _State extends State<DecryptBulkProgressScreen> {
                   onPressed: () {
                     _cancelled = true;
                     _sub?.cancel();
+                    _sweepSource();
                     context.pop();
                   },
                 ),

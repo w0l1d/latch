@@ -195,6 +195,27 @@ class MainActivity : FlutterFragmentActivity() {
                                     createInTree(treeUri, displayName, mimeType, srcPath, subPath)
                                 runOnUiThread { result.success(created) }
                             }
+                            // Every entry under a granted tree, through the
+                            // document provider rather than the filesystem —
+                            // scoped storage (API 30+) hides non-media files from
+                            // plain file APIs, so a folder walked that way reads
+                            // as empty even though the user picked it.
+                            "listTree" -> {
+                                val treeUri = Uri.parse(call.argument<String>("treeUri")!!)
+                                val recursive = call.argument<Boolean>("recursive") ?: false
+                                val prefixLength = call.argument<Int>("prefixLength") ?: 0
+                                val listing = listTree(treeUri, recursive, prefixLength)
+                                runOnUiThread { result.success(listing) }
+                            }
+                            // Copy one document of a granted tree into app-private
+                            // storage, where the crypto worker's plain file I/O can
+                            // read it.
+                            "copyToCache" -> {
+                                val uri = Uri.parse(call.argument<String>("uri")!!)
+                                val destPath = call.argument<String>("destPath")!!
+                                copyToCache(uri, destPath)
+                                runOnUiThread { result.success(null) }
+                            }
                             // Open the system file browser at a folder so the
                             // user can see the files they just locked/unlocked.
                             "openFolder" -> {
@@ -661,6 +682,95 @@ class MainActivity : FlutterFragmentActivity() {
             "uri" to newUri.toString(),
             "displayPath" to (if (dir != null) "$dir/$finalName" else finalName),
         )
+    }
+
+    // Walk a granted tree through its document provider. Each entry carries the
+    // document's own URI (what delete and copy act on), its path relative to the
+    // tree root, size, and — for files that will be classified — the first
+    // [prefixLength] bytes, so the container sniff needs no second pass.
+    // Without [recursive], subfolders are listed (so they can be counted) but
+    // not entered, and files inside them are never opened.
+    private fun listTree(
+        treeUri: Uri,
+        recursive: Boolean,
+        prefixLength: Int,
+    ): Map<String, Any?> {
+        val rootId = DocumentsContract.getTreeDocumentId(treeUri)
+        val entries = ArrayList<Map<String, Any?>>()
+        val pending = ArrayDeque<Pair<String, String>>()
+        pending.add(rootId to "")
+        while (pending.isNotEmpty()) {
+            val (parentId, parentRel) = pending.removeFirst()
+            val children = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentId)
+            contentResolver.query(
+                children,
+                arrayOf(
+                    DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                    DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                    DocumentsContract.Document.COLUMN_MIME_TYPE,
+                    DocumentsContract.Document.COLUMN_SIZE,
+                    DocumentsContract.Document.COLUMN_LAST_MODIFIED,
+                ),
+                null, null, null,
+            )?.use { c ->
+                while (c.moveToNext()) {
+                    val id = c.getString(0) ?: continue
+                    val name = c.getString(1) ?: continue
+                    val isDir = c.getString(2) == DocumentsContract.Document.MIME_TYPE_DIR
+                    val rel = if (parentRel.isEmpty()) name else "$parentRel/$name"
+                    val docUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, id)
+                    val entry = mutableMapOf<String, Any?>(
+                        "uri" to docUri.toString(),
+                        "rel" to rel,
+                        "isDir" to isDir,
+                        "size" to (if (c.isNull(3)) 0L else c.getLong(3)),
+                        "modified" to (if (c.isNull(4)) 0L else c.getLong(4)),
+                    )
+                    if (isDir) {
+                        pending.add(id to rel)
+                    } else if (prefixLength > 0 && (recursive || parentRel.isEmpty())) {
+                        entry["prefix"] = try {
+                            contentResolver.openInputStream(docUri)?.use { ins ->
+                                val buf = ByteArray(prefixLength)
+                                var n = 0
+                                while (n < prefixLength) {
+                                    val r = ins.read(buf, n, prefixLength - n)
+                                    if (r < 0) break
+                                    n += r
+                                }
+                                buf.copyOf(n)
+                            }
+                        } catch (e: Exception) {
+                            null
+                        }
+                    }
+                    entries.add(entry)
+                }
+            }
+            // Not recursive: the root level is read, and each subfolder is still
+            // listed once so its files can be counted as left out.
+        }
+        val rootName = contentResolver.query(
+            DocumentsContract.buildDocumentUriUsingTree(treeUri, rootId),
+            arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME),
+            null, null, null,
+        )?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+            ?: rootId.substringAfterLast(':').substringAfterLast('/')
+        return mapOf("rootName" to rootName, "entries" to entries)
+    }
+
+    private fun copyToCache(uri: Uri, destPath: String) {
+        val dest = File(destPath)
+        dest.parentFile?.mkdirs()
+        val part = File("$destPath.part")
+        try {
+            val input = contentResolver.openInputStream(uri)
+                ?: throw IllegalStateException("cannot open $uri for reading")
+            input.use { ins -> part.outputStream().use { out -> ins.copyTo(out) } }
+            if (!part.renameTo(dest)) throw IllegalStateException("cannot place $destPath")
+        } finally {
+            if (part.exists()) part.delete()
+        }
     }
 
     // Walk [segments] below [startDocId], reusing a folder that already exists

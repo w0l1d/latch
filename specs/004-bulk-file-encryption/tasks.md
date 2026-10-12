@@ -23,7 +23,7 @@ description: "Task list for Bulk File Encryption (004)"
 
 ## Phase 2: Foundational (blocks every story)
 
-**Device gate first** — it can invalidate Android design (research R6).
+**Device gate first** — it can invalidate Android design (research R6). *Resolved 2026-10-07: it did, and Android now reads the folder through its grant — see R6.*
 
 - [ ] T003 **Device read test (API ≥ 30)**: add a throwaway debug action that picks a tree via `SafBridge.pickTree`, resolves it with `treeUriToPath`, and attempts a `dart:io` `Directory.list` + read of one file from the plain Dart side; record outcome (works / denied, device, API level) in `research.md` R6. If denied, stop and revisit R6 before T029
 - [x] T004 [P] Add `InsufficientSpaceError` (shortfall bytes + which location is short) to `packages/myenc_core/lib/src/format/myenc_errors.dart` unless T002 found it; add human copy in `lib/shared/error_messages.dart`
@@ -127,7 +127,7 @@ description: "Task list for Bulk File Encryption (004)"
 - [x] T058 Reconcile with 001: update `specs/001-folder-encryption/tasks.md` and `plan.md` so its ports task points at 004's landed ports; mark `contracts/payload-preamble.md` status
 - [x] T059 Run every `quickstart.md` scenario on desktop and one Android device (API ≥ 30); record results
   - **Result (2026-10-06), desktop/headless only — scenarios 1–9 are pinned by automated tests that drive the real isolate and real files, not by a hand-run GUI:** 1–2 `bulk_plan_test.dart`, `bulk_encrypt_screen_test.dart`; 3 and 7 `app_crypto_bulk_test.dart` (tampered container kept, cancel sweeps staging tree); 4 `batch_wrap_key_test.dart` + `app_crypto_bulk_test.dart` (shared mode; one salt, distinct DEKs/nonces; wrong passphrase still rejected); 5 `container_sniffer_test.dart`, `bulk_plan_test.dart`; 6 `verified_delete_test.dart`; 8 `app_crypto_bulk_test.dart` (`hdiutil` tiny volume, macOS only) + `free_space_dart_test.dart`; 9 `bulk_*_screen_test.dart` (confirmation gate at `bulkConfirmThreshold`). Frame-time responsiveness for >10,000 files was not measured.
-  - **NOT DONE — needs a device:** scenarios 10 (single grant, no second prompt, one Save-folders entry) and 11 (worker can read/walk the picked folder's real path on API 30+, the carried risk behind T003/R6). No Android device or emulator was available. Do not treat the Android placements (mirrored / beside / flat via SAF) as verified until these are run; if scenario 11 fails, stop and revisit R6.
+  - **NOT DONE — needs a device:** scenarios 10 (single grant, no second prompt, one Save-folders entry) and 11 (worker can read/walk the picked folder's real path on API 30+, the carried risk behind T003/R6). No Android device or emulator was available. Do not treat the Android placements (mirrored / beside / flat via SAF) as verified until these are run; scenario 11 failed once on a real device before the grant-based source path (R6) replaced the path-based read.
 - [x] T060 Final gates: `dart format .`, analyze + test in all three packages, Gradle unit tests; confirm `codec_freeze_test.dart` and `golden_v1.*` unmodified via `git diff --stat`
   - **Result (2026-10-06):** format 0 changes; analyze clean in all three packages; tests green — core 149, adapters 104, app 304; Gradle `:app:testDebugUnitTest :app:compileDebugKotlin` BUILD SUCCESSFUL; freeze-guard `git diff --stat` empty.
 
@@ -146,3 +146,7 @@ description: "Task list for Bulk File Encryption (004)"
 ## Implementation Strategy
 
 MVP = Phases 1–3 (US1): ship folder encrypt, non-recursive, per-file keys. Then US2 (decrypt, so output is recoverable in-app), US3, US4, US5. Run the T003 device gate before investing in Android relocation.
+
+## Post-implementation fix (2026-10-07)
+
+- [x] T067 Android folder pick read nothing and re-prompted: pick as a tree grant, list via `listTree`, stage via `copyToCache`, reuse the grant as destination, delete via `deleteDocumentUri` after verification (`lib/core/saf_source.dart`, both folder and progress screens, `MainActivity.kt`). Tests: `test/saf_source_test.dart`, `test/bulk_tree_folder_screen_test.dart`, `test/output_plan_test.dart` (explicit grant never prompts). **Not device-verified** — quickstart 10–11 still need a run on API ≥ 30.

@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:myenc_adapters/myenc_adapters.dart';
 import 'package:myenc_core/myenc_core.dart';
 import 'package:path/path.dart' as p;
+import 'saf_bridge.dart';
 
 enum BulkMode { encrypt, decrypt }
 
@@ -106,12 +107,19 @@ class BulkItem {
   /// encrypt, `.latch` stripped on decrypt.
   final String outRelPath;
 
+  /// The real document behind [sourcePath] when the folder was read through
+  /// the Android document provider. [sourcePath] is then where a private copy
+  /// will be staged for the worker, and this is what is read and, after a
+  /// verified run, deleted. Null for plain filesystem folders.
+  final String? docUri;
+
   const BulkItem({
     required this.sourcePath,
     required this.relativePath,
     required this.sizeBytes,
     required this.stampAtEnumeration,
     required this.outRelPath,
+    this.docUri,
   });
 }
 
@@ -134,6 +142,11 @@ class BulkInventory {
   /// Encrypt only (FR-009): items whose header already looks like a container.
   final int alreadyContainers;
 
+  /// The granted folder the inventory was read from (Android document-provider
+  /// reads only). [root] is then the private staging folder the sources are
+  /// copied into, and results are written back into this tree.
+  final String? sourceTreeUri;
+
   const BulkInventory({
     required this.root,
     required this.mode,
@@ -143,6 +156,7 @@ class BulkInventory {
     required this.subfolders,
     required this.excludedInSubfolders,
     required this.alreadyContainers,
+    this.sourceTreeUri,
   });
 
   int get totalBytes => items.fold(0, (s, i) => s + i.sizeBytes);
@@ -190,6 +204,7 @@ class BulkPlan {
           sizeBytes: i.sizeBytes,
           stampAtEnumeration: i.stampAtEnumeration,
           outRelPath: p.posix.basename(i.outRelPath.replaceAll(r'\', '/')),
+          docUri: i.docUri,
         ),
     ];
   }
@@ -236,47 +251,16 @@ class BulkPlan {
         skipped.add(SkippedEntry(rel, 'unreadable'));
         continue;
       }
-      final sniffed = sniff(head);
-
-      if (mode == BulkMode.decrypt) {
-        switch (sniffed) {
-          case SniffResult.container:
-            items.add(
-              BulkItem(
-                sourcePath: path,
-                relativePath: rel,
-                sizeBytes: e.stamp.sizeBytes,
-                stampAtEnumeration: e.stamp,
-                outRelPath: _strip(rel),
-              ),
-            );
-          case SniffResult.newerVersion:
-            skipped.add(SkippedEntry(rel, 'made by a newer version of Latch'));
-          case SniffResult.truncated:
-          case SniffResult.notContainer:
-            skipped.add(
-              SkippedEntry(
-                rel,
-                rel.toLowerCase().endsWith(_suffix)
-                    ? 'named .latch but not a Latch container'
-                    : 'not a Latch container',
-              ),
-            );
-        }
-      } else {
-        if (sniffed == SniffResult.container ||
-            sniffed == SniffResult.newerVersion) {
-          already++;
-        }
-        items.add(
-          BulkItem(
-            sourcePath: path,
-            relativePath: rel,
-            sizeBytes: e.stamp.sizeBytes,
-            stampAtEnumeration: e.stamp,
-            outRelPath: '$rel$_suffix',
-          ),
-        );
+      if (_classify(
+        mode: mode,
+        rel: rel,
+        path: path,
+        stamp: e.stamp,
+        head: head,
+        items: items,
+        skipped: skipped,
+      )) {
+        already++;
       }
     }
 
@@ -290,6 +274,136 @@ class BulkPlan {
       excludedInSubfolders: excluded,
       alreadyContainers: already,
     );
+  }
+
+  /// Sorts one readable file into [items] or [skipped]. Returns true when an
+  /// encrypt-mode file already looks like a container (counted, not refused).
+  static bool _classify({
+    required BulkMode mode,
+    required String rel,
+    required String path,
+    required EntryStamp stamp,
+    required Uint8List head,
+    required List<BulkItem> items,
+    required List<SkippedEntry> skipped,
+    String? docUri,
+  }) {
+    final sniffed = sniff(head);
+    if (mode == BulkMode.decrypt) {
+      switch (sniffed) {
+        case SniffResult.container:
+          items.add(
+            BulkItem(
+              sourcePath: path,
+              relativePath: rel,
+              sizeBytes: stamp.sizeBytes,
+              stampAtEnumeration: stamp,
+              outRelPath: _strip(rel),
+              docUri: docUri,
+            ),
+          );
+        case SniffResult.newerVersion:
+          skipped.add(SkippedEntry(rel, 'made by a newer version of Latch'));
+        case SniffResult.truncated:
+        case SniffResult.notContainer:
+          skipped.add(
+            SkippedEntry(
+              rel,
+              rel.toLowerCase().endsWith(_suffix)
+                  ? 'named .latch but not a Latch container'
+                  : 'not a Latch container',
+            ),
+          );
+      }
+      return false;
+    }
+    items.add(
+      BulkItem(
+        sourcePath: path,
+        relativePath: rel,
+        sizeBytes: stamp.sizeBytes,
+        stampAtEnumeration: stamp,
+        outRelPath: '$rel$_suffix',
+        docUri: docUri,
+      ),
+    );
+    return sniffed == SniffResult.container ||
+        sniffed == SniffResult.newerVersion;
+  }
+
+  /// Builds the inventory for a folder read through the Android document
+  /// provider. Same classification as [enumerateSync]; the difference is that
+  /// nothing here exists on the filesystem yet. [stagingRoot] is where each
+  /// source will be copied before the worker sees it, so every item's
+  /// [BulkItem.sourcePath] is its future staged path.
+  static BulkInventory fromTreeListing(
+    SafTreeListing listing, {
+    required String treeUri,
+    required String stagingRoot,
+    required BulkMode mode,
+    required bool recursive,
+  }) {
+    final items = <BulkItem>[];
+    final skipped = <SkippedEntry>[];
+    var subfolders = 0;
+    var excluded = 0;
+    var already = 0;
+    for (final e in listing.entries) {
+      final rel = e.relativePath;
+      final nested = rel.contains('/');
+      if (e.isDirectory) {
+        if (recursive || !nested) subfolders++;
+        continue;
+      }
+      if (nested && !recursive) {
+        excluded++;
+        continue;
+      }
+      if (!_isSafe(rel)) {
+        skipped.add(SkippedEntry(rel, 'unsafe path'));
+        continue;
+      }
+      final head = e.prefix;
+      if (head == null) {
+        skipped.add(SkippedEntry(rel, 'unreadable'));
+        continue;
+      }
+      if (_classify(
+        mode: mode,
+        rel: rel,
+        path: p.join(stagingRoot, rel),
+        stamp: EntryStamp(
+          kind: EntryKind.file,
+          sizeBytes: e.sizeBytes,
+          modified: e.modified,
+        ),
+        head: head,
+        items: items,
+        skipped: skipped,
+        docUri: e.uri,
+      )) {
+        already++;
+      }
+    }
+    return BulkInventory(
+      root: stagingRoot,
+      mode: mode,
+      recursive: recursive,
+      items: items,
+      skipped: skipped,
+      subfolders: subfolders,
+      excludedInSubfolders: excluded,
+      alreadyContainers: already,
+      sourceTreeUri: treeUri,
+    );
+  }
+
+  /// A folder name safe to use as one path segment.
+  static String safeFolderName(String name) {
+    final cleaned = name.replaceAll(RegExp(r'[\\/]'), '_').trim();
+    return cleaned.isEmpty || cleaned == '.' || cleaned == '..'
+        ? 'folder'
+        : cleaned;
   }
 
   /// `x.pdf.latch` → `x.pdf`. A container with some other name gets a neutral

@@ -1,9 +1,12 @@
+import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as p;
 import '../../core/bulk_plan.dart';
 import '../../core/bulk_settings.dart';
+import '../../core/saf_bridge.dart';
+import '../../core/saf_source.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/bulk_destination_section.dart';
 import '../../shared/widgets/latch_button.dart';
@@ -12,12 +15,16 @@ import '../encrypt/encrypt_folder_screen.dart';
 class DecryptFolderScreen extends StatefulWidget {
   final FolderPicker? pickFolder;
   final FolderEnumerator? enumerate;
+  final TreePicker? pickTree;
+  final TreeEnumerator? enumerateTree;
   final BulkFolderPicker? pickDestination;
 
   const DecryptFolderScreen({
     super.key,
     this.pickFolder,
     this.enumerate,
+    this.pickTree,
+    this.enumerateTree,
     this.pickDestination,
   });
 
@@ -27,6 +34,7 @@ class DecryptFolderScreen extends StatefulWidget {
 
 class _DecryptFolderScreenState extends State<DecryptFolderScreen> {
   BulkInventory? _inv;
+  String? _treeUri;
   bool _recursive = false;
   bool _deleteContainers = false;
   bool _confirmedLarge = false;
@@ -40,9 +48,16 @@ class _DecryptFolderScreenState extends State<DecryptFolderScreen> {
       _error = null;
     });
     try {
-      final root = await (widget.pickFolder ?? _defaultPick)();
-      if (root == null) return;
-      await _scan(root, _recursive);
+      if (_useTree) {
+        final tree = await (widget.pickTree ?? SafBridge.pickTree)();
+        if (tree == null) return;
+        await _scanTree(tree, _recursive);
+      } else {
+        final root = await (widget.pickFolder ?? _defaultPick)();
+        if (root == null) return;
+        _treeUri = null;
+        await _scan(root, _recursive);
+      }
     } catch (_) {
       _error = 'Couldn\'t read that folder. Pick another one.';
     } finally {
@@ -52,11 +67,30 @@ class _DecryptFolderScreenState extends State<DecryptFolderScreen> {
 
   Future<String?> _defaultPick() => FilePicker.platform.getDirectoryPath();
 
+  // A folder picked as a path cannot be read on Android 11+, so there the
+  // folder is a persisted grant and everything goes through it.
+  bool get _useTree =>
+      widget.pickTree != null ||
+      (widget.pickFolder == null && Platform.isAndroid);
+
+  Future<void> _scanTree(String treeUri, bool recursive) async {
+    final enumerate =
+        widget.enumerateTree ??
+        (u, rec) => SafSource.enumerate(u, BulkMode.decrypt, recursive: rec);
+    final inv = await enumerate(treeUri, recursive);
+    _treeUri = treeUri;
+    await _adopt(inv, recursive);
+  }
+
   Future<void> _scan(String root, bool recursive) async {
     final enumerate =
         widget.enumerate ??
         (r, rec) => BulkPlan.enumerate(r, BulkMode.decrypt, recursive: rec);
     final inv = await enumerate(root, recursive);
+    await _adopt(inv, recursive);
+  }
+
+  Future<void> _adopt(BulkInventory inv, bool recursive) async {
     final placement = _dest == null
         ? await BulkSettings.outputPlacement()
         : null;
@@ -77,7 +111,12 @@ class _DecryptFolderScreenState extends State<DecryptFolderScreen> {
       _error = null;
     });
     try {
-      await _scan(inv.root, v);
+      final tree = _treeUri;
+      if (tree != null) {
+        await _scanTree(tree, v);
+      } else {
+        await _scan(inv.root, v);
+      }
     } catch (_) {
       _error = 'Couldn\'t read that folder.';
     } finally {
