@@ -143,6 +143,14 @@ class EnvelopeService {
   /// passphrase wrap fails, each recipient wrap (type 0x03) is tried before
   /// rethrowing (spec §3, UC-6).
   ///
+  /// [batchKey] is a shortcut for the Argon2id step only. When the header's
+  /// salt and cost parameters are byte-for-byte the key's, the passphrase wrap
+  /// is opened with the key's KEK instead of deriving it again; any difference
+  /// takes the full derivation from [passphrase]. The body is always decrypted
+  /// and authenticated chunk by chunk, FINAL tag included. Callers must have
+  /// shown once that the KEK matches the passphrase (a full decrypt of one
+  /// container of the batch) before relying on the shortcut.
+  ///
   /// Throws [WrongPassphraseError], [CorruptedFileError], or [VersionTooNewError].
   Stream<Uint8List> decrypt({
     required Stream<Uint8List> ciphertext,
@@ -150,6 +158,7 @@ class EnvelopeService {
     Uint8List? deviceKey,
     Uint8List? recipientPublicKey,
     Uint8List? recipientSecretKey,
+    BatchWrapKey? batchKey,
   }) async* {
     final reader = _StreamReader(ciphertext);
     final hdr = await _readHeader(reader);
@@ -159,6 +168,7 @@ class EnvelopeService {
       deviceKey: deviceKey,
       recipientPublicKey: recipientPublicKey,
       recipientSecretKey: recipientSecretKey,
+      batchKey: batchKey,
     );
 
     // Prepend the ss header to the body and decrypt.
@@ -374,12 +384,26 @@ class EnvelopeService {
     Uint8List? deviceKey,
     Uint8List? recipientPublicKey,
     Uint8List? recipientSecretKey,
+    BatchWrapKey? batchKey,
   }) {
     final pw = hdr.wraps
         .where((w) => w.type == WrapType.passphrase)
         .firstOrNull;
     if (pw == null) throw CorruptedFileError('no passphrase wrap found');
+    final shared =
+        batchKey != null &&
+        !batchKey.isDisposed &&
+        batchKey.opslimit == hdr.opslimit &&
+        batchKey.memlimit == hdr.memlimit &&
+        _sameBytes(batchKey.salt, hdr.salt);
     try {
+      if (shared) {
+        return DekWrap.unwrapPassphraseWithKek(
+          crypto: _crypto,
+          entry: pw,
+          kek: batchKey.kek,
+        );
+      }
       return DekWrap.unwrapPassphrase(
         crypto: _crypto,
         entry: pw,
@@ -432,6 +456,14 @@ class EnvelopeService {
   }) {
     if (header.encryptedFilename == null) return null;
     return crypto.secretboxOpen(header.encryptedFilename!, dek);
+  }
+
+  static bool _sameBytes(Uint8List a, Uint8List b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
   }
 
   static Stream<Uint8List> _prependStream(

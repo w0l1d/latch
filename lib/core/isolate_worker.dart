@@ -147,6 +147,10 @@ Future<void> _encryptBatch(
         )
       : null;
 
+  // The first verified container is re-opened with the passphrase itself,
+  // which proves the shared KEK is what the passphrase yields for the shared
+  // salt. Later verifies reuse it instead of paying Argon2 again.
+  var kekProven = false;
   try {
     for (int i = 0; i < files.length; i++) {
       final path = files[i];
@@ -169,7 +173,9 @@ Future<void> _encryptBatch(
           outRels[i],
           verifyDelete,
           batchKey,
+          kekProven ? batchKey : null,
         );
+        if (r.verified) kekProven = true;
         mainPort.send({
           'type': 'file_done',
           'path': path,
@@ -222,6 +228,7 @@ Future<({String outPath, bool verified, bool sourceRemoved})> _encryptOne(
   String? outRel,
   bool verifyDelete,
   BatchWrapKey? batchKey,
+  BatchWrapKey? verifyBatchKey,
 ) async {
   final totalBytes = await io.fileSize(path);
   final before = verifyDelete ? File(path).statSync() : null;
@@ -299,6 +306,7 @@ Future<({String outPath, bool verified, bool sourceRemoved})> _encryptOne(
       sourcePath: path,
       passphrase: passphrase,
       deviceKey: deviceKey,
+      batchKey: verifyBatchKey,
     );
   } catch (e) {
     try {

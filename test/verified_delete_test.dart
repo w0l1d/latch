@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latch/core/app_crypto.dart';
+import 'package:latch/core/bulk_plan.dart' show BulkKeyMode;
 import 'package:latch/core/verified_delete.dart';
 import 'package:myenc_adapters/myenc_adapters.dart';
 import 'package:myenc_core/myenc_core.dart';
@@ -16,12 +17,14 @@ void main() {
   const pass = 'a strong enough passphrase';
   late Directory tmp;
   late EnvelopeService svc;
+  late SodiumCryptoAdapter crypto;
   final io = FileIoDart();
 
   setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
     await AppCrypto.init();
-    svc = EnvelopeService(SodiumCryptoAdapter(await SodiumSumoInit.init()));
+    crypto = SodiumCryptoAdapter(await SodiumSumoInit.init());
+    svc = EnvelopeService(crypto);
   });
   setUp(() => tmp = Directory.systemTemp.createTempSync('latch_verify_test'));
   tearDown(() {
@@ -217,6 +220,131 @@ void main() {
       expect(f.existsSync(), isTrue);
       expect(File('${f.path}.latch').existsSync(), isFalse);
       expect(File('${f.path}.latch.tmp').existsSync(), isFalse);
+    },
+  );
+  group('with a proven batch key', () {
+    final passBytes = Uint8List.fromList(pass.codeUnits);
+
+    Future<(BatchWrapKey, File, File)> sealWith(Uint8List data) async {
+      final k = await BatchWrapKey.derive(
+        crypto,
+        passBytes,
+        opslimit: KdfParams.defaults.opslimit,
+        memlimit: KdfParams.defaults.memlimit,
+      );
+      final src = put('s.bin', data);
+      final out = File('${src.path}.latch');
+      final sink = out.openWrite();
+      await sink.addStream(
+        svc.encrypt(
+          plaintext: src.openRead().map(Uint8List.fromList),
+          passphrase: passBytes,
+          params: KdfParams.defaults,
+          batchKey: k,
+        ),
+      );
+      await sink.close();
+      return (k, src, out);
+    }
+
+    Future<void> verifyWith(BatchWrapKey k, File c, File s) =>
+        verifyContainerMatchesSource(
+          svc: svc,
+          io: io,
+          containerPath: c.path,
+          sourcePath: s.path,
+          passphrase: passBytes,
+          batchKey: k,
+        );
+
+    test('a good container verifies', () async {
+      final (k, s, c) = await sealWith(bytes(200000, 3));
+      await verifyWith(k, c, s);
+      k.dispose();
+    });
+
+    test('a flipped body byte still fails', () async {
+      final (k, s, c) = await sealWith(bytes(70000, 3));
+      final b = c.readAsBytesSync();
+      b[b.length - 40] ^= 0x01;
+      c.writeAsBytesSync(b);
+      await expectLater(
+        verifyWith(k, c, s),
+        throwsA(isA<VerificationFailedError>()),
+      );
+      k.dispose();
+    });
+
+    test('a truncated container (FINAL tag lost) still fails', () async {
+      final (k, s, c) = await sealWith(bytes(200000, 3));
+      final b = c.readAsBytesSync();
+      c.writeAsBytesSync(b.sublist(0, b.length - 1000));
+      await expectLater(
+        verifyWith(k, c, s),
+        throwsA(isA<VerificationFailedError>()),
+      );
+      k.dispose();
+    });
+
+    test('a source that differs by one byte still fails', () async {
+      final data = bytes(70000, 3);
+      final (k, s, c) = await sealWith(data);
+      s.writeAsBytesSync(Uint8List.fromList(data)..[69999] ^= 1);
+      await expectLater(
+        verifyWith(k, c, s),
+        throwsA(isA<VerificationFailedError>()),
+      );
+      k.dispose();
+    });
+
+    test('a key from another batch falls back and still verifies', () async {
+      final (k, s, c) = await sealWith(bytes(5000, 3));
+      final other = await BatchWrapKey.derive(
+        crypto,
+        passBytes,
+        opslimit: KdfParams.defaults.opslimit,
+        memlimit: KdfParams.defaults.memlimit,
+      );
+      await verifyWith(other, c, s);
+      k.dispose();
+      other.dispose();
+    });
+  });
+
+  test(
+    'a shared-key batch with verified delete locks, verifies and removes all',
+    () async {
+      final datas = [bytes(1000, 3), bytes(70000, 5), bytes(0, 1)];
+      final files = [
+        for (var i = 0; i < datas.length; i++) put('b$i.bin', datas[i]),
+      ];
+      final ok = <String, bool>{};
+      final flags = <String, (bool, bool)>{};
+      await for (final _ in AppCrypto.encryptFiles(
+        [for (final f in files) f.path],
+        pass,
+        deleteOriginals: true,
+        verifyDelete: true,
+        keyMode: BulkKeyMode.sharedPerBatch,
+        onFileResult: (p, o, _, _) => ok[p] = o,
+        onFileVerified: (p, v, r) => flags[p] = (v, r),
+      )) {}
+      for (final f in files) {
+        expect(ok[f.path], isTrue);
+        expect(flags[f.path], (true, true));
+        expect(f.existsSync(), isFalse);
+      }
+      for (var i = 0; i < files.length; i++) {
+        final c = File('${files[i].path}.latch');
+        final plain = <int>[];
+        await for (final ch in svc.decrypt(
+          ciphertext: c.openRead().map(Uint8List.fromList),
+          passphrase: Uint8List.fromList(pass.codeUnits),
+        )) {
+          plain.addAll(ch);
+        }
+        expect(plain, datas[i]);
+      }
     },
   );
 }

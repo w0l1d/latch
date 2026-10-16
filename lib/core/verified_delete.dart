@@ -19,6 +19,7 @@ Future<void> verifyContainerMatchesSource({
   Uint8List? deviceKey,
   Uint8List? recipientPublicKey,
   Uint8List? recipientSecretKey,
+  BatchWrapKey? batchKey,
 }) async {
   final src = StreamIterator<Uint8List>(io.openRead(sourcePath));
   var buf = Uint8List(0);
@@ -30,6 +31,7 @@ Future<void> verifyContainerMatchesSource({
       deviceKey: deviceKey,
       recipientPublicKey: recipientPublicKey,
       recipientSecretKey: recipientSecretKey,
+      batchKey: batchKey,
     )) {
       var i = 0;
       while (i < chunk.length) {

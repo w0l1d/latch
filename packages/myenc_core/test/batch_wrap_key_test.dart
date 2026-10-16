@@ -229,4 +229,99 @@ void main() {
     );
     expect(opened, dek);
   });
+  group('decrypt with the batch key (verify shortcut)', () {
+    Stream<Uint8List> open(
+      Uint8List c, {
+      BatchWrapKey? batchKey,
+      Uint8List? pass,
+    }) => svc.decrypt(
+      ciphertext: _one(c),
+      passphrase: pass ?? passphrase,
+      batchKey: batchKey,
+    );
+
+    test('skips Argon2 and returns the exact plaintext', () async {
+      final k = await key();
+      final plain = Uint8List.fromList(utf8.encode('verify me'));
+      final c = await seal(plain, k);
+      final before = crypto.derivations;
+
+      expect(await _collect(open(c, batchKey: k)), plain);
+      expect(crypto.derivations, before);
+    });
+
+    test('without the key the same container still pays Argon2', () async {
+      final k = await key();
+      final c = await seal(Uint8List.fromList([9]), k);
+      final before = crypto.derivations;
+
+      await _collect(open(c));
+      expect(crypto.derivations, before + 1);
+    });
+
+    test('a key with a different salt falls back to the passphrase', () async {
+      final k = await key();
+      final other = await key();
+      final plain = Uint8List.fromList(utf8.encode('other batch'));
+      final c = await seal(plain, k);
+      final before = crypto.derivations;
+
+      expect(await _collect(open(c, batchKey: other)), plain);
+      expect(crypto.derivations, before + 1);
+    });
+
+    test('a disposed key falls back to the passphrase', () async {
+      final k = await key();
+      final plain = Uint8List.fromList(utf8.encode('after dispose'));
+      final c = await seal(plain, k);
+      k.dispose();
+      final before = crypto.derivations;
+
+      expect(await _collect(open(c, batchKey: k)), plain);
+      expect(crypto.derivations, before + 1);
+    });
+
+    test('a key with different params falls back to the passphrase', () async {
+      final k = await key();
+      final c = await seal(Uint8List.fromList([5, 6]), k);
+      final stronger = await BatchWrapKey.derive(
+        crypto,
+        passphrase,
+        opslimit: 4,
+        memlimit: 65536,
+      );
+      final before = crypto.derivations;
+
+      expect(await _collect(open(c, batchKey: stronger)), [5, 6]);
+      expect(crypto.derivations, before + 1);
+    });
+
+    test('a flipped body byte is still rejected on the shortcut', () async {
+      final k = await key();
+      final c = await seal(Uint8List.fromList(List.filled(300, 7)), k);
+      final bad = Uint8List.fromList(c);
+      bad[bad.length - 5] ^= 0x01;
+
+      await expectLater(
+        _collect(open(bad, batchKey: k)),
+        throwsA(isA<Object>()),
+      );
+    });
+
+    test('a KEK of the wrong length is rejected', () {
+      final entry = DekWrap.wrapPassphraseWithKek(
+        crypto: crypto,
+        dek: Uint8List(32),
+        kek: Uint8List(32),
+      );
+      expect(
+        () => DekWrap.unwrapPassphraseWithKek(
+          crypto: crypto,
+          entry: entry,
+          kek: Uint8List(16),
+        ),
+        throwsA(isA<Object>()),
+      );
+    });
+  });
 }

@@ -43,6 +43,25 @@ class DekWrap {
     );
   }
 
+  /// Unwraps a passphrase [entry] with an already-derived [kek]. Same result
+  /// as [unwrapPassphrase] when [kek] is what Argon2id yields for the entry's
+  /// salt and cost, without paying for the derivation again.
+  static Uint8List unwrapPassphraseWithKek({
+    required CryptoPort crypto,
+    required WrapEntry entry,
+    required Uint8List kek,
+  }) {
+    if (entry.type != WrapType.passphrase) {
+      throw CorruptedFileError(
+        'expected passphrase wrap entry, got ${entry.type}',
+      );
+    }
+    if (kek.length != kekLength) {
+      throw CorruptedFileError('KEK must be $kekLength bytes');
+    }
+    return crypto.secretboxOpen(entry.bytes, kek);
+  }
+
   // Unwraps a passphrase WrapEntry to recover the DEK.
   // Throws WrongPassphraseError if the passphrase is wrong.
   static Uint8List unwrapPassphrase({
