@@ -4,6 +4,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'bulk_plan.dart';
 import 'saf_bridge.dart';
+import 'staging_sweep.dart';
 
 /// Reading a folder the user granted, on Android.
 ///
@@ -35,8 +36,6 @@ class SourceStagingError implements Exception {
 }
 
 class SafSource {
-  static const _dirName = 'latch_src';
-
   /// Lists [treeUri] and classifies it like a filesystem folder. Nothing is
   /// copied yet; each item's path is where its copy will be staged.
   static Future<BulkInventory> enumerate(
@@ -57,7 +56,7 @@ class SafSource {
       treeUri: treeUri,
       stagingRoot: p.join(
         tmp,
-        _dirName,
+        stagedSourceDirName,
         BulkPlan.safeFolderName(listing.rootName),
       ),
       mode: mode,

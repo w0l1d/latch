@@ -797,6 +797,64 @@ void main() {
       );
       expect(out, isEmpty);
     });
+
+    test(
+      'empty mirrored folders are pruned, the staging root is kept',
+      () async {
+        final stage = Directory(p.join(tmp.path, 'latch_stage'))..createSync();
+        final nested = Directory(p.join(stage.path, 'photos', '2024', 'trip'))
+          ..createSync(recursive: true);
+        final a = File(p.join(nested.path, 'a.jpg.latch'))
+          ..writeAsBytesSync([1]);
+        final b = File(p.join(stage.path, 'photos', 'b.jpg.latch'))
+          ..writeAsBytesSync([2]);
+        mockSaf((call) async => {'uri': 'content://d', 'displayPath': 'x'});
+
+        await relocateStagedOutputs(
+          [ok('/s/a.jpg', a.path), ok('/s/b.jpg', b.path)],
+          OutputPlan(
+            stagingDir: stage.path,
+            outputDir: stage.path,
+            byPath: {
+              '/s/a.jpg': const OutputTarget(treeUri: 'content://tree/x'),
+              '/s/b.jpg': const OutputTarget(treeUri: 'content://tree/x'),
+            },
+          ),
+          displayNameFor: (s) => '${p.basename(s)}.latch',
+        );
+
+        expect(stage.existsSync(), isTrue);
+        expect(stage.listSync(), isEmpty);
+      },
+    );
+
+    test(
+      'a folder still holding a kept-in-cache output is not pruned',
+      () async {
+        final stage = Directory(p.join(tmp.path, 'latch_stage'))..createSync();
+        final sub = Directory(p.join(stage.path, 'docs'))..createSync();
+        final kept = File(p.join(sub.path, 'k.txt.latch'))
+          ..writeAsBytesSync([1]);
+        final empty = Directory(p.join(stage.path, 'docs', 'empty'))
+          ..createSync();
+        mockSaf((_) async => null);
+
+        final out = await relocateStagedOutputs(
+          [ok('/s/k.txt', kept.path)],
+          OutputPlan(
+            stagingDir: stage.path,
+            outputDir: stage.path,
+            byPath: {'/s/k.txt': const OutputTarget()},
+          ),
+          displayNameFor: (s) => '${p.basename(s)}.latch',
+          downloadsDir: () async => null,
+        );
+
+        expect(out.single.keptInCache, isTrue);
+        expect(kept.existsSync(), isTrue);
+        expect(empty.existsSync(), isFalse);
+      },
+    );
   });
 
   group('planBulk (mirrored trees)', () {

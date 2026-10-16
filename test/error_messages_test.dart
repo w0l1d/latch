@@ -88,6 +88,8 @@ void main() {
       );
       expect(stage, contains('working storage'));
       expect(stage, contains('10 B'));
+      expect(stage, contains('second copy'));
+      expect(dest, isNot(contains('second copy')));
     });
 
     test('string form from the worker keeps location and size', () {

@@ -43,6 +43,7 @@ class _State extends State<DecryptBulkProgressScreen> {
   bool _finished = false;
   bool _preparing = false;
   bool _sourceSwept = false;
+  int _staged = 0;
   final _outcomes = <String, BulkFileOutcome>{};
   OutputPlan? _plan;
 
@@ -80,6 +81,9 @@ class _State extends State<DecryptBulkProgressScreen> {
         await SafSource.stage(
           _items,
           isCancelled: () => _cancelled || !mounted,
+          onProgress: (done, _) {
+            if (mounted && !_cancelled) setState(() => _staged = done);
+          },
         );
         if (!mounted || _cancelled) return;
         setState(() => _preparing = false);
@@ -302,7 +306,7 @@ class _State extends State<DecryptBulkProgressScreen> {
                 const SizedBox(height: 20),
                 LinearProgressIndicator(
                   semanticsLabel: 'Unlocking files',
-                  semanticsValue: '${(_progress * 100).round()} percent',
+                  semanticsValue: '${(_progress * 100).round()}%',
                   value: _progress,
                   backgroundColor: LatchColors.border,
                   color: LatchColors.ink,
@@ -310,7 +314,7 @@ class _State extends State<DecryptBulkProgressScreen> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  '$done of $total',
+                  _preparing ? '$_staged of $total' : '$done of $total',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
                 const Spacer(),

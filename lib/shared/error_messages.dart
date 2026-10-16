@@ -105,7 +105,10 @@ String _spaceMessage(SpaceLocation where, int shortfall) {
       ? 'the phone\'s working storage'
       : 'the destination';
   final by = shortfall > 0 ? ' by about ${_humanBytes(shortfall)}' : '';
-  return 'Not enough free space on $place$by. Free some space and try '
+  final copy = where == SpaceLocation.staging
+      ? ' A run keeps a second copy of the folder there until it finishes.'
+      : '';
+  return 'Not enough free space on $place$by.$copy Free some space and try '
       'again. Your original files were not changed.';
 }
 

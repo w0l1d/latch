@@ -7,6 +7,7 @@ import 'app_crypto.dart';
 import 'bulk_plan.dart';
 import 'default_output.dart';
 import 'saf_bridge.dart';
+import 'staging_sweep.dart';
 import 'unresolved_destination.dart';
 
 /// What the user answered when asked where a batch's output should go.
@@ -166,7 +167,10 @@ class OutputPlanner {
       return OutputPlan(outputDir: dir);
     }
 
-    final staging = p.join((await getTemporaryDirectory()).path, 'latch_stage');
+    final staging = p.join(
+      (await getTemporaryDirectory()).path,
+      stagedOutputDirName,
+    );
     await _resetDir(staging);
 
     final byPath = <String, OutputTarget>{};
@@ -251,7 +255,10 @@ class OutputPlanner {
     final android = platformIsAndroid ?? Platform.isAndroid;
     if (!android) return OutputPlan(outputDir: explicitDir);
 
-    final staging = p.join((await getTemporaryDirectory()).path, 'latch_stage');
+    final staging = p.join(
+      (await getTemporaryDirectory()).path,
+      stagedOutputDirName,
+    );
     await _resetDir(staging);
 
     OutputTarget base;
@@ -449,7 +456,29 @@ Future<List<RelocatedOutput>> relocateStagedOutputs(
       RelocatedOutput(dest, fellBackToDownloads: true, sourcePath: r.path),
     );
   }
+  await _pruneEmptyDirs(plan.stagingDir!);
   return out;
+}
+
+/// Mirrored runs leave one empty folder per source subfolder in staging; this
+/// removes them. The staging root itself and any folder still holding a file
+/// (e.g. an output kept in cache) are left alone.
+Future<void> _pruneEmptyDirs(String root) async {
+  Future<void> prune(Directory dir) async {
+    try {
+      await for (final e in dir.list(followLinks: false)) {
+        if (e is Directory) {
+          await prune(e);
+          if (await e.list().isEmpty) await e.delete();
+        }
+      }
+    } catch (_) {
+      // Best-effort cleanup.
+    }
+  }
+
+  final dir = Directory(root);
+  if (await dir.exists()) await prune(dir);
 }
 
 Future<void> _move(String from, String to) async {
