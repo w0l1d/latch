@@ -1,9 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latch/core/bulk_plan.dart';
 import 'package:latch/core/bulk_settings.dart';
+import 'package:latch/core/saf_bridge.dart';
 import 'package:latch/features/decrypt/decrypt_folder_screen.dart';
+import 'package:latch/features/decrypt/decrypt_bulk_progress_screen.dart';
+import 'package:latch/features/encrypt/encrypt_bulk_progress_screen.dart';
 import 'package:latch/features/encrypt/encrypt_folder_screen.dart';
 import 'package:latch/shared/theme/app_theme.dart';
 import 'package:myenc_core/myenc_core.dart';
@@ -237,6 +242,136 @@ void main() {
     });
   });
 
+  group('destination defaults to the grant just taken', () {
+    const other = 'content://tree/primary%3AElsewhere';
+    setUp(() {
+      SharedPreferences.setMockInitialValues({
+        BulkSettings.outputPlacementKey: BulkPlacement.mirroredFolder.name,
+      });
+    });
+
+    BulkDestination sent() =>
+        (lastExtra as Map)['bulk']['destination'] as BulkDestination;
+
+    Future<void> pickSource(WidgetTester tester) async {
+      await tester.tap(find.text('Choose a folder'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('encrypt: mirrored layout is ready right after the pick', (
+      tester,
+    ) async {
+      await _tall(tester);
+      await tester.pumpWidget(
+        _app(
+          EncryptFolderScreen(
+            pickTree: () async => _tree,
+            enumerateTree: (u, rec) async => _inv(BulkMode.encrypt),
+          ),
+          '/encrypt/passphrase',
+        ),
+      );
+      await pickSource(tester);
+      expect(find.text('No folder chosen yet'), findsNothing);
+
+      await tester.tap(find.text('Set a passphrase'));
+      await tester.pumpAndSettle();
+      expect(sent().placement, BulkPlacement.mirroredFolder);
+      expect(sent().treeUri, _tree);
+    });
+
+    testWidgets('decrypt: mirrored layout is ready right after the pick', (
+      tester,
+    ) async {
+      await _tall(tester);
+      await tester.pumpWidget(
+        _app(
+          DecryptFolderScreen(
+            pickTree: () async => _tree,
+            enumerateTree: (u, rec) async => _inv(BulkMode.decrypt),
+          ),
+          '/decrypt/passphrase',
+        ),
+      );
+      await pickSource(tester);
+      expect(find.text('No folder chosen yet'), findsNothing);
+
+      await tester.tap(find.text('Enter passphrase'));
+      await tester.pumpAndSettle();
+      expect(sent().treeUri, _tree);
+    });
+
+    testWidgets('a folder the user chose is not replaced by a later pick', (
+      tester,
+    ) async {
+      var picks = 0;
+      await _tall(tester);
+      await tester.pumpWidget(
+        _app(
+          EncryptFolderScreen(
+            pickTree: () async => picks++ == 0 ? _tree : 'content://tree/next',
+            enumerateTree: (u, rec) async => _inv(BulkMode.encrypt),
+            pickDestination: (_) async =>
+                (dir: null, treeUri: other, label: 'Elsewhere'),
+          ),
+          '/encrypt/passphrase',
+        ),
+      );
+      await pickSource(tester);
+      await tester.tap(find.text('Change'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Choose a different folder'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Set a passphrase'));
+      await tester.pumpAndSettle();
+      expect(sent().treeUri, other);
+    });
+
+    testWidgets('a grant defaulted from the source follows a new source', (
+      tester,
+    ) async {
+      var picks = 0;
+      await _tall(tester);
+      await tester.pumpWidget(
+        _app(
+          EncryptFolderScreen(
+            pickTree: () async => picks++ == 0 ? _tree : 'content://tree/next',
+            enumerateTree: (u, rec) async => _inv(BulkMode.encrypt),
+          ),
+          '/encrypt/passphrase',
+        ),
+      );
+      await pickSource(tester);
+      await tester.tap(find.text('Choose a different folder'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Set a passphrase'));
+      await tester.pumpAndSettle();
+      expect(sent().treeUri, 'content://tree/next');
+    });
+
+    testWidgets('the default is per run and never saved', (tester) async {
+      await _tall(tester);
+      await tester.pumpWidget(
+        _app(
+          EncryptFolderScreen(
+            pickTree: () async => _tree,
+            enumerateTree: (u, rec) async => _inv(BulkMode.encrypt),
+          ),
+          '/encrypt/passphrase',
+        ),
+      );
+      await pickSource(tester);
+      expect(
+        await BulkSettings.outputPlacement(),
+        BulkPlacement.mirroredFolder,
+      );
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getKeys(), {BulkSettings.outputPlacementKey});
+    });
+  });
+
   group('decrypt folder, picked as a grant', () {
     testWidgets('lists the locked files and carries the grant on', (
       tester,
@@ -321,5 +456,177 @@ void main() {
       );
       expect(btn.onPressed, isNull);
     });
+  });
+
+  group('what the user is told while waiting', () {
+    testWidgets('the scan spinner names what it is doing (encrypt)', (
+      tester,
+    ) async {
+      final listing = Completer<BulkInventory>();
+      await _tall(tester);
+      await tester.pumpWidget(
+        _app(
+          EncryptFolderScreen(
+            pickTree: () async => _tree,
+            enumerateTree: (_, _) => listing.future,
+          ),
+          '/encrypt/passphrase',
+        ),
+      );
+      await tester.tap(find.text('Choose a folder'));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Looking through the folder…'), findsOneWidget);
+      expect(find.bySemanticsLabel('Reading the folder'), findsOneWidget);
+
+      listing.complete(_inv(BulkMode.encrypt));
+      await tester.pumpAndSettle();
+      expect(find.text('Looking through the folder…'), findsNothing);
+    });
+
+    testWidgets('the scan spinner names what it is doing (decrypt)', (
+      tester,
+    ) async {
+      final listing = Completer<BulkInventory>();
+      await _tall(tester);
+      await tester.pumpWidget(
+        _app(
+          DecryptFolderScreen(
+            pickTree: () async => _tree,
+            enumerateTree: (_, _) => listing.future,
+          ),
+          '/decrypt/passphrase',
+        ),
+      );
+      await tester.tap(find.text('Choose a folder'));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Looking through the folder…'), findsOneWidget);
+      listing.complete(_inv(BulkMode.decrypt));
+      await tester.pumpAndSettle();
+    });
+
+    for (final decrypt in [false, true]) {
+      testWidgets(
+        '${decrypt ? 'unlock' : 'lock'} review warns about the second copy on a grant',
+        (tester) async {
+          await _tall(tester);
+          final mode = decrypt ? BulkMode.decrypt : BulkMode.encrypt;
+          await tester.pumpWidget(
+            _app(
+              decrypt
+                  ? DecryptFolderScreen(
+                      pickTree: () async => _tree,
+                      enumerateTree: (_, _) async => _inv(mode),
+                    )
+                  : EncryptFolderScreen(
+                      pickTree: () async => _tree,
+                      enumerateTree: (_, _) async => _inv(mode),
+                    ),
+              decrypt ? '/decrypt/passphrase' : '/encrypt/passphrase',
+            ),
+          );
+          await tester.tap(find.text('Choose a folder'));
+          await tester.pumpAndSettle();
+          expect(find.text(bulkStagingNote), findsOneWidget);
+        },
+      );
+    }
+
+    testWidgets('a folder read by path is not staged, so no warning', (
+      tester,
+    ) async {
+      await _tall(tester);
+      await tester.pumpWidget(
+        _app(
+          EncryptFolderScreen(
+            pickFolder: () async => '/storage/Docs',
+            enumerate: (r, rec) async => BulkInventory(
+              root: r,
+              mode: BulkMode.encrypt,
+              recursive: rec,
+              items: [_item('a.txt', 'a.txt.latch')],
+              skipped: const [],
+              subfolders: 0,
+              excludedInSubfolders: 0,
+              alreadyContainers: 0,
+            ),
+          ),
+          '/encrypt/passphrase',
+        ),
+      );
+      await tester.tap(find.text('Choose a folder'));
+      await tester.pumpAndSettle();
+      expect(find.text(bulkStagingNote), findsNothing);
+    });
+  });
+
+  group('staging progress', () {
+    late List<Completer<void>> copies;
+
+    setUp(() {
+      copies = [];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SafBridge.channel, (call) {
+            if (call.method != 'copyToCache') return Future.value(null);
+            final c = Completer<void>();
+            copies.add(c);
+            return c.future;
+          });
+    });
+
+    tearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SafBridge.channel, null);
+    });
+
+    for (final decrypt in [false, true]) {
+      testWidgets(
+        '${decrypt ? 'unlock' : 'lock'} shows copied-of-total while reading',
+        (tester) async {
+          final mode = decrypt ? BulkMode.decrypt : BulkMode.encrypt;
+          final inv = _inv(mode, files: 3);
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: buildTheme(),
+              home: decrypt
+                  ? DecryptBulkProgressScreen(
+                      inventory: inv,
+                      passphrase: 'x',
+                      deleteSources: false,
+                    )
+                  : EncryptBulkProgressScreen(
+                      inventory: inv,
+                      passphrase: 'x',
+                      deleteSources: false,
+                    ),
+            ),
+          );
+          await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+          await tester.pump();
+
+          expect(find.text('Reading your files…'), findsOneWidget);
+          expect(find.text('0 of 3'), findsOneWidget);
+
+          await tester.runAsync(() async {
+            copies[0].complete();
+            await Future<void>.delayed(Duration.zero);
+          });
+          await tester.pump();
+          expect(find.text('1 of 3'), findsOneWidget);
+
+          // Leaving the screen stops the copy: the second is never followed
+          // by a third.
+          await tester.pumpWidget(const SizedBox());
+          await tester.runAsync(() async {
+            copies[1].complete();
+            await Future<void>.delayed(Duration.zero);
+          });
+          expect(copies, hasLength(2));
+        },
+      );
+    }
   });
 }

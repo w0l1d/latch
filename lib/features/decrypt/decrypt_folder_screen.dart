@@ -39,6 +39,9 @@ class _DecryptFolderScreenState extends State<DecryptFolderScreen> {
   bool _deleteContainers = false;
   bool _confirmedLarge = false;
   BulkDestination? _dest;
+  // True while the folder in _dest is the one just granted as the source, so
+  // picking another source replaces it but a folder the user chose is kept.
+  bool _destFromSource = false;
   bool _busy = false;
   String? _error;
 
@@ -79,7 +82,7 @@ class _DecryptFolderScreenState extends State<DecryptFolderScreen> {
         (u, rec) => SafSource.enumerate(u, BulkMode.decrypt, recursive: rec);
     final inv = await enumerate(treeUri, recursive);
     _treeUri = treeUri;
-    await _adopt(inv, recursive);
+    await _adopt(inv, recursive, sourceTree: treeUri);
   }
 
   Future<void> _scan(String root, bool recursive) async {
@@ -90,13 +93,25 @@ class _DecryptFolderScreenState extends State<DecryptFolderScreen> {
     await _adopt(inv, recursive);
   }
 
-  Future<void> _adopt(BulkInventory inv, bool recursive) async {
+  Future<void> _adopt(
+    BulkInventory inv,
+    bool recursive, {
+    String? sourceTree,
+  }) async {
     final placement = _dest == null
         ? await BulkSettings.outputPlacement()
         : null;
     if (!mounted) return;
     setState(() {
       if (placement != null) _dest = BulkDestination(placement: placement);
+      final dest = _dest!;
+      if (sourceTree != null && (!dest.hasFolder || _destFromSource)) {
+        _dest = dest.withFolder(
+          treeUri: sourceTree,
+          label: p.basename(inv.root),
+        );
+        _destFromSource = true;
+      }
       _inv = inv;
       _recursive = recursive;
       _confirmedLarge = false;
@@ -167,10 +182,7 @@ class _DecryptFolderScreenState extends State<DecryptFolderScreen> {
                 child: inv == null
                     ? Center(
                         child: _busy
-                            ? const CircularProgressIndicator(
-                                semanticsLabel: 'Reading the folder',
-                                color: LatchColors.ink,
-                              )
+                            ? const _ScanSpinner()
                             : Text(
                                 _error ??
                                     'Choose a folder. Every .latch file in '
@@ -185,7 +197,13 @@ class _DecryptFolderScreenState extends State<DecryptFolderScreen> {
                         deleteContainers: _deleteContainers,
                         destination: _dest!,
                         pickDestination: widget.pickDestination,
-                        onDestination: (d) => setState(() => _dest = d),
+                        onDestination: (d) => setState(() {
+                          if (d.treeUri != _dest?.treeUri ||
+                              d.dir != _dest?.dir) {
+                            _destFromSource = false;
+                          }
+                          _dest = d;
+                        }),
                         confirmedLarge: _confirmedLarge,
                         needsConfirm: _needsConfirm,
                         busy: _busy,
@@ -270,6 +288,10 @@ class _Summary extends StatelessWidget {
           ' · ${describeDuration(est)}',
           style: t.bodyMedium,
         ),
+        if (inv.sourceTreeUri != null) ...[
+          const SizedBox(height: 8),
+          Text(bulkStagingNote, style: t.bodySmall),
+        ],
         if (error != null) ...[
           const SizedBox(height: 8),
           Text(error!, style: t.bodySmall?.copyWith(color: LatchColors.danger)),
@@ -317,7 +339,9 @@ class _Summary extends StatelessWidget {
             'Each locked file is removed only after its unlocked copy has '
             'been checked against it by unlocking it a second time. This '
             'reads every file twice, so it takes longer. Empty folders are '
-            'left in place.',
+            'left in place. If the app is stopped partway, no locked file is '
+            'lost; run the folder again to finish. Files that were already '
+            'unlocked are skipped.',
           ),
           value: deleteContainers,
           onChanged: onDelete,
@@ -347,6 +371,30 @@ class _Summary extends StatelessWidget {
               style: t.bodyMedium,
             ),
           ),
+      ],
+    );
+  }
+}
+
+/// Names what the spinner is waiting for: the picker hands back a folder
+/// grant first, then every file in it is listed and sniffed.
+class _ScanSpinner extends StatelessWidget {
+  const _ScanSpinner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const CircularProgressIndicator(
+          semanticsLabel: 'Reading the folder',
+          color: LatchColors.ink,
+        ),
+        const SizedBox(height: 16),
+        Text(
+          'Looking through the folder…',
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
       ],
     );
   }

@@ -126,12 +126,24 @@ class BulkDestinationSection extends StatelessWidget {
                   ? null
                   : t.bodyMedium?.copyWith(color: LatchColors.danger),
             ),
-            subtitle: value.hasFolder && value.label != null
+            subtitle:
+                value.hasFolder &&
+                    value.label != null &&
+                    value.label != bulkFolderName(value)
                 ? Text(value.label!, style: t.bodySmall)
                 : null,
-            trailing: TextButton(
-              onPressed: enabled ? () => _pick(context) : null,
-              child: Text(value.hasFolder ? 'Change' : 'Choose'),
+            trailing: Semantics(
+              button: true,
+              enabled: enabled,
+              label: value.hasFolder
+                  ? 'Change output folder'
+                  : 'Choose output folder',
+              excludeSemantics: true,
+              onTap: enabled ? () => _pick(context) : null,
+              child: TextButton(
+                onPressed: enabled ? () => _pick(context) : null,
+                child: Text(value.hasFolder ? 'Change' : 'Choose'),
+              ),
             ),
           ),
       ],
