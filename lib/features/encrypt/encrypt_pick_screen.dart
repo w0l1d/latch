@@ -166,7 +166,13 @@ class _EncryptPickScreenState extends State<EncryptPickScreen> {
                   ),
                 ),
               ],
-              const SizedBox(height: 16),
+              const SizedBox(height: 8),
+              if (_files.isEmpty)
+                LatchSecondaryButton(
+                  label: 'Lock a whole folder',
+                  onPressed: () => context.push('/encrypt/folder'),
+                ),
+              const SizedBox(height: 8),
               LatchPrimaryButton(
                 label: 'Set a passphrase',
                 onPressed: _files.isEmpty

@@ -1,10 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show File;
+import 'dart:io' show Directory, File;
 import 'dart:isolate';
 import 'dart:typed_data';
 import 'package:myenc_core/myenc_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'bulk_plan.dart' show BulkKeyMode;
 import 'crypto_stub.dart' show PassphraseResult, CryptoStub;
 import 'isolate_worker.dart';
 import 'passphrase_storage_service.dart';
@@ -33,6 +34,11 @@ class BatchResult {
 /// Per-file completion callback for batch operations.
 typedef FileResultCallback =
     void Function(String path, bool ok, String? error, String? outPath);
+
+/// Fired after [FileResultCallback] for operations that verify their output:
+/// whether the result was proven correct and whether the source was removed.
+typedef FileVerifiedCallback =
+    void Function(String path, bool verified, bool sourceRemoved);
 
 class AppCrypto {
   /// Lazy-initialized singleton — set by main() after the widget tree mounts
@@ -74,10 +80,18 @@ class AppCrypto {
   /// ReceivePort, so a worker that dies without reporting (e.g. killed by the
   /// OS under memory pressure during Argon2id) surfaces as a stream error
   /// instead of hanging the caller forever.
+  ///
+  /// [stagingDir] is a directory the operation owns outright (an app-cache
+  /// staging tree). If the batch is torn down before `done` it is deleted
+  /// recursively: for decrypt it holds plaintext of every file finished so far.
+  /// Never pass a user-visible destination here.
   static Stream<double> _runBatch(
     Map<String, dynamic> task, {
     FileResultCallback? onFileResult,
+    FileVerifiedCallback? onFileVerified,
+    String? stagingDir,
   }) async* {
+    task['staged'] = stagingDir != null;
     final port = ReceivePort();
     final isolate = await Isolate.spawn(
       latchWorker,
@@ -122,6 +136,13 @@ class AppCrypto {
               map['error'] as String?,
               map['outPath'] as String?,
             );
+            if (map['verified'] != null) {
+              onFileVerified?.call(
+                map['path'] as String,
+                map['verified'] as bool,
+                map['sourceRemoved'] as bool,
+              );
+            }
           case 'error':
             _throwTypedError(map['code'] as String, map['message'] as String);
           case 'done':
@@ -139,6 +160,13 @@ class AppCrypto {
         final orphan = inFlightOutPath;
         if (orphan != null) {
           unawaited(File('$orphan.tmp').delete().then((_) {}, onError: (_) {}));
+        }
+        if (stagingDir != null) {
+          unawaited(
+            Directory(
+              stagingDir,
+            ).delete(recursive: true).then((_) {}, onError: (_) {}),
+          );
         }
       }
     }
@@ -161,23 +189,36 @@ class AppCrypto {
     String? outputDir,
     String? keyIdHex,
     Uint8List? deviceKey,
+    List<String?>? outRelPaths,
+    String? stagingDir,
+    bool verifyDelete = false,
+    BulkKeyMode keyMode = BulkKeyMode.perFile,
+    FileVerifiedCallback? onFileVerified,
     FileResultCallback? onFileResult,
   }) async* {
     if (files.isEmpty) return;
     final kdf = await _loadKdfParams();
     final pw = utf8.encode(passphrase);
     try {
-      yield* _runBatch({
-        'cmd': 'encrypt',
-        'files': files,
-        'passphrase': pw,
-        'opslimit': kdf.opslimit,
-        'memlimit': kdf.memlimit,
-        'deleteOriginals': deleteOriginals,
-        'outputDir': outputDir,
-        'keyIdHint': _hexToBytes(keyIdHex),
-        'deviceKey': deviceKey,
-      }, onFileResult: onFileResult);
+      yield* _runBatch(
+        {
+          'cmd': 'encrypt',
+          'keyMode': keyMode.name,
+          'outRelPaths': outRelPaths,
+          'files': files,
+          'passphrase': pw,
+          'opslimit': kdf.opslimit,
+          'memlimit': kdf.memlimit,
+          'deleteOriginals': deleteOriginals,
+          'outputDir': outputDir,
+          'keyIdHint': _hexToBytes(keyIdHex),
+          'deviceKey': deviceKey,
+          'verifyDelete': verifyDelete,
+        },
+        onFileResult: onFileResult,
+        onFileVerified: onFileVerified,
+        stagingDir: stagingDir,
+      );
     } finally {
       pw.fillRange(0, pw.length, 0);
     }
@@ -202,20 +243,33 @@ class AppCrypto {
     Uint8List? deviceKey,
     Uint8List? recipientPublicKey,
     Uint8List? recipientSecretKey,
+    List<String?>? outRelPaths,
+    String? stagingDir,
+    bool deleteOriginals = false,
+    bool verifyDelete = false,
+    FileVerifiedCallback? onFileVerified,
     FileResultCallback? onFileResult,
   }) async* {
     if (files.isEmpty) return;
     final pw = utf8.encode(passphrase);
     try {
-      yield* _runBatch({
-        'cmd': 'decrypt',
-        'files': files,
-        'passphrase': pw,
-        'outputDir': outputDir,
-        'deviceKey': deviceKey,
-        'recipientPublicKey': recipientPublicKey,
-        'recipientSecretKey': recipientSecretKey,
-      }, onFileResult: onFileResult);
+      yield* _runBatch(
+        {
+          'cmd': 'decrypt',
+          'outRelPaths': outRelPaths,
+          'files': files,
+          'passphrase': pw,
+          'outputDir': outputDir,
+          'deviceKey': deviceKey,
+          'recipientPublicKey': recipientPublicKey,
+          'recipientSecretKey': recipientSecretKey,
+          'deleteOriginals': deleteOriginals,
+          'verifyDelete': verifyDelete,
+        },
+        onFileResult: onFileResult,
+        onFileVerified: onFileVerified,
+        stagingDir: stagingDir,
+      );
     } finally {
       pw.fillRange(0, pw.length, 0);
     }

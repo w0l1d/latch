@@ -299,5 +299,54 @@ void main() {
         );
       },
     );
+
+    // The header-only case above proves nothing about the dangerous shape: a
+    // container cut on a chunk boundary, where every byte that survived
+    // authenticates. Only `requireFinalized` separates that from a complete
+    // file, so it is pinned at every boundary — including the last one, where
+    // all plaintext is present and solely the empty FINAL chunk is gone.
+    test(
+      'decrypt transformer rejects truncation at every whole-chunk boundary',
+      () async {
+        final key = adapter.randomBytes(32);
+        const chunkSize = 256;
+        final plain = Uint8List.fromList(List.generate(1024, (i) => i & 0xFF));
+
+        final encrypted = await collectStream(
+          streamOf(
+            plain,
+          ).transform(adapter.createEncryptTransformer(key, chunkSize)),
+        );
+
+        final header = adapter.secretstreamHeaderBytes;
+        const frame = chunkSize + 17; // chunk + secretstream tag+MAC
+        // 1024 bytes at 256 = four data chunks, then an empty FINAL chunk.
+        expect(encrypted.length, header + 4 * frame + 17);
+
+        for (var chunks = 1; chunks <= 4; chunks++) {
+          final truncated = encrypted.sublist(0, header + chunks * frame);
+          Object? caught;
+          var emitted = 0;
+          try {
+            await for (final c in streamOf(
+              truncated,
+            ).transform(adapter.createDecryptTransformer(key, chunkSize))) {
+              emitted += c.length;
+            }
+          } catch (e) {
+            caught = e;
+          }
+          expect(
+            caught,
+            isA<CorruptedFileError>(),
+            reason: 'truncated after $chunks chunk(s) must not decrypt',
+          );
+          // The chunks that survived DO authenticate, so they are emitted
+          // before the error. Callers must therefore treat the whole output as
+          // unusable on error and sweep it — the error alone is not enough.
+          expect(emitted, chunks * chunkSize);
+        }
+      },
+    );
   });
 }

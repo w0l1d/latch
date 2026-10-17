@@ -1,6 +1,8 @@
 <div align="center">
 
-# 🔒 Latch
+<img src="assets/brand/latch-mark.svg" alt="Latch logo" width="112" height="112">
+
+# Latch
 
 ### Stateless, offline file encryption for your phone.
 
@@ -17,6 +19,18 @@ Encrypt any file with a passphrase into a self-contained `.latch` container that
 </div>
 
 ---
+
+## Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/01-offline-1080x1920.png" alt="No account, no cloud" width="18%">
+  <img src="docs/screenshots/02-passphrase-1080x1920.png" alt="Lock a file with a passphrase" width="18%">
+  <img src="docs/screenshots/03-folder-1080x1920.png" alt="Lock a whole folder" width="18%">
+  <img src="docs/screenshots/04-share-1080x1920.png" alt="Share with a recipient key" width="18%">
+  <img src="docs/screenshots/05-shred-1080x1920.png" alt="Secure delete" width="18%">
+</p>
+
+Real captures from a Pixel 9 emulator. Store assets and the brand palette (paper `#F5F3EF`, ink `#2A2723`, green `#2D6B54`, Manrope for the logo and store art) are in [`docs/screenshots/`](docs/screenshots/) and [`assets/brand/`](assets/brand/).
 
 ## Why Latch
 

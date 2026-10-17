@@ -9,7 +9,8 @@ import '../../core/passphrase_policy.dart';
 
 class DecryptPassphraseScreen extends StatefulWidget {
   final List<String> files;
-  const DecryptPassphraseScreen({super.key, required this.files});
+  final Map<String, dynamic>? bulk;
+  const DecryptPassphraseScreen({super.key, required this.files, this.bulk});
 
   @override
   State<DecryptPassphraseScreen> createState() =>
@@ -100,6 +101,19 @@ class _DecryptPassphraseScreenState extends State<DecryptPassphraseScreen> {
   }
 
   void _submit() {
+    final bulk = widget.bulk;
+    if (bulk != null) {
+      context.push(
+        '/decrypt/bulk-progress',
+        extra: {
+          'inventory': bulk['inventory'],
+          'deleteSources': bulk['deleteSources'],
+          'destination': bulk['destination'],
+          'passphrase': _controller.text,
+        },
+      );
+      return;
+    }
     context.push(
       '/decrypt/progress',
       extra: {'files': widget.files, 'passphrase': _controller.text},

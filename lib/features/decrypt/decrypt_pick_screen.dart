@@ -171,6 +171,13 @@ class _DecryptPickScreenState extends State<DecryptPickScreen> {
                 ),
               ),
               const SizedBox(height: 16),
+              if (count == 0) ...[
+                LatchSecondaryButton(
+                  label: 'Unlock a whole folder',
+                  onPressed: () => context.push('/decrypt/folder'),
+                ),
+                const SizedBox(height: 8),
+              ],
               LatchPrimaryButton(
                 label: 'Enter passphrase',
                 onPressed: count > 0

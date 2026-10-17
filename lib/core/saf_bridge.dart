@@ -51,6 +51,49 @@ class SafBridge {
     });
   }
 
+  /// Deletes a document by its own URI — for documents found by listing a
+  /// granted tree, which never had a cache path registered.
+  static Future<void> deleteDocumentUri(String uri) =>
+      channel.invokeMethod('delete', {'uri': uri});
+
+  /// Everything under a granted folder, read through the document provider.
+  /// Plain file APIs cannot see non-media files there on Android 11+, which is
+  /// why a folder picked as a path looks empty. Without [recursive], files in
+  /// subfolders are listed but not opened. Throws on a platform failure: an
+  /// unreadable folder must not look like an empty one.
+  static Future<SafTreeListing> listTree(
+    String treeUri, {
+    required bool recursive,
+    int prefixLength = 0,
+  }) async {
+    final raw = await channel.invokeMethod<Map<Object?, Object?>>('listTree', {
+      'treeUri': treeUri,
+      'recursive': recursive,
+      'prefixLength': prefixLength,
+    });
+    if (raw == null) throw StateError('listTree returned nothing');
+    return SafTreeListing(
+      rootName: (raw['rootName'] as String?) ?? 'folder',
+      entries: [
+        for (final e in (raw['entries'] as List<Object?>? ?? const []))
+          SafTreeEntry(
+            uri: (e as Map)['uri'] as String,
+            relativePath: e['rel'] as String,
+            isDirectory: e['isDir'] as bool,
+            sizeBytes: (e['size'] as num).toInt(),
+            modified: DateTime.fromMillisecondsSinceEpoch(
+              (e['modified'] as num).toInt(),
+            ),
+            prefix: e['prefix'] as Uint8List?,
+          ),
+      ],
+    );
+  }
+
+  /// Copies one listed document into app-private storage at [destPath].
+  static Future<void> copyToCache(String uri, String destPath) =>
+      channel.invokeMethod('copyToCache', {'uri': uri, 'destPath': destPath});
+
   /// Deletes the real document behind [path].
   static Future<void> deleteDocument(String path) {
     return channel.invokeMethod('delete', {'uri': _uriByPath[path]!});
@@ -164,6 +207,17 @@ class SafBridge {
       return live ?? false;
     } catch (_) {
       return false;
+    }
+  }
+
+  /// Bytes available on the volume holding the real filesystem [path], or null
+  /// when the platform will not say. Null means "proceed", never "refuse": the
+  /// mid-run write failure is the backstop. Never throws.
+  static Future<int?> freeBytesAt(String path) async {
+    try {
+      return await channel.invokeMethod<int>('freeBytes', {'path': path});
+    } catch (_) {
+      return null;
     }
   }
 
@@ -318,4 +372,32 @@ class SafTreeGrants {
   /// Whether the app is close enough to the ceiling that the user should be
   /// told before the platform starts dropping their oldest folders for them.
   bool get nearLimit => limit > 0 && count >= (limit * 0.8).floor();
+}
+
+/// One document or folder found by [SafBridge.listTree].
+class SafTreeEntry {
+  final String uri;
+  final String relativePath;
+  final bool isDirectory;
+  final int sizeBytes;
+  final DateTime modified;
+
+  /// First bytes of a file that will be classified; null for folders, files
+  /// left out by a non-recursive listing, and files that could not be opened.
+  final Uint8List? prefix;
+
+  const SafTreeEntry({
+    required this.uri,
+    required this.relativePath,
+    required this.isDirectory,
+    required this.sizeBytes,
+    required this.modified,
+    this.prefix,
+  });
+}
+
+class SafTreeListing {
+  final String rootName;
+  final List<SafTreeEntry> entries;
+  const SafTreeListing({required this.rootName, required this.entries});
 }

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'core/app_crypto.dart';
 import 'core/device_key_service.dart';
@@ -5,6 +6,7 @@ import 'core/incoming_file_service.dart';
 import 'core/passphrase_storage_service.dart';
 import 'core/recipient_key_service.dart';
 import 'core/router.dart';
+import 'core/staging_sweep.dart';
 import 'shared/theme/app_theme.dart';
 
 Future<void> main() async {
@@ -21,6 +23,7 @@ Future<void> main() async {
     );
     return;
   }
+  if (Platform.isAndroid) await StagingSweep.sweepOrphans();
   AppCrypto.passphraseStorage = PassphraseStorageService();
   AppCrypto.deviceKeyService = DeviceKeyService();
   AppCrypto.recipientKeys = RecipientKeyService(
