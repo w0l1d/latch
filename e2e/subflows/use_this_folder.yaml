@@ -1,0 +1,21 @@
+appId: ${APP_ID}
+---
+# Confirm the folder currently open in the system *folder* picker.
+#
+# Split out from `grant_fixture_folder.yaml` because the explicit-output-folder
+# flow (17) grants a folder one level down and must reach it before this point.
+# Keeping the confirmation itself in one place means "Use this folder" and the
+# OEM confirmation are tapped the same way everywhere.
+- extendedWaitUntil:
+    visible: "Use this folder"
+    timeout: 20000
+- tapOn: "Use this folder"
+- waitForAnimationToEnd
+
+# The system asks for confirmation on some API levels / OEM skins.
+- runFlow:
+    when:
+      visible: "Allow"
+    commands:
+      - tapOn: "Allow"
+      - waitForAnimationToEnd

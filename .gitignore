@@ -144,3 +144,15 @@ doc/api/
 .flutter-plugins
 .flutter-plugins-dependencies
 
+
+# Python bytecode from tool/ generators (run with a system Python)
+__pycache__/
+*.pyc
+
+# graphify's per-clone markers (the graph itself, once built, is committed)
+graphify-out/.graphify_python
+graphify-out/.graphify_root
+
+# Skills installed locally into the repo by tooling, not project source
+.agents/
+skills-lock.json

@@ -1,0 +1,31 @@
+appId: ${APP_ID}
+---
+# Open the folder picker and its drawer, then stop.
+#
+# This is a *probe*, not a test: run.sh runs it once per device so
+# `lib/root_label.py` can read the internal-storage volume's label off the view
+# tree, because that label is OEM-specific and is not reachable over adb.
+#
+# It deliberately asserts nothing after the drawer opens. The drawer's contents
+# are the answer, and they differ per device — an assertion here would be the
+# same hard-coded guess this probe exists to remove.
+#
+# If this flow fails, run.sh warns and falls back to the AOSP string; it does
+# not fail the run. A device whose picker cannot be opened will fail loudly in
+# the first flow that needs it, with its own selector error.
+- launchApp
+- runFlow: ensure_home.yaml
+- tapOn:
+    id: "home_encrypt"
+- waitForAnimationToEnd
+- tapOn:
+    id: "encrypt_pick_folder"
+- waitForAnimationToEnd
+- tapOn:
+    id: "encrypt_folder_pick"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: "Show roots"
+    timeout: 20000
+- tapOn: "Show roots"
+- waitForAnimationToEnd

@@ -1,0 +1,63 @@
+appId: ${APP_ID}
+name: 08 · a source Android can't place · the user sends output to Downloads
+tags:
+  - core
+---
+# The picker's Downloads shortcut hands the app `msf:` document ids that carry
+# no folder at all — Android deliberately shares one document, not its
+# location. `resolvePath` returning null there is the correct answer, not a
+# failure to engineer around.
+#
+# What must NOT happen is the app guessing. It has to ask where the output goes,
+# and "Use Downloads" is one of the three answers it offers. This flow pins that
+# branch end to end: the question is asked, the choice is honoured, and the
+# ciphertext really is in Downloads afterwards (asserts/08).
+- launchApp
+- runFlow: ../subflows/ensure_home.yaml
+
+- tapOn:
+    id: "home_encrypt"
+- waitForAnimationToEnd
+- runFlow:
+    file: ../subflows/pick_file.yaml
+    env:
+      FILE: ${DL_FILE}
+      PICK_ROOT: downloads
+      PICK_SUBDIR: ""
+- tapOn:
+    id: "encrypt_pick_continue"
+- waitForAnimationToEnd
+- tapOn: "Enter passphrase"
+- inputText: "${PASS}"
+- tapOn:
+    id: "encrypt_passphrase_continue"
+- waitForAnimationToEnd
+- tapOn:
+    id: "encrypt_options_continue"
+- waitForAnimationToEnd
+- tapOn:
+    id: "encrypt_review_lock"
+
+# No rationale here: with no folder name to show, there is nothing to explain
+# first. The destination question comes straight up — if the rationale appears,
+# the app is claiming to know a folder it does not.
+- extendedWaitUntil:
+    visible:
+      id: "save_folder_downloads"
+    timeout: 30000
+- assertNotVisible:
+    id: "save_folder_rationale_continue"
+- tapOn:
+    id: "save_folder_downloads"
+- waitForAnimationToEnd
+
+- extendedWaitUntil:
+    visible:
+      id: "encrypt_success_done"
+    timeout: 40000
+# The screen must own up to where the file went. "1 file locked" alone would
+# leave the user believing it is beside the original.
+- assertVisible: ".*saved to your Downloads folder.*"
+- assertVisible: ".*\\(in Downloads\\).*"
+- tapOn:
+    id: "encrypt_success_done"

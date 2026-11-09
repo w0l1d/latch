@@ -1,0 +1,58 @@
+appId: ${APP_ID}
+name: 01 · lock one file, keep the original
+tags:
+  - core
+---
+- launchApp
+- runFlow: ../subflows/ensure_home.yaml
+
+- tapOn:
+    id: "home_encrypt"
+- waitForAnimationToEnd
+# Resolvable source: the container must land beside the original, which on
+# Android means granting the folder. This flow owns that definition.
+- runFlow:
+    file: ../subflows/pick_file.yaml
+    env:
+      PICK_ROOT: internal
+      PICK_SUBDIR: ""
+- tapOn:
+    id: "encrypt_pick_continue"
+- waitForAnimationToEnd
+
+- tapOn: "Enter passphrase"
+- inputText: "${PASS}"
+- tapOn:
+    id: "encrypt_passphrase_continue"
+- waitForAnimationToEnd
+
+# "Keep the originals" is the default and must be the selected card.
+- assertVisible:
+    id: "encrypt_options_keep"
+- tapOn:
+    id: "encrypt_options_continue"
+- waitForAnimationToEnd
+
+# The review screen restates what is about to happen; assert the facts it is
+# claiming, not just that it appeared.
+- assertVisible: "Ready to lock"
+- assertVisible: "Kept"
+- assertVisible: "Same folder as each original"
+- tapOn:
+    id: "encrypt_review_lock"
+
+# The save destination is decided *before* any crypto runs: planning only calls
+# the grant prompt when no existing grant covers the source folder.
+- runFlow: ../subflows/save_grant.yaml
+
+# Argon2id + secretstream on the real device; generous but bounded.
+- extendedWaitUntil:
+    visible:
+      id: "encrypt_success_done"
+    timeout: 40000
+- assertVisible: "1 file locked."
+- tapOn:
+    id: "encrypt_success_done"
+- waitForAnimationToEnd
+- assertVisible:
+    id: "home_encrypt"

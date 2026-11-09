@@ -1,0 +1,74 @@
+appId: ${APP_ID}
+name: 12 · declining the permission picker still has a way forward
+tags:
+  - core
+---
+# A user who taps Continue and then changes their mind inside the system picker
+# must not be stranded. `_pickTree` returning null is not an answer, so the
+# three-way destination question comes back — and "Choose folder" reopens the
+# picker rather than treating the decline as a decision.
+#
+# This flow proves the recovery path works, not just that it is reachable: the
+# output has to end up beside the original (asserts/12).
+- launchApp
+- runFlow: ../subflows/ensure_home.yaml
+
+- tapOn:
+    id: "home_encrypt"
+- waitForAnimationToEnd
+- runFlow:
+    file: ../subflows/pick_file.yaml
+    env:
+      FILE: ${CHOOSE_FILE}
+      PICK_ROOT: internal
+      PICK_SUBDIR: ""
+- tapOn:
+    id: "encrypt_pick_continue"
+- waitForAnimationToEnd
+- tapOn: "Enter passphrase"
+- inputText: "${PASS}"
+- tapOn:
+    id: "encrypt_passphrase_continue"
+- waitForAnimationToEnd
+- tapOn:
+    id: "encrypt_options_continue"
+- waitForAnimationToEnd
+- tapOn:
+    id: "encrypt_review_lock"
+
+# 1. Continue into the picker...
+- extendedWaitUntil:
+    visible:
+      id: "save_folder_rationale_continue"
+    timeout: 20000
+- tapOn:
+    id: "save_folder_rationale_continue"
+
+# ...then leave it without granting anything. Back is the same cancellation the
+# picker's own Cancel button produces.
+- extendedWaitUntil:
+    visible: "Use this folder"
+    timeout: 20000
+- runFlow: ../subflows/back_out_of_picker.yaml
+
+# 2. The picker produced no grant, which is not an answer — ask again.
+- extendedWaitUntil:
+    visible:
+      id: "save_folder_choose"
+    timeout: 20000
+- tapOn:
+    id: "save_folder_choose"
+- waitForAnimationToEnd
+
+# 3. This time the picker is used as intended.
+- runFlow: ../subflows/grant_fixture_folder.yaml
+
+- extendedWaitUntil:
+    visible:
+      id: "encrypt_success_done"
+    timeout: 40000
+# Beside the original, so no Downloads banner: recovery must land the file where
+# the user originally wanted it, not somewhere merely acceptable.
+- assertNotVisible: ".*saved to your Downloads folder.*"
+- tapOn:
+    id: "encrypt_success_done"

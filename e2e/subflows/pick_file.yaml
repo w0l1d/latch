@@ -1,0 +1,112 @@
+appId: ${APP_ID}
+# Two parameters, and NO `env:` block above. That absence is load-bearing —
+# please do not "helpfully" add defaults back.
+#
+# Maestro applies a subflow file's own `env:` *after* the caller's
+# `runFlow: env:`. Both become a `defineVariables` command; the caller's is
+# prepended by `Env.withEnv`, the file's own is prepended later still when the
+# file is parsed, so `runSubFlow` executes them caller-first and the file's own
+# `putEnv` wins. A default declared here is therefore not a fallback — it
+# silently overrides whatever the caller passed.
+#
+# That is precisely what broke flows 08, 09, 13 and 15: `ROOT: internal`
+# shadowed their `ROOT: downloads`, and `SUBDIR: ""` shadowed flow 15's
+# `SUBDIR: bulk`. Renaming the keys would not have fixed it — the new names
+# would shade the caller in exactly the same way. The parameters have to be
+# *required*, and every caller has to pass them.
+#
+#   PICK_ROOT    'internal' | 'downloads' — which DocumentsUI root to enter
+#   PICK_SUBDIR  subfolder to descend into, or "" to pick from the top level
+#
+# The names are deliberately distinct from the suite variables in lib/common.sh:
+# those arrive as `-e NAME=…` on the maestro command line and would otherwise
+# leak in as an ambient value for any caller that forgot to pass one. (Renaming
+# `SUBDIR` was not cosmetic — a bare `$SUBDIR` was resolving to the suite's
+# `bulk` for callers that never asked for a subfolder.)
+---
+# Open the system picker (whichever button this screen offers) and choose
+# `${FILE}` from the fixture folder.
+#
+# Both encrypt entry points are handled because the screen shows "Choose files
+# to lock" for the first pick and "+ Add more" for the second — a flow that only
+# knew one of them would silently stop testing multi-file selection.
+- runFlow:
+    when:
+      visible:
+        id: "encrypt_pick_cta"
+    commands:
+      - tapOn:
+          id: "encrypt_pick_cta"
+      - waitForAnimationToEnd
+- runFlow:
+    when:
+      visible:
+        id: "encrypt_pick_add"
+    commands:
+      - tapOn:
+          id: "encrypt_pick_add"
+      - waitForAnimationToEnd
+- runFlow:
+    when:
+      visible:
+        id: "decrypt_pick_cta"
+    commands:
+      - tapOn:
+          id: "decrypt_pick_cta"
+      - waitForAnimationToEnd
+
+- runFlow:
+    file: open_fixtures.yaml
+    env:
+      ROOT: ${PICK_ROOT}
+
+# Descend one level when the caller asked for a subfolder. Done only on request:
+# an unconditional tap would fail the flows whose file sits at the top level.
+- runFlow:
+    when:
+      true: ${PICK_SUBDIR != ""}
+    commands:
+      - extendedWaitUntil:
+          visible: "${PICK_SUBDIR}"
+          timeout: 15000
+      - tapOn: "${PICK_SUBDIR}"
+      - waitForAnimationToEnd
+
+# Prove the fixture is actually listed before tapping it — and scroll to it.
+#
+# The folder grows as the run proceeds: every flow leaves containers and
+# restored files behind, and DocumentsUI lists its seven folders ahead of every
+# file, so on a phone screen the target is regularly below the fold.
+# `extendedWaitUntil` only *waits*; it never scrolls. A full run therefore died
+# from the third flow onward on `"<file>" is visible` while `adb shell ls`
+# showed the file sitting right there on disk — a fixture that looks missing.
+#
+# `scrollUntilVisible` is a no-op when the element is already on screen, so
+# this costs nothing for the flows whose file happens to be at the top.
+#
+# `centerElement` must stay off. Centring is a post-condition the scroll has to
+# satisfy, and the *last* row of the grid cannot be centred — the list runs out
+# of scroll before the row reaches the middle. The command then times out and
+# reports "No visible element found" while the file sits fully on screen, which
+# is the most misleading failure shape in this suite. Alphabetically-last
+# fixtures (FILE3 = "unicode café ☐.txt") hit it every run.
+#
+# 50% rather than 60%: a grid row clipped by the bottom edge is still tappable,
+# and the threshold only decides when the scroll stops.
+#
+# 60000, not 20000. This timeout is really a budget in *swipes*: Maestro waits
+# for the list to settle after each one, so a press costs ~4.7 s and 20 s buys
+# five. On 2026-11-09 flow 15 timed out on `two-a.txt` with the file already
+# rendered at the bottom of the grid — the fifth swipe had just brought it into
+# view and the deadline expired before the next check. The folder grows all run
+# (`push_fixtures` and `clean_outputs` run once, at the start; every flow leaves
+# containers and restored plaintext behind), so the same selector that reaches
+# the alphabetically-last file in flow 04 needs one swipe more by flow 15.
+# Isolation hides it completely: a fresh run re-pushes and deletes the growth.
+- scrollUntilVisible:
+    element: "${FILE}"
+    direction: DOWN
+    timeout: 60000
+    visibilityPercentage: 50
+- tapOn: "${FILE}"
+- waitForAnimationToEnd

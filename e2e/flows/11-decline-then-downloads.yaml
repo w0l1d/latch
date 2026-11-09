@@ -1,0 +1,61 @@
+appId: ${APP_ID}
+name: 11 · declining the rationale, then choosing Downloads
+tags:
+  - core
+---
+# The mixed answer, and the one a user is most likely to give by accident:
+# they back out of "Save beside the originals?" (perhaps worried about the
+# permission), then deliberately pick Downloads from the three-way question.
+#
+# That must be honoured as a destination *and* the source folder must be left
+# alone — output in the wrong place AND an unexpected container beside the
+# original would be the worst of both. Asserted in asserts/11.
+- launchApp
+- runFlow: ../subflows/ensure_home.yaml
+
+- tapOn:
+    id: "home_encrypt"
+- waitForAnimationToEnd
+- runFlow:
+    file: ../subflows/pick_file.yaml
+    env:
+      FILE: ${DL_CHOOSE_FILE}
+      PICK_ROOT: internal
+      PICK_SUBDIR: ""
+- tapOn:
+    id: "encrypt_pick_continue"
+- waitForAnimationToEnd
+- tapOn: "Enter passphrase"
+- inputText: "${PASS}"
+- tapOn:
+    id: "encrypt_passphrase_continue"
+- waitForAnimationToEnd
+- tapOn:
+    id: "encrypt_options_continue"
+- waitForAnimationToEnd
+- tapOn:
+    id: "encrypt_review_lock"
+
+- extendedWaitUntil:
+    visible:
+      id: "save_folder_rationale_continue"
+    timeout: 20000
+- tapOn:
+    id: "save_folder_rationale_cancel"
+- waitForAnimationToEnd
+
+- extendedWaitUntil:
+    visible:
+      id: "save_folder_downloads"
+    timeout: 20000
+- tapOn:
+    id: "save_folder_downloads"
+- waitForAnimationToEnd
+
+- extendedWaitUntil:
+    visible:
+      id: "encrypt_success_done"
+    timeout: 40000
+- assertVisible: ".*saved to your Downloads folder.*"
+- tapOn:
+    id: "encrypt_success_done"

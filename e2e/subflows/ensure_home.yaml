@@ -1,0 +1,30 @@
+appId: ${APP_ID}
+---
+# Every flow starts here. `run.sh` clears the app before each flow, so normally
+# onboarding is on screen; if a previous flow (or a `--keep-state` run) already
+# finished it, this is a no-op and the flow proceeds.
+- runFlow:
+    when:
+      visible:
+        id: "onboarding_get_started"
+    commands:
+      - tapOn:
+          id: "onboarding_get_started"
+      - waitForAnimationToEnd
+      - tapOn:
+          id: "onboarding_next"
+      - waitForAnimationToEnd
+      # The acknowledgement gate is the point of this screen: there is no
+      # recovery, and Continue must not work until it is checked.
+      - tapOn: "I understand there's no recovery."
+      - waitForAnimationToEnd
+      - tapOn:
+          id: "onboarding_acknowledge"
+      - waitForAnimationToEnd
+      - tapOn:
+          id: "onboarding_go_home"
+      - waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "home_encrypt"
+    timeout: 15000

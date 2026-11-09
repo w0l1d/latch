@@ -1,0 +1,65 @@
+appId: ${APP_ID}
+name: 19 · "Skip" never bypasses the no-recovery warning
+tags:
+  - core
+---
+# A consent test, not a navigation test.
+#
+# `how_it_works_screen.dart` currently gives Skip and Next the same destination
+# (`/onboarding/device-check`), so Skip happens to skip nothing. Whether that is
+# fixed by removing Skip or by sending it elsewhere, one property must hold
+# either way: **skipping the tutorial can never skip the "there is no recovery"
+# acknowledgement.** Losing that gate is the difference between a product that
+# states its own limits and one that quietly encrypts files users cannot open
+# again.
+#
+# So this flow does not assert where Skip goes. It asserts what Skip cannot
+# reach: Home without the acknowledgement. That stays true under either fix.
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: "onboarding_get_started"
+    timeout: 20000
+- tapOn:
+    id: "onboarding_get_started"
+- waitForAnimationToEnd
+- assertVisible: "How it works"
+
+- tapOn:
+    id: "onboarding_skip"
+- waitForAnimationToEnd
+
+# Skip lands on the device benchmark, which calibrates the KDF and then advances
+# on its own — there is nothing to tap until the warning appears.
+- extendedWaitUntil:
+    visible: "I understand there's no recovery."
+    timeout: 60000
+- assertNotVisible:
+    id: "home_encrypt"
+
+# Continue is disabled until the box is ticked. Tapping it must do nothing at
+# all: this is the assertion that would catch a gate that renders unchecked but
+# still navigates.
+- tapOn:
+    id: "onboarding_acknowledge"
+- waitForAnimationToEnd
+- assertVisible: "I understand there's no recovery."
+- assertNotVisible:
+    id: "home_encrypt"
+
+# Only now, with the acknowledgement given, does the flow complete.
+- tapOn: "I understand there's no recovery."
+- waitForAnimationToEnd
+- tapOn:
+    id: "onboarding_acknowledge"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "onboarding_go_home"
+    timeout: 20000
+- tapOn:
+    id: "onboarding_go_home"
+- extendedWaitUntil:
+    visible:
+      id: "home_encrypt"
+    timeout: 20000

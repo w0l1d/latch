@@ -1,0 +1,30 @@
+appId: ${APP_ID}
+---
+# Answer the save prompt with Downloads.
+#
+# Downloads is a destination the user *chooses*. This subflow exists so that a
+# test can choose it deliberately — never so that a flow can drift into it
+# because it declined to answer.
+#
+# Works for both source kinds:
+#   - resolvable (internal storage): the rationale appears first; backing out of
+#     it is a step back, not a cancel, and the destination dialog follows.
+#   - unresolvable (Downloads shortcut): there is no folder to name, so the
+#     destination dialog is the first thing shown.
+- runFlow:
+    when:
+      visible:
+        id: "save_folder_rationale_continue"
+    commands:
+      - tapOn:
+          id: "save_folder_rationale_cancel"
+      - waitForAnimationToEnd
+
+- extendedWaitUntil:
+    visible:
+      id: "save_folder_downloads"
+    timeout: 20000
+- assertVisible: ".*Where to save.*"
+- tapOn:
+    id: "save_folder_downloads"
+- waitForAnimationToEnd

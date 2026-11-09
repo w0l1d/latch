@@ -1,0 +1,98 @@
+appId: ${APP_ID}
+name: 13 · an unresolvable source's chosen folder is remembered, not re-asked
+tags:
+  - core
+---
+# `UnresolvedDestination` exists so a user who picked through the Downloads
+# shortcut is not interrogated on every batch. The stored value is a
+# *preference*, never a grant cache: `live()` re-asks Android whether the tree
+# URI still works before using it, and a revoked grant is forgotten.
+#
+# Two batches, one app session — that is the whole point. `pm clear` runs
+# between flows, not inside one, so the preference survives from the first
+# batch to the second here and nowhere else. Batch 2 taps no save button at
+# all: success can only be reached if no prompt was required.
+- launchApp
+- runFlow: ../subflows/ensure_home.yaml
+
+# ── batch 1: asked, answered, remembered ─────────────────────────────────────
+- tapOn:
+    id: "home_encrypt"
+- waitForAnimationToEnd
+- runFlow:
+    file: ../subflows/pick_file.yaml
+    env:
+      FILE: ${DL_A}
+      PICK_ROOT: downloads
+      PICK_SUBDIR: ""
+- tapOn:
+    id: "encrypt_pick_continue"
+- waitForAnimationToEnd
+- tapOn: "Enter passphrase"
+- inputText: "${PASS}"
+- tapOn:
+    id: "encrypt_passphrase_continue"
+- waitForAnimationToEnd
+- tapOn:
+    id: "encrypt_options_continue"
+- waitForAnimationToEnd
+- tapOn:
+    id: "encrypt_review_lock"
+
+# Unresolvable source, so the destination question comes first and fast.
+- extendedWaitUntil:
+    visible:
+      id: "save_folder_choose"
+    timeout: 30000
+- assertNotVisible:
+    id: "save_folder_rationale_continue"
+- tapOn:
+    id: "save_folder_choose"
+- waitForAnimationToEnd
+- runFlow: ../subflows/grant_fixture_folder.yaml
+
+- extendedWaitUntil:
+    visible:
+      id: "encrypt_success_done"
+    timeout: 40000
+# The grant, not the fallback: this is the answer that gets remembered.
+- assertVisible: ".*Saved in .*LatchE2E.*"
+- tapOn:
+    id: "encrypt_success_done"
+- waitForAnimationToEnd
+
+# ── batch 2: never asked ─────────────────────────────────────────────────────
+- tapOn:
+    id: "home_encrypt"
+- waitForAnimationToEnd
+- runFlow:
+    file: ../subflows/pick_file.yaml
+    env:
+      FILE: ${DL_B}
+      PICK_ROOT: downloads
+      PICK_SUBDIR: ""
+- tapOn:
+    id: "encrypt_pick_continue"
+- waitForAnimationToEnd
+- tapOn: "Enter passphrase"
+- inputText: "${PASS}"
+- tapOn:
+    id: "encrypt_passphrase_continue"
+- waitForAnimationToEnd
+- tapOn:
+    id: "encrypt_options_continue"
+- waitForAnimationToEnd
+- tapOn:
+    id: "encrypt_review_lock"
+
+# No save-folder tap follows. If the remembered destination were dropped, or
+# the stored grant read as dead, the dialog would sit here unanswered and this
+# wait would time out — which is the failure this flow is for.
+- extendedWaitUntil:
+    visible:
+      id: "encrypt_success_done"
+    timeout: 40000
+- assertVisible: ".*Saved in .*LatchE2E.*"
+- assertNotVisible: ".*saved to your Downloads folder.*"
+- tapOn:
+    id: "encrypt_success_done"

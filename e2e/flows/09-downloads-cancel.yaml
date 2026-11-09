@@ -1,0 +1,59 @@
+appId: ${APP_ID}
+name: 09 · a source Android can't place · declining writes nothing
+tags:
+  - core
+---
+# The other half of flow 08, and the security-relevant one.
+#
+# Cancelling the destination question must stop the batch. Downloads is a
+# destination the user can *choose*; it must never be what they get by
+# declining to choose — that conflation is exactly the bug class this pins.
+#
+# Planning runs before the crypto worker, so the pop below is a genuine "nothing
+# happened", not "nothing visible yet". The host assertion is the real proof:
+# the fixture folder is byte-identical and Downloads gained no container.
+- launchApp
+- runFlow: ../subflows/ensure_home.yaml
+
+- tapOn:
+    id: "home_encrypt"
+- waitForAnimationToEnd
+- runFlow:
+    file: ../subflows/pick_file.yaml
+    env:
+      FILE: ${DL_CANCEL_FILE}
+      PICK_ROOT: downloads
+      PICK_SUBDIR: ""
+- tapOn:
+    id: "encrypt_pick_continue"
+- waitForAnimationToEnd
+- tapOn: "Enter passphrase"
+- inputText: "${PASS}"
+- tapOn:
+    id: "encrypt_passphrase_continue"
+- waitForAnimationToEnd
+- tapOn:
+    id: "encrypt_options_continue"
+- waitForAnimationToEnd
+- tapOn:
+    id: "encrypt_review_lock"
+
+- extendedWaitUntil:
+    visible:
+      id: "save_folder_cancel"
+    timeout: 30000
+- assertNotVisible:
+    id: "save_folder_rationale_continue"
+- tapOn:
+    id: "save_folder_cancel"
+- waitForAnimationToEnd
+
+# A decline stops the run and returns the way Cancel does. Landing back on the
+# review screen — not a spinner, not a success screen — is what proves the batch
+# never started.
+- extendedWaitUntil:
+    visible:
+      id: "encrypt_review_lock"
+    timeout: 15000
+- assertNotVisible:
+    id: "encrypt_success_done"

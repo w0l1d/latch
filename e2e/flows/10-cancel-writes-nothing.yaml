@@ -1,0 +1,68 @@
+appId: ${APP_ID}
+name: 10 · backing out of both prompts writes nothing
+tags:
+  - core
+---
+# The resolvable-source counterpart to flow 09, and the one that covers the
+# rationale dialog's Cancel.
+#
+# Backing out of the rationale is a step back, not a cancel: the destination
+# question follows, and *there* Cancel is a real answer. Two declines in a row
+# must still end the batch with nothing written — never a silent Downloads
+# fallback, which is what the old `showDialog<bool>` completing with null used
+# to mean.
+- launchApp
+- runFlow: ../subflows/ensure_home.yaml
+
+- tapOn:
+    id: "home_encrypt"
+- waitForAnimationToEnd
+- runFlow:
+    file: ../subflows/pick_file.yaml
+    env:
+      FILE: ${CANCEL_FILE}
+      PICK_ROOT: internal
+      PICK_SUBDIR: ""
+- tapOn:
+    id: "encrypt_pick_continue"
+- waitForAnimationToEnd
+- tapOn: "Enter passphrase"
+- inputText: "${PASS}"
+- tapOn:
+    id: "encrypt_passphrase_continue"
+- waitForAnimationToEnd
+- tapOn:
+    id: "encrypt_options_continue"
+- waitForAnimationToEnd
+# The review screen names the destination it is about to use, so the flow starts
+# from the screen that made the promise this scenario then breaks.
+- assertVisible: "Same folder as each original"
+- tapOn:
+    id: "encrypt_review_lock"
+
+# 1. Rationale — the folder is known, so the picker is explained first.
+- extendedWaitUntil:
+    visible:
+      id: "save_folder_rationale_continue"
+    timeout: 20000
+- assertVisible: ".*Save beside the originals.*"
+- tapOn:
+    id: "save_folder_rationale_cancel"
+- waitForAnimationToEnd
+
+# 2. Destination — the three-way question, not a silent Downloads fallback.
+- extendedWaitUntil:
+    visible:
+      id: "save_folder_cancel"
+    timeout: 20000
+- assertVisible: ".*Where to save.*"
+- tapOn:
+    id: "save_folder_cancel"
+- waitForAnimationToEnd
+
+- extendedWaitUntil:
+    visible:
+      id: "encrypt_review_lock"
+    timeout: 15000
+- assertNotVisible:
+    id: "encrypt_success_done"

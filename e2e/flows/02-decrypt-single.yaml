@@ -1,0 +1,44 @@
+appId: ${APP_ID}
+name: 02 · unlock the container produced by 01
+tags:
+  - core
+---
+# Depends on 01: the container this picks is the one 01 wrote. run.sh runs the
+# flows in order, and the host-side assert for 01 proves the file exists.
+- launchApp
+- runFlow: ../subflows/ensure_home.yaml
+
+- tapOn:
+    id: "home_decrypt"
+- waitForAnimationToEnd
+# The decrypt picker filters to `.latch`, so the container — not the plaintext
+# name — is what the picker can show.
+- runFlow:
+    file: ../subflows/pick_file.yaml
+    env:
+      FILE: ${CONTAINER}
+      PICK_ROOT: internal
+      PICK_SUBDIR: ""
+- tapOn:
+    id: "decrypt_pick_continue"
+- waitForAnimationToEnd
+
+- tapOn: "Passphrase"
+- inputText: "${PASS}"
+- tapOn:
+    id: "decrypt_passphrase_unlock"
+
+# Decrypt plans its destination too — and it plans before it decrypts. The
+# grant is what keeps plaintext in the source folder instead of Downloads.
+- runFlow: ../subflows/save_grant.yaml
+
+- extendedWaitUntil:
+    visible:
+      id: "decrypt_success_done"
+    timeout: 40000
+- assertVisible: "File restored."
+- tapOn:
+    id: "decrypt_success_done"
+- waitForAnimationToEnd
+- assertVisible:
+    id: "home_decrypt"

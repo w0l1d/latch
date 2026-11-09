@@ -1,0 +1,36 @@
+appId: ${APP_ID}
+---
+# Leave the DocumentsUI folder picker without choosing a folder.
+#
+# A single `back` is not enough. DocumentsUI spends the first press walking up
+# one folder level, so the picker stays open, the app is never reached, and the
+# flow fails several steps later on a screen assertion that names nothing about
+# the cause. Seen on API 36; it is a property of the picker, not of the device.
+# Measured depth: three presses from the fixture folder (folder → Download →
+# volume root → gone), one more from any deeper seed.
+#
+# The guard is the picker's own chrome, "Show roots", and it has to be something
+# that survives every location. It was "Use this folder" at first, and that
+# stalls one press short: a volume root is not selectable, so DocumentsUI swaps
+# the button for a disabled "USE THIS FOLDER" plus "Can't use this folder". The
+# loop read that as "picker gone", stopped, and the caller failed on a screen
+# assertion while the hierarchy showed the picker wide open at the root.
+# "Show roots" is a toolbar action present at every level, and absent once the
+# app is back — which is exactly the signal the loop needs.
+#
+# The count is bounded so a picker that refuses to close fails the caller's next
+# assertion rather than pressing back into (and out of) the app: the press after
+# the picker closes is one that pops the app's own route.
+#
+# The caller is responsible for asserting it arrived back in the app — this
+# subflow can only prove the picker is gone, and "gone" is also what a crashed
+# activity looks like.
+- repeat:
+    times: 6
+    commands:
+      - runFlow:
+          when:
+            visible: "Show roots"
+          commands:
+            - back
+            - waitForAnimationToEnd

@@ -1,0 +1,91 @@
+appId: ${APP_ID}
+---
+# Walk DocumentsUI into the fixture folder.
+#
+# HOW the folder is reached decides which document ids the app receives, and
+# that is the entire point of ${ROOT}:
+#
+#   internal   Show roots → <the internal volume> → Download → LatchE2E
+#              ExternalStorageProvider ids ("primary:Download/LatchE2E/…").
+#              The app resolves these to a real folder path, so it can offer to
+#              save beside the originals and ask for one tree grant.
+#
+#              The volume's *name* is device-specific (see ${INTERNAL_ROOT}
+#              below); this comment names its role, not its label.
+#
+#   downloads  Show roots → Downloads → LatchE2E
+#              DownloadsProvider ids ("msf:…"). These carry no folder at all —
+#              Android deliberately hands the app one document and nothing about
+#              where it lives. The app cannot name the source folder and must
+#              ask the user where to save.
+#
+# Both end in the same *visible* folder. Only the ids differ, so a suite that
+# used one entry point forever would never discover the other path exists.
+#
+# Navigation is deliberately unconditional. The picker remembers where it was
+# left — state the app does not own and cannot reset — and "bulk" is visible
+# under *both* providers, so an "already there, skip" shortcut would silently
+# run the flow under the wrong id shape and assert the wrong behaviour.
+- runFlow:
+    when:
+      visible: "Show roots"
+    commands:
+      - tapOn: "Show roots"
+      - waitForAnimationToEnd
+
+# Choosing the row itself lives in tap_drawer_root.yaml, which asserts on the
+# row's id rather than on its text (the label is also a breadcrumb), and which
+# scrolls the drawer when the row is below the fold — six rows of media
+# shortcuts sit above Downloads in the document picker, and a phone held
+# sideways fits five.
+#
+# ${INTERNAL_ROOT} is not a constant. The volume row is labelled after the
+# device — "Internal storage" is AOSP's default, and this Samsung calls an
+# SM-A546B "Walid's A54 backup" — so run.sh reads the name off the drawer once
+# (lib/root_label.py) and passes it in. Hard-coding the AOSP string failed the
+# first end-to-end run here, and failed it as a selector timeout that looked
+# like a broken picker.
+- runFlow:
+    when:
+      true: ${ROOT == 'internal'}
+    file: tap_drawer_root.yaml
+    env:
+      DRAWER_ROOT: ${INTERNAL_ROOT}
+
+# Resolvable: internal-storage folder "Download" (singular on device; the
+# regex tolerates builds that pluralise it). Tapping the volume above closed
+# the drawer, so this "Downloads?" tap cannot hit the drawer's Downloads root
+# by accident.
+- runFlow:
+    when:
+      true: ${ROOT == 'internal'}
+    commands:
+      # Arrival assertion, not decoration: it is what makes a drawer that
+      # closed instead of navigating fail here, naming the picker, rather than
+      # surfacing as an unexplained selector miss on a folder two steps on.
+      - extendedWaitUntil:
+          visible: "Downloads?"
+          timeout: 15000
+      - tapOn: "Downloads?"
+      - waitForAnimationToEnd
+
+# Unresolvable: the Downloads *root* in the open drawer.
+- runFlow:
+    when:
+      true: ${ROOT != 'internal'}
+    file: tap_drawer_root.yaml
+    env:
+      DRAWER_ROOT: "Downloads"
+
+- extendedWaitUntil:
+    visible: "LatchE2E"
+    timeout: 15000
+- tapOn: "LatchE2E"
+- waitForAnimationToEnd
+
+# Prove the destination before letting the caller tap a file: a failed picker
+# navigation would otherwise surface one step later as a confusing
+# "element not found" on a file name.
+- extendedWaitUntil:
+    visible: "bulk"
+    timeout: 15000

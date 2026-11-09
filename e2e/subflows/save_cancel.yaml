@@ -1,0 +1,26 @@
+appId: ${APP_ID}
+---
+# Decline to say where the output goes.
+#
+# The security-relevant assertion is on the host, not here: a cancelled batch
+# must leave the folder byte-for-byte unchanged and write no container at all.
+# A UI that merely *said* it cancelled is not the same claim.
+#
+# Cancel is a real button in the destination dialog, never a courtesy: leaving
+# the batch is a choice, and dismissing the dialog resolves to the same place.
+- runFlow:
+    when:
+      visible:
+        id: "save_folder_rationale_continue"
+    commands:
+      - tapOn:
+          id: "save_folder_rationale_cancel"
+      - waitForAnimationToEnd
+
+- extendedWaitUntil:
+    visible:
+      id: "save_folder_cancel"
+    timeout: 20000
+- tapOn:
+    id: "save_folder_cancel"
+- waitForAnimationToEnd

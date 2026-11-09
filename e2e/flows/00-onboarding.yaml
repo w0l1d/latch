@@ -1,0 +1,38 @@
+appId: ${APP_ID}
+name: 00 · first run completes onboarding
+tags:
+  - core
+---
+- launchApp
+- assertVisible:
+    id: "onboarding_get_started"
+- tapOn:
+    id: "onboarding_get_started"
+- waitForAnimationToEnd
+
+- assertVisible:
+    id: "onboarding_next"
+- tapOn:
+    id: "onboarding_next"
+- waitForAnimationToEnd
+
+# The acknowledgement gate: "Continue" must stay disabled until the user has
+# ticked the box. Tapping the sentence (not just the 18px checkbox) is how a
+# user actually acknowledges it.
+- assertVisible: "I understand there's no recovery."
+- tapOn: "I understand there's no recovery."
+- waitForAnimationToEnd
+- tapOn:
+    id: "onboarding_acknowledge"
+- waitForAnimationToEnd
+
+- assertVisible:
+    id: "onboarding_go_home"
+- tapOn:
+    id: "onboarding_go_home"
+- waitForAnimationToEnd
+
+- assertVisible:
+    id: "home_encrypt"
+- assertVisible:
+    id: "home_decrypt"

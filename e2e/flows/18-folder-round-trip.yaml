@@ -1,0 +1,141 @@
+appId: ${APP_ID}
+name: 18 · folder round trip — lock with delete-originals, then unlock
+tags:
+  - core
+---
+# The one flow that closes the loop on the bulk path. Every other bulk flow
+# stops at "containers appeared"; this one proves the plaintext that comes back
+# is the plaintext that went in, after the original was deleted.
+#
+# It is two batches in one file on purpose. The interesting claim is a *round
+# trip*, and a round trip split across two flow files cannot be made: run.sh
+# resets the app between flows, and the second half would be decrypting
+# containers whose provenance it has to take on faith from the first. One file
+# also means the "delete originals" evidence — the source is gone when the
+# decrypt batch starts — is established inside the run that depends on it.
+#
+# Both batches run non-recursive, so `nested/d3.txt` must survive untouched on
+# both sides. That is the cheapest available proof that neither scan descended.
+- launchApp
+- runFlow: ../subflows/ensure_home.yaml
+
+# ── batch 1: lock the folder, deleting the originals ───────────────────────
+- tapOn:
+    id: "home_encrypt"
+- waitForAnimationToEnd
+- tapOn:
+    id: "encrypt_pick_folder"
+- waitForAnimationToEnd
+- tapOn:
+    id: "encrypt_folder_pick"
+- waitForAnimationToEnd
+- runFlow:
+    file: ../subflows/open_fixtures.yaml
+    env:
+      ROOT: internal
+- extendedWaitUntil:
+    visible: "${BULK_DEC_DIR}"
+    timeout: 15000
+- tapOn: "${BULK_DEC_DIR}"
+- waitForAnimationToEnd
+- runFlow: ../subflows/use_this_folder.yaml
+
+- extendedWaitUntil:
+    visible: ".*2 files.*"
+    timeout: 30000
+- assertVisible: ".*1 file in subfolders will be left out.*"
+
+# The whole point of batch 1: the sources must not survive it. Deleting is
+# opt-in and verified — the container is re-read and decrypted and compared
+# against the source before anything is removed, so a failure here is a real
+# defect, not a UI slip.
+# The toggles live inside the summary list, which scrolls on a phone-sized
+# screen. Scrolling first is a no-op when the row is already visible and turns
+# a small screen into a slower run rather than a selector failure.
+# A `SwitchListTile` merges its title and subtitle into a single accessibility
+# node, so the node's text is "Delete originals afterwards\nEach original is
+# removed only after…". Maestro's `text:` is a full-string regex, so the bare
+# title never matches — and `.*` would not help, because `.` does not cross the
+# newline. `[\s\S]*` consumes the subtitle however it wraps.
+#
+# It failed as `No visible element found` even though the toggle was on screen,
+# which reads exactly like a widget that was never built.
+- scrollUntilVisible:
+    element:
+      text: 'Delete originals afterwards[\s\S]*'
+    direction: DOWN
+    timeout: 20000
+    visibilityPercentage: 60
+- tapOn:
+    text: 'Delete originals afterwards[\s\S]*'
+- waitForAnimationToEnd
+- tapOn:
+    id: "encrypt_folder_continue"
+- waitForAnimationToEnd
+
+- tapOn: "Enter passphrase"
+- inputText: "${PASS}"
+- tapOn:
+    id: "encrypt_passphrase_continue"
+- waitForAnimationToEnd
+
+- extendedWaitUntil:
+    visible:
+      id: "encrypt_bulk_done"
+    timeout: 90000
+- assertVisible: ".*2 files locked.*"
+- tapOn:
+    id: "encrypt_bulk_done"
+- waitForAnimationToEnd
+- assertVisible:
+    id: "home_encrypt"
+
+# ── batch 2: unlock the folder those containers now fill ───────────────────
+# At this point the folder holds two `.latch` files and nothing else at the top
+# level, which is exactly the input the decrypt folder screen exists for.
+- tapOn:
+    id: "home_decrypt"
+- waitForAnimationToEnd
+- tapOn:
+    id: "decrypt_pick_folder"
+- waitForAnimationToEnd
+- assertVisible: "Unlock a folder"
+- tapOn:
+    id: "decrypt_folder_pick"
+- waitForAnimationToEnd
+- runFlow:
+    file: ../subflows/open_fixtures.yaml
+    env:
+      ROOT: internal
+- extendedWaitUntil:
+    visible: "${BULK_DEC_DIR}"
+    timeout: 15000
+- tapOn: "${BULK_DEC_DIR}"
+- waitForAnimationToEnd
+- runFlow: ../subflows/use_this_folder.yaml
+
+- extendedWaitUntil:
+    visible: ".*2 locked files.*"
+    timeout: 30000
+# "Delete locked files afterwards" stays off: keeping the containers is the
+# default, and the host assertion checks they are still there.
+- tapOn:
+    id: "decrypt_folder_continue"
+- waitForAnimationToEnd
+
+- tapOn: "Passphrase"
+- inputText: "${PASS}"
+- tapOn:
+    id: "decrypt_passphrase_unlock"
+- waitForAnimationToEnd
+
+- extendedWaitUntil:
+    visible:
+      id: "decrypt_bulk_done"
+    timeout: 90000
+- assertVisible: ".*2 files unlocked.*"
+- tapOn:
+    id: "decrypt_bulk_done"
+- waitForAnimationToEnd
+- assertVisible:
+    id: "home_decrypt"

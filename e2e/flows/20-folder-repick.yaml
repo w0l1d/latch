@@ -1,0 +1,115 @@
+appId: ${APP_ID}
+name: 20 · repicking replaces the folder, backing out keeps it
+tags:
+  - core
+---
+# `_choose` has two exits that are indistinguishable on screen and opposite on
+# disk:
+#
+#   a folder is picked   → `_scanTree` runs, `_inv` is replaced
+#   the picker is left   → `tree == null`, `_choose` returns early, `_inv` is
+#                          left exactly as it was
+#
+# Nothing in the suite exercised either branch: `encrypt_folder_repick` is one
+# of the ids `lint-selectors.sh` reports as never tapped. Both failure modes
+# would be silent. A repick that appended to the inventory would lock two
+# folders' worth of files while the screen said one; a backout that cleared
+# `_inv` would turn a mis-tap into an empty screen with no way to continue.
+#
+# The two folders hold different counts (2 and 4) because with equal counts the
+# assertion would hold whether or not the source had actually changed. The host
+# assertion (asserts/20) closes the loop: it checks which folder received the
+# containers, which is not a fact any screenshot can settle.
+- launchApp
+- runFlow: ../subflows/ensure_home.yaml
+
+- tapOn:
+    id: "home_encrypt"
+- waitForAnimationToEnd
+- tapOn:
+    id: "encrypt_pick_folder"
+- waitForAnimationToEnd
+- assertVisible: "Lock a folder"
+- tapOn:
+    id: "encrypt_folder_pick"
+- waitForAnimationToEnd
+
+# First folder: ${REPICK_A}, two files.
+- runFlow:
+    file: ../subflows/open_fixtures.yaml
+    env:
+      ROOT: internal
+- extendedWaitUntil:
+    visible: "${REPICK_A}"
+    timeout: 15000
+- tapOn: "${REPICK_A}"
+- waitForAnimationToEnd
+- runFlow: ../subflows/use_this_folder.yaml
+- extendedWaitUntil:
+    visible: ".*2 files.*"
+    timeout: 30000
+
+# 1. Repick. The summary must describe the NEW folder — both its name and its
+# count, because a stale heading with a fresh count (or the reverse) is exactly
+# the half-updated state a partial setState leaves behind.
+- tapOn:
+    id: "encrypt_folder_repick"
+- waitForAnimationToEnd
+- runFlow:
+    file: ../subflows/open_fixtures.yaml
+    env:
+      ROOT: internal
+- extendedWaitUntil:
+    visible: "${REPICK_B}"
+    timeout: 15000
+- tapOn: "${REPICK_B}"
+- waitForAnimationToEnd
+- runFlow: ../subflows/use_this_folder.yaml
+- extendedWaitUntil:
+    visible: ".*4 files.*"
+    timeout: 30000
+- assertVisible: "${REPICK_B}"
+# Replaced, not merged: the first folder's count is gone from the screen.
+- assertNotVisible: ".*2 files.*"
+
+# 2. Repick again and back out. `_choose` returns with `_inv` untouched, so the
+# 4-file scan must survive a mis-tap. This is the branch that matters most on a
+# phone: the back gesture is one swipe away while the picker is opening.
+- tapOn:
+    id: "encrypt_folder_repick"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: "Use this folder"
+    timeout: 20000
+# One `back` does not dismiss DocumentsUI — it walks up a folder level and
+# leaves the picker open, so `_choose`'s `tree == null` early return is never
+# reached. See subflows/back_out_of_picker.yaml.
+- runFlow: ../subflows/back_out_of_picker.yaml
+- extendedWaitUntil:
+    visible: ".*4 files.*"
+    timeout: 15000
+- assertVisible:
+    id: "encrypt_folder_continue"
+
+# 3. Lock what the screen says it will lock: the second folder, not the first.
+- tapOn:
+    id: "encrypt_folder_continue"
+- waitForAnimationToEnd
+- tapOn: "Enter passphrase"
+- inputText: "${PASS}"
+- tapOn:
+    id: "encrypt_passphrase_continue"
+- waitForAnimationToEnd
+
+- extendedWaitUntil:
+    visible:
+      id: "encrypt_bulk_done"
+    timeout: 90000
+- assertVisible: ".*4 files locked.*"
+- assertVisible: ".*Saved in .*${REPICK_B}.*"
+- assertNotVisible: ".*saved to Downloads.*"
+- tapOn:
+    id: "encrypt_bulk_done"
+- waitForAnimationToEnd
+- assertVisible:
+    id: "home_encrypt"
