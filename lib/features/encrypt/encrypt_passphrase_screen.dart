@@ -330,159 +330,188 @@ class _EncryptPassphraseScreenState extends State<EncryptPassphraseScreen> {
         title: const Text('Create a passphrase'),
       ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              TextField(
-                controller: _controller,
-                obscureText: _obscure,
-                autofocus: true,
-                textInputAction: TextInputAction.done,
-                onSubmitted: (_) {
-                  if (_controller.text.isNotEmpty) _storeAndContinue();
-                },
-                decoration: InputDecoration(
-                  hintText: 'Enter passphrase',
-                  suffixIcon: TextButton(
-                    onPressed: () => setState(() => _obscure = !_obscure),
-                    child: Text(
-                      _obscure ? 'show' : 'hide',
-                      style: const TextStyle(color: LatchColors.subtle),
-                    ),
+        // A field, hints, and a button pinned to the bottom by a `Spacer`:
+        // the column cannot shed height, and a phone held sideways with the
+        // keyboard up leaves about 360 logical pixels — less than it needs.
+        // It overflowed by 206 px and drew Continue *under* the keyboard,
+        // where it still sits in the accessibility tree, so a tap reports
+        // success while a real user cannot press it. Scrolling the body with a
+        // minimum height keeps the portrait look (button at the bottom) and
+        // lets a short viewport scroll down to the button instead.
+        child: LayoutBuilder(
+          builder: (context, viewport) => SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: viewport.maxHeight),
+              child: IntrinsicHeight(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 16,
                   ),
-                ),
-                // Theme-derived so the system text-scaling setting applies.
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(letterSpacing: 1.5),
-              ),
-              // A saved passphrase is a one-shot action, not a persistent
-              // mode — and it is only offered when the vault has something
-              // to offer, so it is never a control that does nothing.
-              if (_hasSaved) ...[
-                const SizedBox(height: 4),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
-                    onPressed: _pickFromApp,
-                    icon: const Icon(Icons.vpn_key_outlined, size: 18),
-                    label: const Text('Use a saved passphrase'),
-                  ),
-                ),
-              ],
-              const SizedBox(height: 12),
-              if (_strength != null) ...[
-                _StrengthBar(score: _strength!.score, color: _strengthColor),
-                const SizedBox(height: 8),
-                Text(
-                  _strength!.label,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: _strengthColor),
-                ),
-              ],
-              const SizedBox(height: 10),
-              // Already in the vault — a static statement, not a save control,
-              // so nothing implies a second copy is about to be written.
-              if (_pickedLabel != null)
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: LatchColors.safeLight,
-                    border: Border.all(color: LatchColors.safeBorder),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(
-                        Icons.check_circle_outline,
-                        color: LatchColors.safe,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          'Already saved as "${_displayLabel(_pickedLabel!)}"',
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(color: LatchColors.safe),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              if (_canSave && _pickedLabel == null)
-                Semantics(
-                  button: true,
-                  label: 'Save for quick unlock',
-                  child: GestureDetector(
-                    onTap: _toggleSave,
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                          color: _saveForQuickUnlock
-                              ? LatchColors.ink
-                              : LatchColors.border,
-                          width: _saveForQuickUnlock ? 2.5 : 1.5,
-                        ),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            _saveForQuickUnlock
-                                ? Icons.fingerprint
-                                : Icons.fingerprint_outlined,
-                            color: _saveForQuickUnlock
-                                ? LatchColors.ink
-                                : LatchColors.muted,
-                            size: 20,
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
+                      TextField(
+                        controller: _controller,
+                        obscureText: _obscure,
+                        autofocus: true,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) {
+                          if (_controller.text.isNotEmpty) _storeAndContinue();
+                        },
+                        decoration: InputDecoration(
+                          hintText: 'Enter passphrase',
+                          suffixIcon: TextButton(
+                            onPressed: () =>
+                                setState(() => _obscure = !_obscure),
                             child: Text(
-                              'Save for quick unlock',
-                              style: Theme.of(context).textTheme.bodyMedium
-                                  ?.copyWith(
+                              _obscure ? 'show' : 'hide',
+                              style: const TextStyle(color: LatchColors.subtle),
+                            ),
+                          ),
+                        ),
+                        // Theme-derived so the system text-scaling setting applies.
+                        style: Theme.of(
+                          context,
+                        ).textTheme.titleMedium?.copyWith(letterSpacing: 1.5),
+                      ),
+                      // A saved passphrase is a one-shot action, not a persistent
+                      // mode — and it is only offered when the vault has something
+                      // to offer, so it is never a control that does nothing.
+                      if (_hasSaved) ...[
+                        const SizedBox(height: 4),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton.icon(
+                            onPressed: _pickFromApp,
+                            icon: const Icon(Icons.vpn_key_outlined, size: 18),
+                            label: const Text('Use a saved passphrase'),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 12),
+                      if (_strength != null) ...[
+                        _StrengthBar(
+                          score: _strength!.score,
+                          color: _strengthColor,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _strength!.label,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: _strengthColor),
+                        ),
+                      ],
+                      const SizedBox(height: 10),
+                      // Already in the vault — a static statement, not a save control,
+                      // so nothing implies a second copy is about to be written.
+                      if (_pickedLabel != null)
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: LatchColors.safeLight,
+                            border: Border.all(color: LatchColors.safeBorder),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.check_circle_outline,
+                                color: LatchColors.safe,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  'Already saved as "${_displayLabel(_pickedLabel!)}"',
+                                  style: Theme.of(context).textTheme.bodyMedium
+                                      ?.copyWith(color: LatchColors.safe),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      if (_canSave && _pickedLabel == null)
+                        Semantics(
+                          button: true,
+                          label: 'Save for quick unlock',
+                          child: GestureDetector(
+                            onTap: _toggleSave,
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: _saveForQuickUnlock
+                                      ? LatchColors.ink
+                                      : LatchColors.border,
+                                  width: _saveForQuickUnlock ? 2.5 : 1.5,
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    _saveForQuickUnlock
+                                        ? Icons.fingerprint
+                                        : Icons.fingerprint_outlined,
                                     color: _saveForQuickUnlock
                                         ? LatchColors.ink
                                         : LatchColors.muted,
+                                    size: 20,
                                   ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      'Save for quick unlock',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodyMedium
+                                          ?.copyWith(
+                                            color: _saveForQuickUnlock
+                                                ? LatchColors.ink
+                                                : LatchColors.muted,
+                                          ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                        ],
+                        ),
+                      if (_canSave &&
+                          _saveForQuickUnlock &&
+                          _pickedLabel == null) ...[
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: _nameController,
+                          textInputAction: TextInputAction.done,
+                          decoration: const InputDecoration(
+                            hintText: 'Name for this passphrase',
+                            helperText:
+                                'Just a label for your vault — pick anything.',
+                          ),
+                          style: Theme.of(context).textTheme.bodyLarge,
+                        ),
+                      ],
+                      if (_canSave) const SizedBox(height: 10),
+                      Text(
+                        'A few random words beats hard-to-type symbols. Longer is stronger.',
+                        style: Theme.of(context).textTheme.bodySmall,
                       ),
-                    ),
+                      const Spacer(),
+                      LatchPrimaryButton(
+                        label: 'Continue',
+                        semanticsId: 'encrypt_passphrase_continue',
+                        onPressed: _controller.text.isNotEmpty && !_busy
+                            ? _storeAndContinue
+                            : null,
+                      ),
+                      const SizedBox(height: 8),
+                    ],
                   ),
                 ),
-              if (_canSave && _saveForQuickUnlock && _pickedLabel == null) ...[
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _nameController,
-                  textInputAction: TextInputAction.done,
-                  decoration: const InputDecoration(
-                    hintText: 'Name for this passphrase',
-                    helperText: 'Just a label for your vault — pick anything.',
-                  ),
-                  style: Theme.of(context).textTheme.bodyLarge,
-                ),
-              ],
-              if (_canSave) const SizedBox(height: 10),
-              Text(
-                'A few random words beats hard-to-type symbols. Longer is stronger.',
-                style: Theme.of(context).textTheme.bodySmall,
               ),
-              const Spacer(),
-              LatchPrimaryButton(
-                label: 'Continue',
-                onPressed: _controller.text.isNotEmpty && !_busy
-                    ? _storeAndContinue
-                    : null,
-              ),
-              const SizedBox(height: 8),
-            ],
+            ),
           ),
         ),
       ),

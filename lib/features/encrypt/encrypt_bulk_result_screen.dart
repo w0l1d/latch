@@ -78,6 +78,7 @@ class EncryptBulkResultScreen extends StatelessWidget {
               ),
               LatchPrimaryButton(
                 label: 'Done',
+                semanticsId: 'encrypt_bulk_done',
                 onPressed: () => context.go('/home'),
               ),
             ],

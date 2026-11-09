@@ -85,6 +85,7 @@ class EncryptReviewScreen extends StatelessWidget {
               LatchPrimaryButton(
                 label:
                     'Lock ${files.length} file${files.length == 1 ? '' : 's'}',
+                semanticsId: 'encrypt_review_lock',
                 onPressed: () => context.push(
                   '/encrypt/progress',
                   extra: {

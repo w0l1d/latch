@@ -47,11 +47,13 @@ class HomeScreen extends StatelessWidget {
               const Spacer(),
               LatchPrimaryButton(
                 label: 'Encrypt files',
+                semanticsId: 'home_encrypt',
                 onPressed: () => context.push('/encrypt/pick'),
               ),
               const SizedBox(height: 12),
               LatchSecondaryButton(
                 label: 'Decrypt a file',
+                semanticsId: 'home_decrypt',
                 onPressed: () => context.push('/decrypt/pick'),
               ),
               const SizedBox(height: 16),

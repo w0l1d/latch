@@ -78,13 +78,22 @@ class _LossMomentScreenState extends State<LossMomentScreen> {
                       }),
                     ),
                     const SizedBox(width: 8),
+                    // The label is tappable too: users aim at the sentence,
+                    // not the 18px box, and with only the Checkbox wired up
+                    // tapping the words did nothing while Continue stayed
+                    // disabled — which reads as a broken screen.
                     Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 12),
-                        child: Text(
-                          'I understand there\'s no recovery.',
-                          style: Theme.of(context).textTheme.bodyLarge
-                              ?.copyWith(color: const Color(0xFF7A3128)),
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () =>
+                            setState(() => _acknowledged = !_acknowledged),
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: Text(
+                            'I understand there\'s no recovery.',
+                            style: Theme.of(context).textTheme.bodyLarge
+                                ?.copyWith(color: const Color(0xFF7A3128)),
+                          ),
                         ),
                       ),
                     ),
@@ -95,17 +104,20 @@ class _LossMomentScreenState extends State<LossMomentScreen> {
               SizedBox(
                 width: double.infinity,
                 height: 54,
-                child: ElevatedButton(
-                  onPressed: _acknowledged
-                      ? () => context.go('/onboarding/ready')
-                      : null,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: LatchColors.danger,
-                    foregroundColor: Colors.white,
-                    disabledBackgroundColor: const Color(0xFFF6DDD8),
-                    disabledForegroundColor: const Color(0xFFB8786E),
+                child: Semantics(
+                  identifier: 'onboarding_acknowledge',
+                  child: ElevatedButton(
+                    onPressed: _acknowledged
+                        ? () => context.go('/onboarding/ready')
+                        : null,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: LatchColors.danger,
+                      foregroundColor: Colors.white,
+                      disabledBackgroundColor: const Color(0xFFF6DDD8),
+                      disabledForegroundColor: const Color(0xFFB8786E),
+                    ),
+                    child: const Text('Continue'),
                   ),
-                  child: const Text('Continue'),
                 ),
               ),
               const SizedBox(height: 16),

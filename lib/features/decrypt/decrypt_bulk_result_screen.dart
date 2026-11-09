@@ -87,6 +87,7 @@ class DecryptBulkResultScreen extends StatelessWidget {
               ),
               LatchPrimaryButton(
                 label: 'Done',
+                semanticsId: 'decrypt_bulk_done',
                 onPressed: () => context.go('/home'),
               ),
             ],

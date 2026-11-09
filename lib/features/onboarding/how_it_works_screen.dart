@@ -37,6 +37,7 @@ class HowItWorksScreen extends StatelessWidget {
                   Expanded(
                     child: LatchSecondaryButton(
                       label: 'Skip',
+                      semanticsId: 'onboarding_skip',
                       onPressed: () => context.go('/onboarding/device-check'),
                     ),
                   ),
@@ -45,6 +46,7 @@ class HowItWorksScreen extends StatelessWidget {
                     flex: 2,
                     child: LatchPrimaryButton(
                       label: 'Next',
+                      semanticsId: 'onboarding_next',
                       onPressed: () => context.go('/onboarding/device-check'),
                     ),
                   ),

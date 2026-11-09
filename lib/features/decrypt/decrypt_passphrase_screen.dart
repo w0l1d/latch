@@ -132,117 +132,139 @@ class _DecryptPassphraseScreenState extends State<DecryptPassphraseScreen> {
         ),
       ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  border: Border.all(color: LatchColors.border, width: 1.5),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.insert_drive_file_outlined,
-                      color: LatchColors.ink,
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        widget.files.length == 1
-                            ? widget.files.first
-                            : '${widget.files.length} files selected',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: LatchColors.ink,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-              Text(
-                'Enter the passphrase used to lock it.',
-                style: Theme.of(context).textTheme.bodyLarge,
-              ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: _controller,
-                obscureText: _obscure,
-                autofocus: !_hasStored,
-                onChanged: (_) => setState(() {}),
-                decoration: InputDecoration(
-                  hintText: 'Passphrase',
-                  suffixIcon: TextButton(
-                    onPressed: () => setState(() => _obscure = !_obscure),
-                    child: Text(
-                      _obscure ? 'show' : 'hide',
-                      style: const TextStyle(color: LatchColors.subtle),
-                    ),
+        // Same shape and same hazard as the encrypt passphrase screen: a
+        // bottom-pinned button under a `Spacer` in a column that cannot shed
+        // height. See that screen's build() for the landscape failure this
+        // avoids. Pinned by test/passphrase_screen_landscape_test.dart.
+        child: LayoutBuilder(
+          builder: (context, viewport) => SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: viewport.maxHeight),
+              child: IntrinsicHeight(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 16,
                   ),
-                ),
-                style: Theme.of(
-                  context,
-                ).textTheme.bodyLarge?.copyWith(letterSpacing: 1.5),
-              ),
-              const SizedBox(height: 14),
-              if (_hasStored)
-                Semantics(
-                  button: true,
-                  label: 'Use quick unlock instead',
-                  child: GestureDetector(
-                    onTap: _quickUnlocking ? null : _quickUnlock,
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                          color: LatchColors.border,
-                          width: 1.5,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                            color: LatchColors.border,
+                            width: 1.5,
+                          ),
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 24,
-                            height: 24,
-                            decoration: BoxDecoration(
-                              border: Border.all(
-                                color: LatchColors.muted,
-                                width: 1.5,
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.insert_drive_file_outlined,
+                              color: LatchColors.ink,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                widget.files.length == 1
+                                    ? widget.files.first
+                                    : '${widget.files.length} files selected',
+                                style: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(color: LatchColors.ink),
                               ),
-                              borderRadius: BorderRadius.circular(6),
                             ),
-                            child: Icon(
-                              _quickUnlocking
-                                  ? Icons.lock_outline
-                                  : Icons.fingerprint,
-                              size: 14,
-                              color: LatchColors.muted,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Text(
-                            _quickUnlocking
-                                ? 'Unlocking…'
-                                : 'Use quick unlock instead',
-                            style: Theme.of(context).textTheme.bodyMedium,
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 20),
+                      Text(
+                        'Enter the passphrase used to lock it.',
+                        style: Theme.of(context).textTheme.bodyLarge,
+                      ),
+                      const SizedBox(height: 14),
+                      TextField(
+                        controller: _controller,
+                        obscureText: _obscure,
+                        autofocus: !_hasStored,
+                        onChanged: (_) => setState(() {}),
+                        decoration: InputDecoration(
+                          hintText: 'Passphrase',
+                          suffixIcon: TextButton(
+                            onPressed: () =>
+                                setState(() => _obscure = !_obscure),
+                            child: Text(
+                              _obscure ? 'show' : 'hide',
+                              style: const TextStyle(color: LatchColors.subtle),
+                            ),
+                          ),
+                        ),
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodyLarge?.copyWith(letterSpacing: 1.5),
+                      ),
+                      const SizedBox(height: 14),
+                      if (_hasStored)
+                        Semantics(
+                          button: true,
+                          label: 'Use quick unlock instead',
+                          child: GestureDetector(
+                            onTap: _quickUnlocking ? null : _quickUnlock,
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: LatchColors.border,
+                                  width: 1.5,
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 24,
+                                    height: 24,
+                                    decoration: BoxDecoration(
+                                      border: Border.all(
+                                        color: LatchColors.muted,
+                                        width: 1.5,
+                                      ),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Icon(
+                                      _quickUnlocking
+                                          ? Icons.lock_outline
+                                          : Icons.fingerprint,
+                                      size: 14,
+                                      color: LatchColors.muted,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Text(
+                                    _quickUnlocking
+                                        ? 'Unlocking…'
+                                        : 'Use quick unlock instead',
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.bodyMedium,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      const Spacer(),
+                      LatchPrimaryButton(
+                        label: 'Unlock',
+                        semanticsId: 'decrypt_passphrase_unlock',
+                        onPressed: _controller.text.isNotEmpty ? _submit : null,
+                      ),
+                      const SizedBox(height: 8),
+                    ],
                   ),
                 ),
-              const Spacer(),
-              LatchPrimaryButton(
-                label: 'Unlock',
-                onPressed: _controller.text.isNotEmpty ? _submit : null,
               ),
-              const SizedBox(height: 8),
-            ],
+            ),
           ),
         ),
       ),

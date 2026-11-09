@@ -55,6 +55,7 @@ class _ReadyScreenState extends State<ReadyScreen> {
               const Spacer(),
               LatchPrimaryButton(
                 label: 'Go to home',
+                semanticsId: 'onboarding_go_home',
                 onPressed: _busy
                     ? null
                     : () async {

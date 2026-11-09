@@ -33,6 +33,7 @@ class WelcomeScreen extends StatelessWidget {
               const Spacer(),
               LatchPrimaryButton(
                 label: 'Get started',
+                semanticsId: 'onboarding_get_started',
                 onPressed: () => context.go('/onboarding/how-it-works'),
               ),
               const SizedBox(height: 16),

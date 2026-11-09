@@ -217,16 +217,19 @@ class _DecryptFolderScreenState extends State<DecryptFolderScreen> {
               if (inv == null)
                 LatchPrimaryButton(
                   label: 'Choose a folder',
+                  semanticsId: 'decrypt_folder_pick',
                   onPressed: _busy ? null : _choose,
                 )
               else ...[
                 LatchSecondaryButton(
                   label: 'Choose a different folder',
+                  semanticsId: 'decrypt_folder_repick',
                   onPressed: _busy ? null : _choose,
                 ),
                 const SizedBox(height: 8),
                 LatchPrimaryButton(
                   label: 'Enter passphrase',
+                  semanticsId: 'decrypt_folder_continue',
                   onPressed: _canContinue ? _continue : null,
                 ),
               ],

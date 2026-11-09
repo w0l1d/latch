@@ -267,16 +267,19 @@ class _EncryptFolderScreenState extends State<EncryptFolderScreen> {
               if (inv == null)
                 LatchPrimaryButton(
                   label: 'Choose a folder',
+                  semanticsId: 'encrypt_folder_pick',
                   onPressed: _busy ? null : _choose,
                 )
               else ...[
                 LatchSecondaryButton(
                   label: 'Choose a different folder',
+                  semanticsId: 'encrypt_folder_repick',
                   onPressed: _busy ? null : _choose,
                 ),
                 const SizedBox(height: 8),
                 LatchPrimaryButton(
                   label: 'Set a passphrase',
+                  semanticsId: 'encrypt_folder_continue',
                   onPressed: _canContinue ? _continue : null,
                 ),
               ],
