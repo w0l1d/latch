@@ -165,9 +165,41 @@ Issues and pull requests are welcome. A few house rules the codebase enforces:
 - Preserve the wrong-passphrase-vs-corrupt-file distinction and the "never emit partial plaintext" guarantee in any crypto change.
 - Commits follow **Conventional Commits** with a scope (`feat(core):`, `fix(app):`, `build(android):`, `docs:`).
 
+## Privacy
+
+Latch collects nothing: no account, no server, no analytics, and the release build has no
+`INTERNET` permission at all. The full policy, including exactly what is stored on the
+device and what a `.latch` file reveals, is in [`PRIVACY.md`](PRIVACY.md).
+
 ## License
 
-**Not yet licensed.** Until a `LICENSE` file is added, all rights are reserved by the author. If you'd like to use or contribute to the code, please open an issue to discuss.
+Latch is licensed under the **[Islamic Software License — Copyleft (ISL-C), v1.2](LICENSE)**
+(`SPDX: LicenseRef-ISL-C-1.2`). You may use, copy, modify, merge, publish, distribute,
+sublicense and sell copies, commercially or not, subject to two conditions:
+
+- **The ethical-use restrictions in Sections 4 and 5 travel with every copy** and bind every
+  recipient and derivative work.
+- **Section 3.5 copyleft:** if you distribute a modified Latch — source or binary — the work
+  as a whole must be licensed under ISL-C 1.2 (or a later version), and you must make the
+  Corresponding Source available to your recipients. Building a fork for yourself, or
+  running it privately, carries no such obligation.
+
+The license covers the whole repository: code, documentation, the logo in `assets/brand/`,
+and the store art in `docs/screenshots/`.
+
+Two things worth knowing before you rely on it:
+
+- **This is source-available, not OSI open source.** The license restricts use by field of
+  endeavor and by licensee, which the Open Source Definition does not permit. It will show
+  as "Other" on GitHub, and it is not eligible for F-Droid or distro packaging. The
+  copyleft is the usual ISL-C trade: you may not take this code closed.
+- **Contributions are inbound under the same terms.** Per Section 6, a pull request you send
+  is licensed to the project under ISL-C unless we agree otherwise in writing, and per
+  Section 6.4 it stays under the copyleft obligation permanently.
+
+Official releases already satisfy Section 3.5 — the Corresponding Source is this repository,
+tagged at the release version. The app's third-party dependencies keep their own licenses
+(Flutter and `sodium` are BSD/Apache-2.0); ISL-C covers this project's own work only.
 
 ---
 
