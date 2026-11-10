@@ -1,0 +1,187 @@
+appId: ${APP_ID}
+name: 22 · "Open folder" on both success screens really leaves the app and comes back
+tags:
+  - core
+---
+# `openFolder` (lib/core/saf_bridge.dart → MainActivity.openFolder) fires
+# ACTION_VIEW on a folder document URI, so tapping it takes the user out of
+# Latch. The only honest assertion is therefore about *coverage*: the success
+# screen must go away, and back must return to that same screen rather than to
+# home. Asserting a folder or file name instead would prove nothing — both
+# success screens already print the output's own path and file names, so such an
+# assertion passes even if the intent never resolved.
+#
+# Both screens are covered here because they are separate widgets with separate
+# handlers (`encrypt_success_open_folder` / `decrypt_success_open_folder`) — the
+# kind of copy that regresses on one side only.
+- launchApp
+- runFlow: ../subflows/ensure_home.yaml
+
+# ── lock: the encrypt success screen ───────────────────────────────────────
+- tapOn:
+    id: "home_encrypt"
+- waitForAnimationToEnd
+- runFlow:
+    file: ../subflows/pick_file.yaml
+    env:
+      PICK_ROOT: internal
+      PICK_SUBDIR: ""
+- tapOn:
+    id: "encrypt_pick_continue"
+- waitForAnimationToEnd
+
+- tapOn: "Enter passphrase"
+- inputText: "${PASS}"
+- tapOn:
+    id: "encrypt_passphrase_continue"
+- waitForAnimationToEnd
+
+- tapOn:
+    id: "encrypt_options_continue"
+- waitForAnimationToEnd
+- tapOn:
+    id: "encrypt_review_lock"
+- runFlow: ../subflows/save_grant.yaml
+- extendedWaitUntil:
+    visible:
+      id: "encrypt_success_done"
+    timeout: 40000
+
+# The button is rendered only when there is an output to open, so its presence
+# is part of what this flow checks.
+- assertVisible:
+    id: "encrypt_success_open_folder"
+- tapOn:
+    id: "encrypt_success_open_folder"
+- waitForAnimationToEnd
+# A failed intent leaves the screen in place and shows this snackbar. Asserting
+# its absence means a failure reports "no app to open the folder" instead of a
+# bare "expected element not visible".
+- assertNotVisible: ".*No app available.*"
+- extendedWaitUntil:
+    notVisible:
+      id: "encrypt_success_done"
+    timeout: 15000
+
+# DocumentsUI opens the folder as a navigation STACK — internal volume →
+# Download → LatchE2E — not as one screen that back dismisses. `back` pops one
+# level of that stack at a time and only then finishes the activity, so the
+# number of presses equals the folder's depth. One press (what this flow used to
+# send) walks a single level and leaves the user still inside the picker.
+#
+# Verified on SM-A546B, 2026-11-09: after flow 22's one press the foreground was
+# still DocumentsUI, showing the volume root; the second press stayed inside it;
+# the third reached Latch, which displayed this very screen with "1 file locked."
+# intact. The app was never the problem — the count was.
+#
+# Each press is conditional on the success screen still being ABSENT, which is
+# what makes three of them safe to write. The condition is re-read before every
+# press, so a shallower stack simply skips the extra ones — an unconditional
+# third `back` would land on Latch and its `PopScope(canPop: false)` →
+# `context.go('/home')` (encrypt_success_screen.dart:47-52) would redirect home,
+# failing the very assertion below for the right reason but the wrong cause.
+#
+# Deliberately not a loop over "any id": a deeper stack times out on the final
+# wait and says the screen never came back, which is the honest report.
+- runFlow:
+    when:
+      notVisible:
+        id: "encrypt_success_done"
+    commands:
+      - back
+      - waitForAnimationToEnd
+- runFlow:
+    when:
+      notVisible:
+        id: "encrypt_success_done"
+    commands:
+      - back
+      - waitForAnimationToEnd
+- runFlow:
+    when:
+      notVisible:
+        id: "encrypt_success_done"
+    commands:
+      - back
+      - waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "encrypt_success_done"
+    timeout: 15000
+- assertVisible: "1 file locked."
+- tapOn:
+    id: "encrypt_success_done"
+- waitForAnimationToEnd
+- assertVisible:
+    id: "home_encrypt"
+
+# ── unlock: the decrypt success screen ─────────────────────────────────────
+# No save_grant here on purpose: the lock above already took a grant on this
+# folder, so the unlock plans into it silently. Waiting for a rationale that
+# will never appear is the failure this deliberately avoids.
+- tapOn:
+    id: "home_decrypt"
+- waitForAnimationToEnd
+- runFlow:
+    file: ../subflows/pick_file.yaml
+    env:
+      FILE: ${CONTAINER}
+      PICK_ROOT: internal
+      PICK_SUBDIR: ""
+- tapOn:
+    id: "decrypt_pick_continue"
+- waitForAnimationToEnd
+
+- tapOn: "Passphrase"
+- inputText: "${PASS}"
+- tapOn:
+    id: "decrypt_passphrase_unlock"
+- extendedWaitUntil:
+    visible:
+      id: "decrypt_success_done"
+    timeout: 40000
+
+- assertVisible:
+    id: "decrypt_success_open_folder"
+- tapOn:
+    id: "decrypt_success_open_folder"
+- waitForAnimationToEnd
+- assertNotVisible: ".*No app available.*"
+- extendedWaitUntil:
+    notVisible:
+      id: "decrypt_success_done"
+    timeout: 15000
+
+# Same DocumentsUI stack as the lock half above; see the comment there for why
+# this is three conditional presses rather than one.
+- runFlow:
+    when:
+      notVisible:
+        id: "decrypt_success_done"
+    commands:
+      - back
+      - waitForAnimationToEnd
+- runFlow:
+    when:
+      notVisible:
+        id: "decrypt_success_done"
+    commands:
+      - back
+      - waitForAnimationToEnd
+- runFlow:
+    when:
+      notVisible:
+        id: "decrypt_success_done"
+    commands:
+      - back
+      - waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "decrypt_success_done"
+    timeout: 15000
+- assertVisible: "File restored."
+- tapOn:
+    id: "decrypt_success_done"
+- waitForAnimationToEnd
+- assertVisible:
+    id: "home_decrypt"

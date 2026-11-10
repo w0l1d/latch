@@ -1,0 +1,48 @@
+appId: ${APP_ID}
+name: 07 · locking the same file twice never overwrites the first container
+tags:
+  - core
+---
+# Depends on 01, which already wrote `${CONTAINER}`. A second run on the same
+# file must produce a new container beside it — the host assert proves both
+# files exist and are distinct ciphertexts. Silently overwriting the first
+# container would destroy the only copy of its key material.
+- launchApp
+- runFlow: ../subflows/ensure_home.yaml
+
+- tapOn:
+    id: "home_encrypt"
+- waitForAnimationToEnd
+- runFlow:
+    file: ../subflows/pick_file.yaml
+    env:
+      FILE: ${FILE}
+      PICK_ROOT: internal
+      PICK_SUBDIR: ""
+- tapOn:
+    id: "encrypt_pick_continue"
+- waitForAnimationToEnd
+- tapOn: "Enter passphrase"
+- inputText: "${PASS}"
+- tapOn:
+    id: "encrypt_passphrase_continue"
+- waitForAnimationToEnd
+- tapOn:
+    id: "encrypt_options_continue"
+- waitForAnimationToEnd
+- tapOn:
+    id: "encrypt_review_lock"
+
+# The collision this flow proves happens *inside* the granted tree: the second
+# container is created beside the first by `createInTree`'s own collision
+# handling, not by the desktop `resolveNameCollision` path. A Downloads
+# fallback would put it in a different folder and quietly make the assertion
+# vacuous.
+- runFlow: ../subflows/save_grant.yaml
+
+- extendedWaitUntil:
+    visible:
+      id: "encrypt_success_done"
+    timeout: 40000
+- tapOn:
+    id: "encrypt_success_done"

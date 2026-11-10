@@ -1,0 +1,186 @@
+appId: ${APP_ID}
+name: "21 · unlocking a folder — repick replaces it, backing out keeps it"
+tags:
+  - core
+---
+# 20 asks the repick question on the lock side. This is the same question on the
+# unlock side, and it is not the same code: `decrypt_folder_screen.dart` carries
+# its own copy of `_choose`, `_scanTree`, `_scan` and `_adopt`, including the
+# `if (tree == null) return;` early exit that makes a backed-out picker a
+# no-op. A fix to one copy does not reach the other, so each side needs its own
+# test — this is the one `lint-selectors.sh` reported as `decrypt_folder_repick`.
+#
+# The folders are set up by locking them through the UI rather than by pushing
+# ready-made containers: they are then written by the build under test, at its
+# own version, so a format change can never leave this flow decrypting fixtures
+# the current code did not produce.
+#
+# The counts differ (2 and 3) so "the summary now says 3 locked files" proves
+# the scan was replaced rather than re-rendered.
+
+# ── setup: two folders of containers ────────────────────────────────────────
+- launchApp
+- runFlow: ../subflows/ensure_home.yaml
+
+- tapOn:
+    id: "home_encrypt"
+- waitForAnimationToEnd
+- tapOn:
+    id: "encrypt_pick_folder"
+- waitForAnimationToEnd
+- tapOn:
+    id: "encrypt_folder_pick"
+- waitForAnimationToEnd
+- runFlow:
+    file: ../subflows/open_fixtures.yaml
+    env:
+      ROOT: internal
+- extendedWaitUntil:
+    visible: "${DEC_REPICK_A}"
+    timeout: 15000
+- tapOn: "${DEC_REPICK_A}"
+- waitForAnimationToEnd
+- runFlow: ../subflows/use_this_folder.yaml
+- extendedWaitUntil:
+    visible: ".*2 files.*"
+    timeout: 30000
+- tapOn:
+    id: "encrypt_folder_continue"
+- waitForAnimationToEnd
+- tapOn: "Enter passphrase"
+- inputText: "${PASS}"
+- tapOn:
+    id: "encrypt_passphrase_continue"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "encrypt_bulk_done"
+    timeout: 90000
+- tapOn:
+    id: "encrypt_bulk_done"
+- waitForAnimationToEnd
+- assertVisible:
+    id: "home_encrypt"
+
+# Second folder. Same steps; only the folder and the count change.
+- tapOn:
+    id: "home_encrypt"
+- waitForAnimationToEnd
+- tapOn:
+    id: "encrypt_pick_folder"
+- waitForAnimationToEnd
+- tapOn:
+    id: "encrypt_folder_pick"
+- waitForAnimationToEnd
+- runFlow:
+    file: ../subflows/open_fixtures.yaml
+    env:
+      ROOT: internal
+- extendedWaitUntil:
+    visible: "${DEC_REPICK_B}"
+    timeout: 15000
+- tapOn: "${DEC_REPICK_B}"
+- waitForAnimationToEnd
+- runFlow: ../subflows/use_this_folder.yaml
+- extendedWaitUntil:
+    visible: ".*3 files.*"
+    timeout: 30000
+- tapOn:
+    id: "encrypt_folder_continue"
+- waitForAnimationToEnd
+- tapOn: "Enter passphrase"
+- inputText: "${PASS}"
+- tapOn:
+    id: "encrypt_passphrase_continue"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "encrypt_bulk_done"
+    timeout: 90000
+- tapOn:
+    id: "encrypt_bulk_done"
+- waitForAnimationToEnd
+- assertVisible:
+    id: "home_encrypt"
+
+# ── the unlock side ─────────────────────────────────────────────────────────
+- tapOn:
+    id: "home_decrypt"
+- waitForAnimationToEnd
+- tapOn:
+    id: "decrypt_pick_folder"
+- waitForAnimationToEnd
+- assertVisible: "Unlock a folder"
+- tapOn:
+    id: "decrypt_folder_pick"
+- waitForAnimationToEnd
+
+# First: ${DEC_REPICK_A}, two containers.
+- runFlow:
+    file: ../subflows/open_fixtures.yaml
+    env:
+      ROOT: internal
+- extendedWaitUntil:
+    visible: "${DEC_REPICK_A}"
+    timeout: 15000
+- tapOn: "${DEC_REPICK_A}"
+- waitForAnimationToEnd
+- runFlow: ../subflows/use_this_folder.yaml
+- extendedWaitUntil:
+    visible: ".*2 locked files.*"
+    timeout: 30000
+
+# 1. Repick. The count and the folder name must both follow the new folder.
+- tapOn:
+    id: "decrypt_folder_repick"
+- waitForAnimationToEnd
+- runFlow:
+    file: ../subflows/open_fixtures.yaml
+    env:
+      ROOT: internal
+- extendedWaitUntil:
+    visible: "${DEC_REPICK_B}"
+    timeout: 15000
+- tapOn: "${DEC_REPICK_B}"
+- waitForAnimationToEnd
+- runFlow: ../subflows/use_this_folder.yaml
+- extendedWaitUntil:
+    visible: ".*3 locked files.*"
+    timeout: 30000
+- assertVisible: "${DEC_REPICK_B}"
+- assertNotVisible: ".*2 locked files.*"
+
+# 2. Repick, then back out: `_choose` returns with `_inv` untouched, so the
+# second folder must survive — and still be unlockable.
+- tapOn:
+    id: "decrypt_folder_repick"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: "Use this folder"
+    timeout: 20000
+- runFlow: ../subflows/back_out_of_picker.yaml
+- extendedWaitUntil:
+    visible: ".*3 locked files.*"
+    timeout: 15000
+- assertVisible:
+    id: "decrypt_folder_continue"
+
+# 3. Unlock the folder the screen names.
+- tapOn:
+    id: "decrypt_folder_continue"
+- waitForAnimationToEnd
+- tapOn: "Passphrase"
+- inputText: "${PASS}"
+- tapOn:
+    id: "decrypt_passphrase_unlock"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible:
+      id: "decrypt_bulk_done"
+    timeout: 90000
+- assertVisible: ".*3 files unlocked.*"
+- tapOn:
+    id: "decrypt_bulk_done"
+- waitForAnimationToEnd
+- assertVisible:
+    id: "home_decrypt"

@@ -1,0 +1,12 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<!-- A dump carrying a DTD. uiautomator never writes one, so its presence means
+     the file is not what it claims to be. The parser refuses it before handing
+     anything to ElementTree (see root_label.py's docstring). -->
+<!DOCTYPE hierarchy [
+  <!ENTITY bomb "aaaaaaaaaa">
+]>
+<hierarchy rotation="0">
+  <node resource-id="com.google.android.documentsui:id/roots_list" class="android.widget.ListView" bounds="[0,95][787,589]">
+    <node resource-id="android:id/title" class="android.widget.TextView" text="&bomb;" bounds="[181,302][765,360]" />
+  </node>
+</hierarchy>

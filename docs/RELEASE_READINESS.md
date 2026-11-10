@@ -187,6 +187,21 @@ The `subtle` color is used for `bodySmall` (13dp) — this is the most widesprea
 
 Wrap purely decorative icons in `ExcludeSemantics`. For thematic icons (welcome screen), add `Semantics(label: 'Lock icon')`.
 
+### 2.7 Bulk folder screens (feature 004)
+
+**Nice-to-have** — audited 2026-10-06 against §2.1–2.6; the new screens were built to avoid repeating those findings.
+
+| Check | Result |
+|---|---|
+| Tap targets | PASS. Every control is a `RadioListTile`, `SwitchListTile`, `CheckboxListTile`, `ListTile`, `TextButton` or `LatchPrimaryButton`; no `GestureDetector`-as-button, so each carries Flutter's own semantics and a 48dp target (§2.1, §2.4). |
+| Text scaling | PASS. No literal `fontSize`; all text comes from `Theme.textTheme` (§2.2). |
+| Progress semantics | PASS. The bulk progress bars and the folder-scan spinners set `semanticsLabel`; the bars also set `semanticsValue` (§2.5). |
+| Decorative icons | Folder row icon in `bulk_destination_section.dart` is next to a title that already names the folder, so it adds no information a screen reader needs. Left as is. |
+| Colour | Failure and "no folder chosen" text uses `LatchColors.danger`; the status is also stated in words, never by colour alone. Contrast of `LatchColors.subtle`/`caution` is the existing §2.3 finding and is not worsened here. |
+| Back gesture | The two progress screens use `PopScope(canPop: false)` **with** a handler that cancels the run (the §4.2 trap does not apply). |
+| Localisation | **Deferred, as with the rest of the app.** There is no `flutter_localizations` or ARB setup; all copy on the new screens is hard-coded English, including pluralisation (`file`/`files`) and sizes/durations in `describeBytes` / `describeDuration`. Moving to localised strings is a whole-app task and should cover these screens in the same pass. |
+| Not device-verified | TalkBack/VoiceOver traversal order of the new screens has not been exercised on a device (spec task T059). |
+
 ---
 
 ## 3. Performance

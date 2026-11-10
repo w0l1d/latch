@@ -133,12 +133,14 @@ class DecryptSuccessScreen extends StatelessWidget {
                 if (Platform.isAndroid && outputs.isNotEmpty) ...[
                   LatchSecondaryButton(
                     label: 'Open folder',
+                    semanticsId: 'decrypt_success_open_folder',
                     onPressed: () => _openFolder(context),
                   ),
                   const SizedBox(height: 12),
                 ],
                 LatchPrimaryButton(
                   label: 'Done',
+                  semanticsId: 'decrypt_success_done',
                   onPressed: () => context.go('/home'),
                 ),
                 const SizedBox(height: 16),

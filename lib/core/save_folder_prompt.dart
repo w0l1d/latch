@@ -117,13 +117,22 @@ Future<bool> _confirmPicker(BuildContext context, String folder) async {
         'picker opens next.',
       ),
       actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(ctx, false),
-          child: const Text('Cancel'),
+        // `identifier` values are what the on-device UI suite taps: both
+        // dialogs in this file carry a "Cancel" button, so a text selector is
+        // ambiguous as well as locale-dependent.
+        Semantics(
+          identifier: 'save_folder_rationale_cancel',
+          child: TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
         ),
-        TextButton(
-          onPressed: () => Navigator.pop(ctx, true),
-          child: const Text('Continue'),
+        Semantics(
+          identifier: 'save_folder_rationale_continue',
+          child: TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Continue'),
+          ),
         ),
       ],
     ),
@@ -171,17 +180,26 @@ Future<_Destination> _chooseDestination(
                   'can also choose a different folder.',
       ),
       actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(ctx, _Destination.cancel),
-          child: const Text('Cancel'),
+        Semantics(
+          identifier: 'save_folder_cancel',
+          child: TextButton(
+            onPressed: () => Navigator.pop(ctx, _Destination.cancel),
+            child: const Text('Cancel'),
+          ),
         ),
-        TextButton(
-          onPressed: () => Navigator.pop(ctx, _Destination.downloads),
-          child: const Text('Use Downloads'),
+        Semantics(
+          identifier: 'save_folder_downloads',
+          child: TextButton(
+            onPressed: () => Navigator.pop(ctx, _Destination.downloads),
+            child: const Text('Use Downloads'),
+          ),
         ),
-        FilledButton(
-          onPressed: () => Navigator.pop(ctx, _Destination.choose),
-          child: const Text('Choose folder'),
+        Semantics(
+          identifier: 'save_folder_choose',
+          child: FilledButton(
+            onPressed: () => Navigator.pop(ctx, _Destination.choose),
+            child: const Text('Choose folder'),
+          ),
         ),
       ],
     ),

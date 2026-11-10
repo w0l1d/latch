@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.StatFs
 import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.util.Log
@@ -145,6 +146,17 @@ class MainActivity : FlutterFragmentActivity() {
                                 val folder = call.argument<String>("folder")!!
                                 runOnUiThread { result.success(existingTreeGrant(folder)) }
                             }
+                            // Bytes available to this app on the volume holding a real
+                            // path, for the pre-flight space check. Null when the path
+                            // can't be statted (unresolvable SAF tree, missing folder):
+                            // null means "proceed", never "refuse" or another volume's
+                            // number. Walks up to the nearest existing ancestor so a
+                            // destination that doesn't exist yet still answers.
+                            "freeBytes" -> {
+                                val path = call.argument<String>("path")!!
+                                val free = freeBytes(path)
+                                runOnUiThread { result.success(free) }
+                            }
                             // Whether Android still holds a writable grant on this
                             // exact tree. Lets the app reuse a destination the user
                             // chose earlier for sources whose folder can't be
@@ -182,6 +194,27 @@ class MainActivity : FlutterFragmentActivity() {
                                 val created =
                                     createInTree(treeUri, displayName, mimeType, srcPath, subPath)
                                 runOnUiThread { result.success(created) }
+                            }
+                            // Every entry under a granted tree, through the
+                            // document provider rather than the filesystem —
+                            // scoped storage (API 30+) hides non-media files from
+                            // plain file APIs, so a folder walked that way reads
+                            // as empty even though the user picked it.
+                            "listTree" -> {
+                                val treeUri = Uri.parse(call.argument<String>("treeUri")!!)
+                                val recursive = call.argument<Boolean>("recursive") ?: false
+                                val prefixLength = call.argument<Int>("prefixLength") ?: 0
+                                val listing = listTree(treeUri, recursive, prefixLength)
+                                runOnUiThread { result.success(listing) }
+                            }
+                            // Copy one document of a granted tree into app-private
+                            // storage, where the crypto worker's plain file I/O can
+                            // read it.
+                            "copyToCache" -> {
+                                val uri = Uri.parse(call.argument<String>("uri")!!)
+                                val destPath = call.argument<String>("destPath")!!
+                                copyToCache(uri, destPath)
+                                runOnUiThread { result.success(null) }
                             }
                             // Open the system file browser at a folder so the
                             // user can see the files they just locked/unlocked.
@@ -520,6 +553,13 @@ class MainActivity : FlutterFragmentActivity() {
     // tree URI. The platform table stays the single source of truth, so a
     // remembered URI whose grant the user has since revoked reports false and
     // the app asks again instead of silently failing to write.
+    private fun freeBytes(path: String): Long? {
+        var dir: java.io.File? = java.io.File(path)
+        while (dir != null && !dir.exists()) dir = dir.parentFile
+        if (dir == null) return null
+        return runCatching { StatFs(dir.path).availableBytes }.getOrNull()
+    }
+
     private fun isTreeGrantLive(treeUri: String): Boolean {
         val target = Uri.parse(treeUri)
         return contentResolver.persistedUriPermissions.any {
@@ -600,16 +640,6 @@ class MainActivity : FlutterFragmentActivity() {
         return contentResolver.persistedUriPermissions.none { it.uri == uri }
     }
 
-    // Address a folder nested inside a granted tree. The externalstorage
-    // provider's document ids are path-shaped ("primary:Docs"), so a descendant
-    // is the tree's own id plus the relative path.
-    private fun childDocId(treeDocId: String, subPath: String): String =
-        if (treeDocId.endsWith(":") || treeDocId.endsWith("/")) {
-            "$treeDocId$subPath"
-        } else {
-            "$treeDocId/$subPath"
-        }
-
     // Create [displayName] in the granted [treeUri] (resolving collisions the
     // same way FileIoDart.resolveNameCollision does), then copy [srcPath] in.
     // [subPath] targets a folder nested inside the grant — empty means the tree
@@ -623,8 +653,7 @@ class MainActivity : FlutterFragmentActivity() {
         subPath: String,
     ): Map<String, String> {
         val treeDocId = DocumentsContract.getTreeDocumentId(treeUri)
-        val parentDocId =
-            if (subPath.isEmpty()) treeDocId else childDocId(treeDocId, subPath)
+        val parentDocId = ensureFolders(treeUri, treeDocId, SubPathSegments.split(subPath))
         val parent = DocumentsContract.buildDocumentUriUsingTree(treeUri, parentDocId)
         val finalName = uniquify(displayName, childDisplayNames(treeUri, parentDocId))
         val newUri = DocumentsContract.createDocument(contentResolver, parent, mimeType, finalName)
@@ -653,6 +682,136 @@ class MainActivity : FlutterFragmentActivity() {
             "uri" to newUri.toString(),
             "displayPath" to (if (dir != null) "$dir/$finalName" else finalName),
         )
+    }
+
+    // Walk a granted tree through its document provider. Each entry carries the
+    // document's own URI (what delete and copy act on), its path relative to the
+    // tree root, size, and — for files that will be classified — the first
+    // [prefixLength] bytes, so the container sniff needs no second pass.
+    // Without [recursive], subfolders are listed (so they can be counted) but
+    // not entered, and files inside them are never opened.
+    private fun listTree(
+        treeUri: Uri,
+        recursive: Boolean,
+        prefixLength: Int,
+    ): Map<String, Any?> {
+        val rootId = DocumentsContract.getTreeDocumentId(treeUri)
+        val entries = ArrayList<Map<String, Any?>>()
+        val pending = ArrayDeque<Pair<String, String>>()
+        pending.add(rootId to "")
+        while (pending.isNotEmpty()) {
+            val (parentId, parentRel) = pending.removeFirst()
+            val children = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentId)
+            contentResolver.query(
+                children,
+                arrayOf(
+                    DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                    DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                    DocumentsContract.Document.COLUMN_MIME_TYPE,
+                    DocumentsContract.Document.COLUMN_SIZE,
+                    DocumentsContract.Document.COLUMN_LAST_MODIFIED,
+                ),
+                null, null, null,
+            )?.use { c ->
+                while (c.moveToNext()) {
+                    val id = c.getString(0) ?: continue
+                    val name = c.getString(1) ?: continue
+                    val isDir = c.getString(2) == DocumentsContract.Document.MIME_TYPE_DIR
+                    val rel = if (parentRel.isEmpty()) name else "$parentRel/$name"
+                    val docUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, id)
+                    val entry = mutableMapOf<String, Any?>(
+                        "uri" to docUri.toString(),
+                        "rel" to rel,
+                        "isDir" to isDir,
+                        "size" to (if (c.isNull(3)) 0L else c.getLong(3)),
+                        "modified" to (if (c.isNull(4)) 0L else c.getLong(4)),
+                    )
+                    if (isDir) {
+                        pending.add(id to rel)
+                    } else if (prefixLength > 0 && (recursive || parentRel.isEmpty())) {
+                        entry["prefix"] = try {
+                            contentResolver.openInputStream(docUri)?.use { ins ->
+                                val buf = ByteArray(prefixLength)
+                                var n = 0
+                                while (n < prefixLength) {
+                                    val r = ins.read(buf, n, prefixLength - n)
+                                    if (r < 0) break
+                                    n += r
+                                }
+                                buf.copyOf(n)
+                            }
+                        } catch (e: Exception) {
+                            null
+                        }
+                    }
+                    entries.add(entry)
+                }
+            }
+            // Not recursive: the root level is read, and each subfolder is still
+            // listed once so its files can be counted as left out.
+        }
+        val rootName = contentResolver.query(
+            DocumentsContract.buildDocumentUriUsingTree(treeUri, rootId),
+            arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME),
+            null, null, null,
+        )?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+            ?: rootId.substringAfterLast(':').substringAfterLast('/')
+        return mapOf("rootName" to rootName, "entries" to entries)
+    }
+
+    private fun copyToCache(uri: Uri, destPath: String) {
+        val dest = File(destPath)
+        dest.parentFile?.mkdirs()
+        val part = File("$destPath.part")
+        try {
+            val input = contentResolver.openInputStream(uri)
+                ?: throw IllegalStateException("cannot open $uri for reading")
+            input.use { ins -> part.outputStream().use { out -> ins.copyTo(out) } }
+            if (!part.renameTo(dest)) throw IllegalStateException("cannot place $destPath")
+        } finally {
+            if (part.exists()) part.delete()
+        }
+    }
+
+    // Walk [segments] below [startDocId], reusing a folder that already exists
+    // and creating the ones that don't. Document ids come from the provider's
+    // own answers (the query / createDocument result), never from string
+    // concatenation, so this holds for providers whose ids are not path-shaped.
+    private fun ensureFolders(treeUri: Uri, startDocId: String, segments: List<String>): String {
+        var docId = startDocId
+        for (name in segments) {
+            val existing = findChildFolder(treeUri, docId, name)
+            docId = existing ?: run {
+                val parent = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId)
+                val made = DocumentsContract.createDocument(
+                    contentResolver, parent, DocumentsContract.Document.MIME_TYPE_DIR, name,
+                ) ?: throw IllegalStateException("cannot create folder $name")
+                DocumentsContract.getDocumentId(made)
+            }
+        }
+        return docId
+    }
+
+    private fun findChildFolder(treeUri: Uri, parentDocId: String, name: String): String? {
+        val children = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentDocId)
+        contentResolver.query(
+            children,
+            arrayOf(
+                DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                DocumentsContract.Document.COLUMN_MIME_TYPE,
+            ),
+            null, null, null,
+        )?.use { c ->
+            while (c.moveToNext()) {
+                if (c.getString(1) == name &&
+                    c.getString(2) == DocumentsContract.Document.MIME_TYPE_DIR
+                ) {
+                    return c.getString(0)
+                }
+            }
+        }
+        return null
     }
 
     // Existing child display names in a tree folder, for collision detection.

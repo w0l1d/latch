@@ -241,6 +241,47 @@ jobs:
       - name: Pub get
         run: flutter pub get
 
+      # The release key lives only in repository secrets. Android compares signing
+      # certificates at install time, so an APK signed by a different key cannot
+      # upgrade an installed one — the user must uninstall first, which wipes the
+      # passphrase vault. Every release up to v1.0.17 was signed with a debug key
+      # that each runner generated anew, which made exactly that true between
+      # consecutive releases. Failing here, before a build starts, is the whole
+      # point: a missing secret must never degrade into a publishable artifact.
+      - name: Configure release signing
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          # The keystore is a private key on a shared runner: create it unreadable
+          # to anyone else from the first byte, not after it is written.
+          umask 077
+
+          missing=""
+          [ -n "$KEYSTORE_B64" ] || missing="$missing ANDROID_KEYSTORE_B64"
+          [ -n "$KEYSTORE_PASSWORD" ] || missing="$missing ANDROID_KEYSTORE_PASSWORD"
+          [ -n "$KEY_ALIAS" ] || missing="$missing ANDROID_KEY_ALIAS"
+          [ -n "$KEY_PASSWORD" ] || missing="$missing ANDROID_KEY_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::error::Release signing secrets are not configured:$missing"
+            echo "See docs/agents/builds-ci-and-provenance.md for how to create the keystore and set them."
+            exit 1
+          fi
+
+          printf '%s' "$KEYSTORE_B64" | base64 -d > android/release-keystore.p12
+          cat > android/key.properties <<EOF
+          storeFile=release-keystore.p12
+          storePassword=$KEYSTORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          storeType=PKCS12
+          EOF
+
+          # Never echo the properties file; say only that it is in place.
+          echo "Release keystore decoded ($(wc -c < android/release-keystore.p12) bytes)"
+
       # The tag is the source of truth: --build-name/--build-number set the
       # version directly, so pubspec.yaml is never mutated or committed back to
       # main. The APK-badging validation below still enforces the tag against
@@ -271,6 +312,7 @@ jobs:
         run: |
           flutter build apk --release --split-per-abi \
             --target-platform ${{ matrix.target_platform }} \
+            --android-project-arg requireReleaseSigning=true \
             --build-name="$VERSION_NAME" \
             --build-number="$BUILD_NUMBER" \
             --dart-define=LATCH_BUILD_TAG="$TAG_NAME" \
@@ -303,6 +345,39 @@ jobs:
             exit 1
           fi
           echo "${{ matrix.abi }} APK version validated: $APK_VERSION_NAME ($APK_VERSION_CODE)"
+
+      # The Gradle guard proves a keystore was configured; this proves the file
+      # on disk carries it. Pinning the fingerprint is a repository *variable*
+      # rather than a secret on purpose — a certificate fingerprint is public,
+      # and the check must still run for anyone else building this repo.
+      - name: Verify release signature
+        env:
+          PINNED_CERT_SHA256: ${{ vars.ANDROID_RELEASE_CERT_SHA256 }}
+        run: |
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)
+          if [ -z "$APKSIGNER" ]; then
+            echo "::error::apksigner not found under \$ANDROID_HOME/build-tools"
+            exit 1
+          fi
+
+          APK_PATH="build/app/outputs/flutter-apk/app-${{ matrix.abi }}-release.apk"
+          CERTS=$("$APKSIGNER" verify --print-certs "$APK_PATH")
+          echo "$CERTS"
+
+          # The debug certificate is self-signed with this DN on every machine.
+          if echo "$CERTS" | grep -q 'CN=Android Debug'; then
+            echo "::error::${{ matrix.abi }} APK is signed with the Android debug key — refusing to publish"
+            exit 1
+          fi
+
+          if [ -z "$PINNED_CERT_SHA256" ]; then
+            echo "::warning::ANDROID_RELEASE_CERT_SHA256 is unset — signature is not pinned to the release certificate"
+          elif ! echo "$CERTS" | grep -qi "SHA-256 digest: $PINNED_CERT_SHA256"; then
+            echo "::error::${{ matrix.abi }} APK certificate does not match the pinned release certificate"
+            exit 1
+          fi
+
+          echo "${{ matrix.abi }} APK signature verified"
 
       - name: Stage APK
         run: |

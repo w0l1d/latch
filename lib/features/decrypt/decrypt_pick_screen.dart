@@ -76,6 +76,7 @@ class _DecryptPickScreenState extends State<DecryptPickScreen> {
                 child: Semantics(
                   button: true,
                   label: 'Choose locked files',
+                  identifier: 'decrypt_pick_cta',
                   child: GestureDetector(
                     onTap: _picking ? null : _pick,
                     child: Container(
@@ -171,8 +172,17 @@ class _DecryptPickScreenState extends State<DecryptPickScreen> {
                 ),
               ),
               const SizedBox(height: 16),
+              if (count == 0) ...[
+                LatchSecondaryButton(
+                  label: 'Unlock a whole folder',
+                  semanticsId: 'decrypt_pick_folder',
+                  onPressed: () => context.push('/decrypt/folder'),
+                ),
+                const SizedBox(height: 8),
+              ],
               LatchPrimaryButton(
                 label: 'Enter passphrase',
+                semanticsId: 'decrypt_pick_continue',
                 onPressed: count > 0
                     ? () => context.push(
                         '/decrypt/passphrase',

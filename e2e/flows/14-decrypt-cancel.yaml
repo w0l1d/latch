@@ -1,0 +1,63 @@
+appId: ${APP_ID}
+name: 14 · decrypting and declining the destination writes no plaintext
+tags:
+  - core
+---
+# Decrypt is the direction where a cancellation matters most: the output is
+# plaintext. Flow 10 covers the same two declines on the encrypt side, where the
+# stakes are a stray container; here the stakes are the user's file appearing
+# somewhere they never asked for.
+#
+# Depends on 01 for the container, exactly like 02 and 03.
+#
+# Planning runs before the worker, so the pop back to the passphrase screen is a
+# genuine "nothing was decrypted" rather than "nothing yet". The host assertion
+# is the real proof: the fixture folder is byte-identical afterwards, which also
+# means no `alpha_3.txt` collision file was created.
+- launchApp
+- runFlow: ../subflows/ensure_home.yaml
+
+- tapOn:
+    id: "home_decrypt"
+- waitForAnimationToEnd
+- runFlow:
+    file: ../subflows/pick_file.yaml
+    env:
+      FILE: ${CONTAINER}
+      PICK_ROOT: internal
+      PICK_SUBDIR: ""
+- tapOn:
+    id: "decrypt_pick_continue"
+- waitForAnimationToEnd
+
+- tapOn: "Passphrase"
+- inputText: "${PASS}"
+- tapOn:
+    id: "decrypt_passphrase_unlock"
+
+# 1. Rationale — the container's folder is known, so the picker is explained.
+- extendedWaitUntil:
+    visible:
+      id: "save_folder_rationale_continue"
+    timeout: 30000
+- tapOn:
+    id: "save_folder_rationale_cancel"
+- waitForAnimationToEnd
+
+# 2. Destination — declining here is a real answer, and it stops the batch.
+- extendedWaitUntil:
+    visible:
+      id: "save_folder_cancel"
+    timeout: 20000
+- tapOn:
+    id: "save_folder_cancel"
+- waitForAnimationToEnd
+
+# Back where the batch started: the passphrase screen, not a spinner and not a
+# success screen.
+- extendedWaitUntil:
+    visible:
+      id: "decrypt_passphrase_unlock"
+    timeout: 15000
+- assertNotVisible:
+    id: "decrypt_success_done"

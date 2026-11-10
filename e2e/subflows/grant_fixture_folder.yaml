@@ -1,0 +1,27 @@
+appId: ${APP_ID}
+---
+# Grant the fixture folder from inside the system *folder* picker
+# (ACTION_OPEN_DOCUMENT_TREE).
+#
+# The app seeds this picker — by path when it knows the source folder, by
+# document URI when it doesn't — but seeding is best-effort by contract: "the
+# initial location is system specific if this extra is missing or document
+# navigator failed to locate the desired initial location", and shipping apps
+# have disabled it on some devices. So the walk is unconditional. Wherever the
+# picker opened, the same navigation lands on the fixture folder, which is what
+# makes "Choose folder" testable rather than dependent on a seed taking effect.
+#
+# The picker is the *folder* picker, so `open_fixtures.yaml`'s final "bulk"
+# check doubles as proof we are inside LatchE2E before the button is tapped.
+#
+# Deliberately takes no "descend into a subfolder" option: a subflow that
+# branched on an inherited variable would also branch when the *global* suite
+# env happened to define it, and the grant every other flow takes would land in
+# the wrong folder. Flow 17, which needs a different folder, navigates there
+# itself and then uses `use_this_folder.yaml`.
+- runFlow:
+    file: open_fixtures.yaml
+    env:
+      ROOT: internal
+
+- runFlow: use_this_folder.yaml

@@ -1,0 +1,61 @@
+appId: ${APP_ID}
+name: 04 · lock two files picked in two passes
+tags:
+  - core
+---
+# Single-tap in the system picker returns one document at a time, so the second
+# file is added through the app's own "+ Add more" — the real path a user takes
+# to lock several documents from different folders.
+- launchApp
+- runFlow: ../subflows/ensure_home.yaml
+
+- tapOn:
+    id: "home_encrypt"
+- waitForAnimationToEnd
+- runFlow:
+    file: ../subflows/pick_file.yaml
+    env:
+      FILE: ${FILE2}
+      PICK_ROOT: internal
+      PICK_SUBDIR: ""
+# With one file chosen the layout changes: the drop card is replaced by the
+# list plus an add control.
+- extendedWaitUntil:
+    visible:
+      id: "encrypt_pick_add"
+    timeout: 15000
+- runFlow:
+    file: ../subflows/pick_file.yaml
+    env:
+      FILE: ${FILE3}
+      PICK_ROOT: internal
+      PICK_SUBDIR: ""
+- assertVisible: "2 files selected"
+- tapOn:
+    id: "encrypt_pick_continue"
+- waitForAnimationToEnd
+- tapOn: "Enter passphrase"
+- inputText: "${PASS}"
+- tapOn:
+    id: "encrypt_passphrase_continue"
+- waitForAnimationToEnd
+- tapOn:
+    id: "encrypt_options_continue"
+- waitForAnimationToEnd
+
+- assertVisible: "Ready to lock"
+- tapOn:
+    id: "encrypt_review_lock"
+
+# Both files came from the same folder, so planning asks for that one grant —
+# not one per file. The grant is what keeps the two containers beside their
+# originals instead of in Downloads.
+- runFlow: ../subflows/save_grant.yaml
+
+- extendedWaitUntil:
+    visible:
+      id: "encrypt_success_done"
+    timeout: 60000
+- assertVisible: "2 files locked."
+- tapOn:
+    id: "encrypt_success_done"

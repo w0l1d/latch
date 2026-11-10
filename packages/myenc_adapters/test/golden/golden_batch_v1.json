@@ -1,0 +1,19 @@
+{
+  "note": "Produced independently by tool/gen_batch_vectors.py (argon2-cffi + libsodium ctypes). Do not edit by hand.",
+  "passphrase": "one passphrase for the whole batch",
+  "wrong_passphrase": "not the batch passphrase",
+  "shared_salt_hex": "202122232425262728292a2b2c2d2e2f",
+  "opslimit": 3,
+  "memlimit_kib": 65536,
+  "chunk_size": 64,
+  "files": [
+    {
+      "name": "golden_batch_v1_a.latch",
+      "plaintext_hex": "62617463682066696c6520413a2073686f72746572207468616e206f6e652036342d62797465206368756e6b2e"
+    },
+    {
+      "name": "golden_batch_v1_b.latch",
+      "plaintext_hex": "62617463682066696c6520423a2074686973206f6e65206973206c6f6e6720656e6f75676820746f207370616e206d6f7265207468616e206f6e652036342d627974652073656372657473747265616d206368756e6b2c20736f207468652046494e414c207461672073697473206f6e2061206c61746572206f6e652e"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+appId: ${APP_ID}
+---
+# Continue through the rationale, then grant the source folder.
+#
+# Used by every flow whose output must land *beside its original*. The tap
+# targets `save_folder_rationale_continue` rather than the "Continue" text:
+# both dialogs in save_folder_prompt.dart carry a "Cancel", and a text selector
+# would be one copy change away from silently tapping the wrong button.
+- extendedWaitUntil:
+    visible:
+      id: "save_folder_rationale_continue"
+    timeout: 20000
+- assertVisible: ".*Save beside the originals.*"
+- tapOn:
+    id: "save_folder_rationale_continue"
+- waitForAnimationToEnd
+
+# Navigation is unconditional even though the picker is seeded at the source
+# folder — see grant_fixture_folder.yaml for why a seed may be ignored.
+- runFlow: grant_fixture_folder.yaml

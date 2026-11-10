@@ -1,0 +1,56 @@
+appId: ${APP_ID}
+name: 06 · delete originals removes the plaintext only after verification
+tags:
+  - core
+---
+# `beta.md` is the sacrificial fixture: no other flow deletes it, and the host
+# assert re-proves both that it is gone and that the container it left behind
+# is a real v1 container. Deletion is the one irreversible action in the app,
+# so the UI saying "deleted" is not enough.
+- launchApp
+- runFlow: ../subflows/ensure_home.yaml
+
+- tapOn:
+    id: "home_encrypt"
+- waitForAnimationToEnd
+- runFlow:
+    file: ../subflows/pick_file.yaml
+    env:
+      FILE: ${SACRIFICE}
+      PICK_ROOT: internal
+      PICK_SUBDIR: ""
+- tapOn:
+    id: "encrypt_pick_continue"
+- waitForAnimationToEnd
+- tapOn: "Enter passphrase"
+- inputText: "${PASS}"
+- tapOn:
+    id: "encrypt_passphrase_continue"
+- waitForAnimationToEnd
+
+- tapOn:
+    id: "encrypt_options_delete"
+- tapOn:
+    id: "encrypt_options_continue"
+- waitForAnimationToEnd
+
+# The review screen must say the original will be removed — this is the last
+# moment a user can back out.
+- assertVisible: "Ready to lock"
+- assertVisible: "Deleted after"
+- tapOn:
+    id: "encrypt_review_lock"
+
+# `pm clear` ran before this flow, which also revoked the grant flow 01 took:
+# Android scopes a persisted tree permission to the package's data, so every
+# flow writing beside the originals has to take its own. Answering here is not
+# an extra step a user would face — it is the same first-run prompt they see.
+- runFlow: ../subflows/save_grant.yaml
+
+- extendedWaitUntil:
+    visible:
+      id: "encrypt_success_done"
+    timeout: 60000
+- assertVisible: "1 file locked."
+- tapOn:
+    id: "encrypt_success_done"

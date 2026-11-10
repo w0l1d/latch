@@ -1,0 +1,72 @@
+appId: ${APP_ID}
+# Tap a root in DocumentsUI's drawer ("Open from"), scrolling it into view first.
+#
+# One required parameter, and NO `env:` block above — see pick_file.yaml for
+# why a default declared here would silently override the caller's value.
+#
+#   DRAWER_ROOT  the row's label: ${INTERNAL_ROOT} or "Downloads"
+---
+# "Show roots" is on screen only while the drawer is closed, so this is
+# idempotent: it opens a drawer that never opened (the 14:08 flow-08
+# signature) and does nothing when the caller already opened it.
+- runFlow:
+    when:
+      visible: "Show roots"
+    commands:
+      - tapOn: "Show roots"
+      - waitForAnimationToEnd
+
+# The drawer is a scrollable list, and in the *document* picker it starts with
+# the media shortcuts — Recent, Images, Videos, Audio, Documents — before the
+# volumes and Downloads. That is six rows to reach Downloads, which fits a
+# portrait phone and does not fit one held sideways: rotation is a device
+# setting this suite does not control (`accelerometer_rotation` is on, and the
+# owner moves the phone), so on 2026-11-05 a five-run flow-08 batch failed
+# every time with the picker in landscape, five of six rows on screen.
+#
+# `tapOn` does not scroll, so a row below the fold is simply "not found". The
+# swipe has to start inside the drawer, which is why this is a coordinate
+# swipe at 15% width: `scrollUntilVisible` swipes the screen centre, i.e. the
+# content grid *behind* the drawer, and would scroll the wrong list.
+#
+# Two conditional swipes rather than one: the second only runs if the first
+# did not reach the row, and a short drawer (portrait) runs neither.
+- runFlow:
+    when:
+      notVisible:
+        id: "android:id/title"
+        text: "${DRAWER_ROOT}"
+    commands:
+      - swipe:
+          start: "15%, 80%"
+          end: "15%, 20%"
+          duration: 400
+      - waitForAnimationToEnd
+
+- runFlow:
+    when:
+      notVisible:
+        id: "android:id/title"
+        text: "${DRAWER_ROOT}"
+    commands:
+      - swipe:
+          start: "15%, 80%"
+          end: "15%, 20%"
+          duration: 400
+      - waitForAnimationToEnd
+
+# Row, not crumb. The label also appears in the breadcrumb
+# (`com.google.android.documentsui:id/breadcrumb_text`) of wherever the picker
+# was last left, and a bare text selector matches that one — how flow 08
+# "saw" a Downloads row that was never on screen, passed the wait, and then
+# failed the tap with "Element not found". Scoping to the row id makes the
+# wait prove what the tap needs.
+- extendedWaitUntil:
+    visible:
+      id: "android:id/title"
+      text: "${DRAWER_ROOT}"
+    timeout: 15000
+- tapOn:
+    id: "android:id/title"
+    text: "${DRAWER_ROOT}"
+- waitForAnimationToEnd

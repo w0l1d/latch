@@ -49,13 +49,13 @@ class _SaveFoldersScreenState extends State<SaveFoldersScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Stop saving to this folder?'),
+        title: const Text('Remove access to this folder?'),
         // Say what does *not* happen: revoking access is easy to read as
         // deleting something, and no file is touched either way.
         content: Text(
-          'Latch will lose write access to "${grant.label}". Files already '
-          'saved there are untouched — the next time you lock or unlock a file '
-          'from this folder, Latch will ask for it again.',
+          'Latch will lose access to "${grant.label}". Files in it are '
+          'untouched — the next time Latch needs this folder, it will ask '
+          'again.',
         ),
         actions: [
           TextButton(
@@ -99,9 +99,10 @@ class _SaveFoldersScreenState extends State<SaveFoldersScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           children: [
             Text(
-              'Folders you have allowed Latch to save into, so encrypted and '
-              'decrypted files can land beside the originals instead of in '
-              'Downloads.',
+              'Folders you have given Latch access to. Latch uses them to save '
+              'locked and unlocked files, and to read a folder you choose to '
+              'lock or unlock. Android does not record why a folder was '
+              'allowed, so any of them may be used for either.',
               style: text.bodyMedium,
             ),
             const SizedBox(height: 20),
@@ -109,8 +110,8 @@ class _SaveFoldersScreenState extends State<SaveFoldersScreen> {
               const Center(child: CircularProgressIndicator())
             else if (_grants.grants.isEmpty)
               Text(
-                'Latch cannot save to any folder yet. It asks the first time it '
-                'saves a file beside an original.',
+                'Latch has no folder access yet. It asks the first time it needs '
+                'to save beside an original or to work through a folder.',
                 style: text.bodySmall,
               )
             else ...[

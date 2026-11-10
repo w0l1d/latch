@@ -297,6 +297,17 @@ void main() {
       expect(find.text('Choose locked files'), findsWidgets);
     });
 
+    testWidgets('pick screen offers "Lock a whole folder" → folder screen', (
+      tester,
+    ) async {
+      await _pumpApp(tester);
+      await _resetTo(tester, '/encrypt/pick');
+      await tester.tap(find.text('Lock a whole folder'));
+      await tester.pumpAndSettle();
+      expect(find.text('Lock a folder'), findsOneWidget);
+      expect(find.text('Choose a folder'), findsOneWidget);
+    });
+
     testWidgets('settings icon navigates to settings', (tester) async {
       await _pumpApp(tester);
       await _resetTo(tester, '/home');

@@ -106,6 +106,12 @@ render.experimental.xml
 *.jks
 *.keystore
 
+# Release signing material. `release.yml` writes both files on the runner from
+# repository secrets; nothing here may ever be committed. Missing this entry
+# once means a private key in git history, which is unrecoverable.
+android/key.properties
+android/release-keystore.p12
+
 # Google Services (e.g. APIs or Firebase)
 google-services.json
 
@@ -144,3 +150,15 @@ doc/api/
 .flutter-plugins
 .flutter-plugins-dependencies
 
+
+# Python bytecode from tool/ generators (run with a system Python)
+__pycache__/
+*.pyc
+
+# graphify's per-clone markers (the graph itself, once built, is committed)
+graphify-out/.graphify_python
+graphify-out/.graphify_root
+
+# Skills installed locally into the repo by tooling, not project source
+.agents/
+skills-lock.json

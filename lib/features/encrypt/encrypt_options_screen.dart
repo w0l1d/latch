@@ -131,6 +131,7 @@ class _EncryptOptionsScreenState extends State<EncryptOptionsScreen> {
                 title: 'Keep the originals',
                 subtitle: 'You\'ll have both the file and its locked copy.',
                 selected: !_deleteOriginals,
+                id: 'encrypt_options_keep',
                 onTap: () => setState(() => _deleteOriginals = false),
               ),
               const SizedBox(height: 12),
@@ -138,6 +139,7 @@ class _EncryptOptionsScreenState extends State<EncryptOptionsScreen> {
                 title: 'Delete originals after',
                 subtitle: 'Remove the unlocked copies once locking succeeds.',
                 selected: _deleteOriginals,
+                id: 'encrypt_options_delete',
                 onTap: () => setState(() => _deleteOriginals = true),
               ),
               const SizedBox(height: 20),
@@ -199,6 +201,7 @@ class _EncryptOptionsScreenState extends State<EncryptOptionsScreen> {
               const Spacer(),
               LatchPrimaryButton(
                 label: 'Continue',
+                semanticsId: 'encrypt_options_continue',
                 onPressed: () => context.push(
                   '/encrypt/review',
                   extra: {
@@ -241,6 +244,7 @@ class _OutputFolderRow extends StatelessWidget {
     return Semantics(
       button: true,
       label: 'Choose output folder',
+      identifier: 'encrypt_options_output',
       child: GestureDetector(
         onTap: onChoose,
         child: Container(
@@ -297,11 +301,15 @@ class _OptionCard extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
 
+  /// Stable test identifier; see `LatchPrimaryButton.semanticsId`.
+  final String? id;
+
   const _OptionCard({
     required this.title,
     required this.subtitle,
     required this.selected,
     required this.onTap,
+    this.id,
   });
 
   @override
@@ -309,6 +317,7 @@ class _OptionCard extends StatelessWidget {
     return Semantics(
       button: true,
       label: title,
+      identifier: id,
       child: GestureDetector(
         onTap: onTap,
         child: Container(

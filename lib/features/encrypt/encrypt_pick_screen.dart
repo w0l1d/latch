@@ -69,9 +69,13 @@ class _EncryptPickScreenState extends State<EncryptPickScreen> {
             children: [
               if (_files.isEmpty)
                 Expanded(
+                  // No `label:` here — the child Column already renders
+                  // "Choose files to lock" as text, and a parent label is
+                  // concatenated with it, so TalkBack read the call to action
+                  // twice. `button` alone is enough to expose the role.
                   child: Semantics(
                     button: true,
-                    label: 'Choose files to lock',
+                    identifier: 'encrypt_pick_cta',
                     child: GestureDetector(
                       onTap: _picking ? null : _pickFiles,
                       child: Container(
@@ -158,17 +162,28 @@ class _EncryptPickScreenState extends State<EncryptPickScreen> {
                                 color: LatchColors.ink,
                               ),
                             )
-                          : Text(
-                              '+ Add more',
-                              style: Theme.of(context).textTheme.bodyMedium,
+                          : Semantics(
+                              identifier: 'encrypt_pick_add',
+                              child: Text(
+                                '+ Add more',
+                                style: Theme.of(context).textTheme.bodyMedium,
+                              ),
                             ),
                     ),
                   ),
                 ),
               ],
-              const SizedBox(height: 16),
+              const SizedBox(height: 8),
+              if (_files.isEmpty)
+                LatchSecondaryButton(
+                  label: 'Lock a whole folder',
+                  semanticsId: 'encrypt_pick_folder',
+                  onPressed: () => context.push('/encrypt/folder'),
+                ),
+              const SizedBox(height: 8),
               LatchPrimaryButton(
                 label: 'Set a passphrase',
+                semanticsId: 'encrypt_pick_continue',
                 onPressed: _files.isEmpty
                     ? null
                     : () => context.push(

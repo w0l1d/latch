@@ -1,0 +1,46 @@
+appId: ${APP_ID}
+name: 03 · a wrong passphrase fails and writes nothing
+tags:
+  - core
+---
+# Depends on 01 for the container. The security-relevant half of this scenario
+# is the host-side assertion in asserts/03: no plaintext may appear, and the
+# container must still open with the right passphrase afterwards.
+- launchApp
+- runFlow: ../subflows/ensure_home.yaml
+
+- tapOn:
+    id: "home_decrypt"
+- waitForAnimationToEnd
+- runFlow:
+    file: ../subflows/pick_file.yaml
+    env:
+      FILE: ${CONTAINER}
+      PICK_ROOT: internal
+      PICK_SUBDIR: ""
+- tapOn:
+    id: "decrypt_pick_continue"
+- waitForAnimationToEnd
+
+- tapOn: "Passphrase"
+- inputText: "${WRONG_PASS}"
+- tapOn:
+    id: "decrypt_passphrase_unlock"
+
+# Planning runs *before* the passphrase is ever used, so the destination
+# question comes first. Answering "Use Downloads" is deliberate: it lets crypto
+# proceed to the DEK unwrap, which is what this flow is testing. Cancelling here
+# would abort the batch before the wrong passphrase could be detected, and the
+# flow would hang waiting for an error that never comes. Nothing is written
+# either way, because the wrap fails before any output exists.
+- runFlow: ../subflows/save_downloads.yaml
+
+# The app must land on the failure screen, not spin. The wording is the user's
+# only clue about what went wrong, so it is asserted rather than "some error".
+# Wording source: lib/features/decrypt/decrypt_progress_screen.dart:190 — the
+# all-failed branch intercepts WrongPassphraseError and shows "Wrong passphrase"
+# / "That passphrase didn't open these files." (NOT the generic
+# userMessageForError copy "Incorrect passphrase…", which this path overrides).
+- extendedWaitUntil:
+    visible: ".*Wrong passphrase.*"
+    timeout: 40000

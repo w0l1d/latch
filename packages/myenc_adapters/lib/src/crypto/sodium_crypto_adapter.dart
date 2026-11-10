@@ -98,8 +98,17 @@ class SodiumCryptoAdapter implements CryptoPort {
     // the already-zeroed array and encrypt the body under an all-zero key.
     final secureKey = SecureKey.fromList(_sodium, key);
     return StreamTransformer.fromBind((stream) {
+      // Backpressure: a paused or cancelled consumer must pause or stop the
+      // upstream read. Without it a slow consumer (e.g. a byte-for-byte
+      // verification) lets the whole file pile up in this controller.
+      late final StreamSubscription<Uint8List> sub;
       final controller = StreamController<Uint8List>(
-        onCancel: () => secureKey.dispose(),
+        onPause: () => sub.pause(),
+        onResume: () => sub.resume(),
+        onCancel: () async {
+          await sub.cancel();
+          secureKey.dispose();
+        },
       );
       final xformer = _sodium.crypto.secretStream.createPushChunked(
         key: secureKey,
@@ -108,7 +117,7 @@ class SodiumCryptoAdapter implements CryptoPort {
       // Reify as Stream<List<int>>: sodium's internal ChunkedStreamTransformer
       // is StreamTransformer<List<int>, _> and Dart's runtime variance check
       // rejects transform() on a stream reified as Stream<Uint8List>.
-      xformer
+      sub = xformer
           .bind(stream.map<List<int>>((c) => c))
           .map(Uint8List.fromList)
           .listen(
@@ -130,15 +139,24 @@ class SodiumCryptoAdapter implements CryptoPort {
     // lazily-read (zeroed) key would fail authentication on the first chunk.
     final secureKey = SecureKey.fromList(_sodium, key);
     return StreamTransformer.fromBind((stream) {
+      // Backpressure: a paused or cancelled consumer must pause or stop the
+      // upstream read. Without it a slow consumer (e.g. a byte-for-byte
+      // verification) lets the whole file pile up in this controller.
+      late final StreamSubscription<Uint8List> sub;
       final controller = StreamController<Uint8List>(
-        onCancel: () => secureKey.dispose(),
+        onPause: () => sub.pause(),
+        onResume: () => sub.resume(),
+        onCancel: () async {
+          await sub.cancel();
+          secureKey.dispose();
+        },
       );
       final xformer = _sodium.crypto.secretStream.createPullChunked(
         key: secureKey,
         chunkSize: chunkSize,
         requireFinalized: true,
       );
-      xformer
+      sub = xformer
           .bind(stream.map<List<int>>((c) => c))
           .map(Uint8List.fromList)
           .listen(

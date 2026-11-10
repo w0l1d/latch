@@ -1,0 +1,12 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<!-- A drawer that is open but lists no volumes: what a dump looks like when
+     "Show roots" was tapped while the drawer was already closing, or when the
+     picker has not finished loading. The parser must refuse this rather than
+     return nothing and let the flow tap an empty string. -->
+<hierarchy rotation="0">
+  <node class="android.widget.FrameLayout" package="com.google.android.documentsui" bounds="[0,0][1080,2340]">
+    <node resource-id="com.google.android.documentsui:id/container_roots" class="android.widget.FrameLayout" bounds="[0,95][787,589]">
+      <node resource-id="com.google.android.documentsui:id/roots_list" class="android.widget.ListView" bounds="[0,95][787,589]" />
+    </node>
+  </node>
+</hierarchy>

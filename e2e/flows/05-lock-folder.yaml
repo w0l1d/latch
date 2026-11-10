@@ -1,0 +1,77 @@
+appId: ${APP_ID}
+name: 05 · lock a whole folder, non-recursive by default
+tags:
+  - core
+---
+# The bulk path is a different picker, a different planner and a different
+# result screen from the single-file flows: the source itself is read through a
+# tree grant (`ACTION_OPEN_DOCUMENT_TREE`), every file becomes its own ordinary
+# v1 container, and the run goes straight from the passphrase to progress — the
+# options and review screens of the single-file path do not exist here.
+#
+# The folder is `${BULK_DIR}` and not the fixture root on purpose: a run over
+# the root would leave a container beside every other flow's source file. It
+# also holds `sub/four.txt`, which the default (subfolders off) scan must leave
+# out — that is what makes "3 files" a real assertion rather than a count of
+# whatever happened to be there.
+- launchApp
+- runFlow: ../subflows/ensure_home.yaml
+
+- tapOn:
+    id: "home_encrypt"
+- waitForAnimationToEnd
+- tapOn:
+    id: "encrypt_pick_folder"
+- waitForAnimationToEnd
+- assertVisible: "Lock a folder"
+- tapOn:
+    id: "encrypt_folder_pick"
+- waitForAnimationToEnd
+
+# The same DocumentsUI, used as a *folder* picker this time.
+- runFlow:
+    file: ../subflows/open_fixtures.yaml
+    env:
+      ROOT: internal
+- extendedWaitUntil:
+    visible: "${BULK_DIR}"
+    timeout: 15000
+- tapOn: "${BULK_DIR}"
+- waitForAnimationToEnd
+- runFlow: ../subflows/use_this_folder.yaml
+
+# The scan reads the folder through the grant that was just taken; the grant
+# doubles as the destination, so no save-folder prompt follows.
+- extendedWaitUntil:
+    visible: ".*3 files.*"
+    timeout: 30000
+# Non-recursive is the default: the nested file is counted as excluded, not
+# silently ignored. If a regression started descending, this line still reads
+# "4 files" above and this one would be missing.
+- assertVisible: ".*1 file in subfolders will be left out.*"
+- assertVisible:
+    id: "encrypt_folder_continue"
+- tapOn:
+    id: "encrypt_folder_continue"
+- waitForAnimationToEnd
+
+- tapOn: "Enter passphrase"
+- inputText: "${PASS}"
+- tapOn:
+    id: "encrypt_passphrase_continue"
+- waitForAnimationToEnd
+
+# No options screen and no review screen on the folder path — the run is the
+# whole batch. The result screen is the first thing after the passphrase.
+- extendedWaitUntil:
+    visible:
+      id: "encrypt_bulk_done"
+    timeout: 90000
+- assertVisible: ".*3 files locked.*"
+- assertVisible: ".*Saved in .*${BULK_DIR}.*"
+- assertNotVisible: ".*saved to Downloads.*"
+- tapOn:
+    id: "encrypt_bulk_done"
+- waitForAnimationToEnd
+- assertVisible:
+    id: "home_encrypt"

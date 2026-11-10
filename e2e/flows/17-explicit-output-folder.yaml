@@ -1,0 +1,82 @@
+appId: ${APP_ID}
+name: 17 · an output folder chosen up front is used without any prompt
+tags:
+  - core
+---
+# The options screen can carry an `explicitTreeUri`: the user grants one folder
+# before the batch, and every file targets it. `OutputPlanner.plan` short-circuits
+# on it — no per-folder grant, no prompt at lock time.
+#
+# The chosen folder is `bulk/`, deliberately *not* the source's folder, so the
+# two possible outcomes are distinguishable on disk: inside `bulk/` means the
+# explicit choice was honoured, beside the source means it was silently ignored.
+# A Downloads fallback is ruled out on the host side too.
+- launchApp
+- runFlow: ../subflows/ensure_home.yaml
+
+- tapOn:
+    id: "home_encrypt"
+- waitForAnimationToEnd
+- runFlow:
+    file: ../subflows/pick_file.yaml
+    env:
+      FILE: ${EXP_DST}
+      PICK_ROOT: internal
+      PICK_SUBDIR: ""
+- tapOn:
+    id: "encrypt_pick_continue"
+- waitForAnimationToEnd
+- tapOn: "Enter passphrase"
+- inputText: "${PASS}"
+- tapOn:
+    id: "encrypt_passphrase_continue"
+- waitForAnimationToEnd
+
+# Choose the destination here, before lock, rather than answering at lock time.
+- tapOn:
+    id: "encrypt_options_output"
+- waitForAnimationToEnd
+- runFlow:
+    file: ../subflows/open_fixtures.yaml
+    env:
+      ROOT: internal
+- extendedWaitUntil:
+    visible: "${BULK_SUBDIR}"
+    timeout: 15000
+- tapOn: "${BULK_SUBDIR}"
+- waitForAnimationToEnd
+- runFlow: ../subflows/use_this_folder.yaml
+
+# Back on the options screen with the folder recorded — the row now names it.
+#
+# The wildcards are not decoration. The row is one `Semantics` node that carries
+# `label: 'Choose output folder'` and merges its two child Texts, so the whole
+# accessibility string is multi-line:
+#
+#   "Choose output folder⏎bulk⏎/storage/emulated/0/Download/LatchE2E/bulk"
+#
+# Maestro's `text:` is a FULL-STRING regex, so a bare `bulk` matches none of it
+# (this is the same trap `pick_file.yaml` documents). It has to be `.*bulk.*`.
+# The `id` keeps it honest: "bulk" appearing anywhere on the screen would not
+# prove the chosen folder reached the row.
+- extendedWaitUntil:
+    visible:
+      id: "encrypt_options_output"
+      text: ".*${BULK_SUBDIR}.*"
+    timeout: 15000
+- tapOn:
+    id: "encrypt_options_continue"
+- waitForAnimationToEnd
+- assertVisible: "Ready to lock"
+- tapOn:
+    id: "encrypt_review_lock"
+
+# No save-folder tap follows: a prompt here would mean `explicitTreeUri` was
+# ignored. If one appears, this wait times out rather than answering it.
+- extendedWaitUntil:
+    visible:
+      id: "encrypt_success_done"
+    timeout: 40000
+- assertVisible: ".*Saved in .*${BULK_SUBDIR}.*"
+- tapOn:
+    id: "encrypt_success_done"
