@@ -106,6 +106,12 @@ render.experimental.xml
 *.jks
 *.keystore
 
+# Release signing material. `release.yml` writes both files on the runner from
+# repository secrets; nothing here may ever be committed. Missing this entry
+# once means a private key in git history, which is unrecoverable.
+android/key.properties
+android/release-keystore.p12
+
 # Google Services (e.g. APIs or Firebase)
 google-services.json
 
