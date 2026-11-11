@@ -16,6 +16,10 @@
 # INTERNAL_ROOT="..." overrides the detected internal-storage label and implies
 # --no-detect; the label is OEM-specific, so it is read off the device otherwise.
 #
+# The run claims the device before touching it (`lib/device_lock.sh`) and exits 2
+# if another e2e run, or any other Maestro `test`, already holds it: two runs on
+# one phone corrupt each other's results in ways that read as app defects.
+#
 # Exit status is the number of failed checks (0 = green).
 set -uo pipefail
 
@@ -32,6 +36,8 @@ source "$HERE/lib/common.sh"
 source "$HERE/lib/fixtures.sh"
 # shellcheck source=lib/verify.sh
 source "$HERE/lib/verify.sh"
+# shellcheck source=lib/device_lock.sh
+source "$HERE/lib/device_lock.sh"
 
 ONLY=()
 KEEP_STATE=0
@@ -115,7 +121,7 @@ recover_rotation() {
     echo "           adb shell settings put system user_rotation ${user:-0}" >&2
   fi
 }
-trap 'restore_rotation; rm -rf "$WORK"' EXIT
+trap 'release_device_lock; restore_rotation; rm -rf "$WORK"' EXIT
 # An EXIT trap does NOT run when bash is killed by an untrapped signal. Without
 # these, Ctrl-C or a SIGTERM from a supervising process skips the cleanup above
 # and leaves the owner's phone pinned to portrait with no warning printed.
@@ -140,6 +146,12 @@ echo " workdir : $WORK"
 echo "=============================================================="
 
 require_device
+
+# Claim the phone before anything reads or writes device state. `recover_rotation`
+# and the portrait pin below both `settings put`, so a second run must be stopped
+# here, not after it has already changed the owner's orientation.
+acquire_device_lock
+require_no_foreign_maestro
 
 # Order matters: undo a previous run's leftover pin *before* reading the current
 # values. Reading first would record the suite's own 0s as the owner's settings

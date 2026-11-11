@@ -43,6 +43,26 @@ original. None of those can be seen from a unit test.
 Exit status is the number of failed checks. A failing flow's Maestro log is
 copied to `$TMPDIR/latch-e2e-<flow>.log`.
 
+### One run per device
+
+The run claims the phone before touching it (`lib/device_lock.sh`) and **exits 2
+while another run holds it**. The lock lives at
+`$TMPDIR/latch-e2e-device-<serial>.lock`, so two phones can still be driven in
+parallel; it records the owner's pid, host and process start time, and a lock
+whose owner is gone (or whose pid was reused) is cleared automatically.
+
+This exists because two runs on one device corrupt each other **silently**:
+`maestro.android` runs one device server per client and they race the same
+screen (one dies with `DeviceServerDiedException … UNAVAILABLE`), while
+`~/.maestro/tests/<date>_<HHMMSS>` is keyed to the second, so runs started in
+the same second share one `maestro.log` and the other run's commands appear in
+this one's. Both happened on 2026-11-11, and the failure looked like a crypto
+regression. Backlog BL-035.
+
+The lock cannot see a Maestro CLI started by something else, so `run.sh` also
+refuses (exit 2) while any `maestro test` process is alive. An idle
+`maestro … mcp` server does not count.
+
 **Read `RESULT:` in the log, not the shell's status, once the run is piped.**
 The documented invocation ends in `| tee …`, and a pipeline's status is `tee`'s,
 which is always 0 — a run with three failures reports `[exited with code 0]`.
@@ -91,6 +111,7 @@ so a change to the drawer's markup fails there instead of as a picker timeout.
 
 ```sh
 ./e2e/lint-selectors.sh
+./e2e/lib/device_lock_test.sh    # lock/refusal paths, against stubbed adb + ps
 ```
 
 Every `id:` a flow taps must still be declared in `lib/`. On-device, a renamed
