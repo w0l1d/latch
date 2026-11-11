@@ -69,7 +69,7 @@ if (!hasReleaseKeystore && !requireReleaseSigning && !isDevBuild) {
 }
 
 android {
-    namespace = "com.latch.latch"
+    namespace = "dev.walidahdouf.latch"
     compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
@@ -79,8 +79,7 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = if (isDevBuild) "com.latch.latch.dev" else "com.latch.latch"
+        applicationId = if (isDevBuild) "dev.walidahdouf.latch.dev" else "dev.walidahdouf.latch"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

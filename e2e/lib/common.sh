@@ -5,7 +5,7 @@
 # against a different package (release vs dev) or a different fixture folder.
 set -uo pipefail
 
-: "${APP_ID:=com.latch.latch.dev}"
+: "${APP_ID:=dev.walidahdouf.latch.dev}"
 : "${FIXTURE_NAME:=LatchE2E}"
 
 # adb path form (no trailing slash). Android's `_data` column stores

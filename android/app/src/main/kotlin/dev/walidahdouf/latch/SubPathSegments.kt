@@ -1,4 +1,4 @@
-package com.latch.latch
+package dev.walidahdouf.latch
 
 /**
  * Splits the relative folder path a bulk output is mirrored into

@@ -20,7 +20,7 @@ original. None of those can be seen from a unit test.
   checks for it up front and stops with a clear message instead of letting
   every selector time out.
 - [Maestro](https://maestro.dev) on `PATH` (`maestro --version`).
-- The **dev** build installed as `com.latch.latch.dev`:
+- The **dev** build installed as `dev.walidahdouf.latch.dev`:
 
   ```sh
   flutter build apk --debug --android-project-arg devBuild=true

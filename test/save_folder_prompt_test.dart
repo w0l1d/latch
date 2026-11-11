@@ -440,7 +440,8 @@ void main() {
   testWidgets('an unknown folder seeds the picker with the source document', (
     tester,
   ) async {
-    const picked = '/data/user/0/com.latch.latch/cache/file_picker/report.pdf';
+    const picked =
+        '/data/user/0/dev.walidahdouf.latch/cache/file_picker/report.pdf';
     const docUri =
         'content://com.android.providers.downloads.documents/'
         'document/msf%3A1000000123';
@@ -469,7 +470,8 @@ void main() {
   testWidgets('a resolved folder still passes the document as a second seed', (
     tester,
   ) async {
-    const picked = '/data/user/0/com.latch.latch/cache/file_picker/notes.txt';
+    const picked =
+        '/data/user/0/dev.walidahdouf.latch/cache/file_picker/notes.txt';
     const docUri =
         'content://com.android.externalstorage.documents/'
         'document/primary%3ADocuments%2FWork%2Fnotes.txt';

@@ -1,4 +1,4 @@
-package com.latch.latch
+package dev.walidahdouf.latch
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -60,7 +60,7 @@ class ExternalStorageDocIdsTest {
 
     @Test
     fun `a path on no served volume has no document id`() {
-        assertNull(ExternalStorageDocIds.toDocId("/data/user/0/com.latch.latch/cache/x", primary))
+        assertNull(ExternalStorageDocIds.toDocId("/data/user/0/dev.walidahdouf.latch/cache/x", primary))
         assertNull(ExternalStorageDocIds.toDocId("/storage", primary))
         assertNull(ExternalStorageDocIds.toDocId("relative/path", primary))
     }

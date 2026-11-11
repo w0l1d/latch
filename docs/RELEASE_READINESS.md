@@ -57,7 +57,7 @@ Alternatively, if you want to allow backup for non-sensitive data, set `android:
 
 **OK** — `ios/Runner/Info.plist:56-90`
 
-`CFBundleDocumentTypes` and `UTImportedTypeDeclarations` are configured for the `.latch` extension with correct UTI `com.latch.latch.latchfile`. The `CFBundleTypeRole` is set to `Editor` (appropriate for an encryption app that rewrites the file and outputs plaintext).
+`CFBundleDocumentTypes` and `UTImportedTypeDeclarations` are configured for the `.latch` extension with correct UTI `dev.walidahdouf.latch.latchfile`. The `CFBundleTypeRole` is set to `Editor` (appropriate for an encryption app that rewrites the file and outputs plaintext).
 
 ### 1.5 Android: File association intent filter
 
