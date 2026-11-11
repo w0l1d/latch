@@ -8,8 +8,8 @@
 
 Latch does not collect your data. There is no account, no server, and no analytics. Your
 files, your passphrase and your keys never leave your device except where you personally
-send them. The app's network permission is not present at all, so it could not transmit
-anything even if a future bug told it to.
+send them. On Android the release build declares no network permission at all, so the
+operating system itself stops it opening a connection.
 
 Everything below explains that in detail, and everything below is checkable: the source
 code is public at <https://github.com/w0l1d/latch>.
@@ -17,10 +17,12 @@ code is public at <https://github.com/w0l1d/latch>.
 ## What Latch does not do
 
 - **No account or sign-in.** Latch has no servers and no user database.
-- **No network access.** The release build's manifest declares no `INTERNET` permission.
-  Android enforces the absence of a network permission at the OS level — the app has no
-  socket it can open. (Debug builds built by developers from the public source do include
-  `INTERNET`, because the Flutter tooling requires it; those builds are never distributed.)
+- **No network access.** On Android, the release build's manifest declares no `INTERNET`
+  permission, and the OS enforces that — the app has no socket it can open, even if a future
+  bug tried. iOS has no equivalent manifest permission, so there the guarantee rests on the
+  source: Latch depends on no networking library and calls no networking API. (Debug builds
+  made from the public source do include `INTERNET` on Android, because the Flutter tooling
+  requires it; those builds are never distributed.)
 - **No analytics, telemetry, crash reporting or advertising.** There is no Firebase,
   Sentry, Crashlytics, analytics SDK, A/B testing framework, or ad library in the app.
 - **No tracking identifiers.** Latch does not read your advertising ID, device ID, IMEI,
@@ -32,12 +34,16 @@ code is public at <https://github.com/w0l1d/latch>.
 
 ### Your files
 
-Latch only reads a file after you select it in the system file picker, and only writes the
-result to the destination you choose. It does not scan, index, or enumerate your storage.
+Latch only reads files you hand it: a file you pick in the system file picker, a file you
+share to Latch from another app, or — when you choose a folder for bulk encryption — the
+files inside that folder, and inside its subfolders if you include them. It never scans or
+indexes your storage on its own, and it only writes the result to a destination you choose.
 
-While processing a file, Latch writes a temporary `<name>.tmp` file next to the output and
-removes it when processing finishes or is cancelled. For decryption that temporary file can
-contain partially decrypted plaintext, which is why it is always swept on cancellation.
+While processing a file, Latch writes a temporary `<name>.tmp` file and removes it when
+processing finishes or is cancelled. On Android that temporary lives in Latch's private app
+storage, and the finished file is then copied to the folder you picked; on iOS it sits beside
+the output. For decryption the temporary file can contain partially decrypted plaintext,
+which is why it is always swept on cancellation.
 
 ### Your passphrase
 
@@ -52,8 +58,12 @@ passphrase means the encrypted file is unrecoverable. This is deliberate.**
 
 ### Your keys
 
-- **Device key:** the optional hardware-bound wrap uses a key generated inside the Android
-  Keystore / iOS Secure Enclave. The key material never leaves secure hardware.
+- **Device key:** if you turn on device-bound recovery, Latch generates a random 32-byte key
+  and keeps it in the platform's secure storage — Android's Keystore-encrypted storage, or the
+  iOS Keychain. Files you encrypt while it is on get an extra wrap under that key, so this
+  device can open them without the passphrase. The key never leaves your device, but Latch
+  itself reads it into memory to use it, so on a device that is already compromised it is
+  only as protected as the OS's secure storage.
 - **Recipient keys:** private keys you create for people who share files with you are kept
   in the same secure storage. Public keys are designed to be shared — that is the point of
   them. If you copy a public key to the clipboard from Settings, it is a public key, not a
@@ -68,8 +78,12 @@ delete-originals-after-encrypt — are stored locally in the app's private stora
 
 Anyone holding a `.latch` file can see a small amount of unencrypted metadata: the format
 version, the key-derivation parameters, and a short key-identifier hint used to pick the
-right key. The file's contents, and the key that unlocks it, are encrypted with
-XChaCha20-Poly1305. **The original filename is not stored in the container.**
+right key. The file's contents are encrypted with XChaCha20-Poly1305, a streaming
+construction, so large files are processed a chunk at a time. The key that unwraps the file
+is itself stored encrypted inside it: under your passphrase with XSalsa20-Poly1305, and
+optionally under a device key or as a sealed box addressed to a recipient's public key. Every
+wrap is authenticated, so a wrong passphrase or a tampered file fails before any plaintext is
+produced. **The original filename is not stored in the container.**
 
 ## When data leaves your device
 
@@ -93,8 +107,11 @@ tracker. No system is perfectly secure, and Latch makes no such claim.
 
 - Encrypted and decrypted files stay where you put them until you delete them with your
   file manager.
-- Clearing Latch's app data, or uninstalling it, erases the stored passphrase, keys and
-  settings. Uninstalling does **not** delete your files.
+- On Android, clearing Latch's app data or uninstalling it erases the stored passphrase,
+  keys and settings. On iOS, uninstalling erases the app and its settings, but Keychain
+  items — the stored passphrase and any recipient private keys — outlive the app. Stored
+  passphrases can be deleted beforehand in Settings → Passphrase storage. Uninstalling never
+  deletes your `.latch` files.
 - Because there is no server, there is nothing for us to delete on your behalf.
 
 ## Changes to this policy

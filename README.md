@@ -167,9 +167,9 @@ Issues and pull requests are welcome. A few house rules the codebase enforces:
 
 ## Privacy
 
-Latch collects nothing: no account, no server, no analytics, and the release build has no
-`INTERNET` permission at all. The full policy, including exactly what is stored on the
-device and what a `.latch` file reveals, is in [`PRIVACY.md`](PRIVACY.md).
+Latch collects nothing: no account, no server, no analytics, and the Android release build
+has no `INTERNET` permission at all. The full policy, including exactly what is stored on
+the device and what a `.latch` file reveals, is in [`PRIVACY.md`](PRIVACY.md).
 
 ## License
 
