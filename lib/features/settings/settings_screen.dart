@@ -43,6 +43,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _kdfCost = 'Auto';
   int _storedCount = 0;
   String _version = '';
+  String _versionCode = '';
   String _packageName = '';
   int _saveFolderCount = 0;
 
@@ -88,10 +89,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!mounted) return;
 
     String version = '';
+    String versionCode = '';
     String packageName = '';
     try {
       final info = await PackageInfo.fromPlatform();
-      version = '${info.version}+${info.buildNumber}';
+      // Exactly the strings `aapt dump badging` reports, so a screenshot of
+      // this screen and the APK can be compared without translation. For a
+      // release the version is the git tag verbatim — see release.yml.
+      version = info.version;
+      versionCode = info.buildNumber;
       // Carried only for the copyable build line: since #75 a device can hold
       // the release and the dev build at once, and the applicationId is the
       // only thing that tells a bug report which of the two it came from.
@@ -108,6 +114,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _kdfCost = label;
       _storedCount = count;
       _version = version;
+      _versionCode = versionCode;
       _packageName = packageName;
       _loaded = true;
     });
@@ -120,14 +127,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// build, no package name if the platform channel failed) are omitted rather
   /// than shown empty, so the line never implies a value it doesn't hold.
   String _buildReportLine() {
+    // A release's version *is* its tag (release.yml passes the tag as
+    // --build-name), so a tagged build names itself by the injected tag. A
+    // local build has none: it shows the platform-reported version and says
+    // "local build", so the line never implies a provenance it lacks.
+    final hasTag = !BuildInfo.isLocal;
+    final label = hasTag ? BuildInfo.label : _version;
     final parts = <String>[
-      if (_version.isNotEmpty) 'Latch $_version',
-      BuildInfo.label,
-      if (BuildInfo.sha.isNotEmpty) 'sha ${BuildInfo.sha}',
+      if (label.isNotEmpty) 'Latch $label',
+      if (!hasTag) BuildInfo.label,
+      if (_versionCode.isNotEmpty) 'versionCode $_versionCode',
+      // A dev build's tag already contains the short SHA; repeating it on the
+      // same line adds nothing to a bug report.
+      if (BuildInfo.sha.isNotEmpty && !label.contains(BuildInfo.sha))
+        'sha ${BuildInfo.sha}',
       if (_packageName.isNotEmpty) _packageName,
     ];
     return parts.join(' · ');
   }
+
+  /// What the Build row shows at a glance.
+  ///
+  /// Kept in [BuildInfo] rather than here because the interesting cases (a
+  /// release, a dev build) need injected values `flutter test` cannot supply;
+  /// `rowValueFor` takes them as arguments so they can be tested directly.
+  String _buildRowValue() => BuildInfo.rowValueFor(
+    tag: BuildInfo.tag,
+    channel: BuildInfo.channel,
+    sha: BuildInfo.sha,
+    version: _version,
+  );
 
   /// Applies a KDF preset. "Auto" restores the values calibrated during
   /// onboarding rather than a fixed pair.
@@ -281,7 +310,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           // into a bug report, and no one retypes a commit SHA correctly.
           _InfoTile(
             title: 'Build',
-            value: BuildInfo.label,
+            value: _buildRowValue(),
             copyText: _buildReportLine(),
             copyConfirmation: 'Build details copied',
           ),

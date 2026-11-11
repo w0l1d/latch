@@ -48,6 +48,74 @@ void main() {
     test('a channel without a tag falls back rather than showing nothing', () {
       expect(BuildInfo.labelFor(tag: '', channel: 'release'), 'local build');
     });
+
+    // The Build row sits directly under the Version row. For a release the
+    // Version row already *is* the tag, so the row must add something else —
+    // the commit — instead of repeating it.
+    test('a release Build row shows the commit, not the tag twice', () {
+      expect(
+        BuildInfo.rowValueFor(
+          tag: 'v1.0.18-2026.11.10.19',
+          channel: 'release',
+          sha: 'abc1234',
+          version: 'v1.0.18-2026.11.10.19',
+        ),
+        'sha abc1234',
+      );
+    });
+
+    test('a release Build row falls back to the version if no SHA came in', () {
+      expect(
+        BuildInfo.rowValueFor(
+          tag: 'v1.0.18-2026.11.10.19',
+          channel: 'release',
+          sha: '',
+          version: 'v1.0.18-2026.11.10.19',
+        ),
+        'v1.0.18-2026.11.10.19',
+      );
+    });
+
+    test('a dev Build row keeps the (dev build) marker', () {
+      expect(
+        BuildInfo.rowValueFor(
+          tag: '1.0.18-dev.abc1234',
+          channel: 'dev',
+          sha: 'abc1234',
+          version: '1.0.18-dev.abc1234',
+        ),
+        '1.0.18-dev.abc1234 (dev build)',
+      );
+    });
+
+    test('a local Build row says so, whatever the version reports', () {
+      expect(
+        BuildInfo.rowValueFor(
+          tag: '',
+          channel: 'local',
+          sha: '',
+          version: '0.0.0',
+        ),
+        'local build',
+      );
+    });
+
+    test('isLocalFor treats a tag or channel as required, not either', () {
+      expect(
+        BuildInfo.isLocalFor(tag: '', channel: 'release'),
+        isTrue,
+        reason: 'a claimed channel with no tag has no provenance to show',
+      );
+      expect(
+        BuildInfo.isLocalFor(tag: 'v1.0.0-2026.01.01.1', channel: 'local'),
+        isTrue,
+        reason: 'a tag on a local channel must not claim release provenance',
+      );
+      expect(
+        BuildInfo.isLocalFor(tag: 'v1.0.0-2026.01.01.1', channel: 'release'),
+        isFalse,
+      );
+    });
   });
 
   group('Settings → About', () {

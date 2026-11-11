@@ -1,7 +1,13 @@
 name: latch
 description: "Stateless offline file encryption app."
 publish_to: 'none'
-version: 1.0.6+7
+# Placeholder, never the source of truth. Every real build sets its version
+# from the git tag on the build line: release.yml passes the tag as
+# --build-name (versionName) and its BUILD segment as --build-number
+# (versionCode); dev_build.yml derives its base from the newest release tag.
+# A local `flutter run` has no tag, so it reports 0.0.0 and Settings → About
+# says "local build" rather than naming a version it was not built from.
+version: 0.0.0+0
 
 environment:
   sdk: ^3.12.2

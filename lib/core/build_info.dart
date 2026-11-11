@@ -1,11 +1,11 @@
 /// Identifies the build that produced this binary.
 ///
-/// `package_info_plus` can only report what Gradle was handed — the semver and
-/// build number — and the release tag carries a third part (its date) that
-/// deliberately never reaches `pubspec.yaml`. So `v1.0.6-2026.09.08.1` and
-/// `v1.0.6-2026.07.20.1` install as the same `1.0.6+1`, and nothing in an
-/// installed APK says which commit it came from. These constants close that
-/// gap: the workflows inject them with `--dart-define`, and Settings → About
+/// For a release, `release.yml` passes the whole tag to
+/// `flutter build --build-name`, so the APK's versionName *is* the tag
+/// (`v1.0.18-2026.11.10.19`) and `package_info_plus` reports it as-is. These
+/// constants carry the parts the manifest has no field for: the commit SHA,
+/// and the channel that separates a release install from the side-by-side dev
+/// build. The workflows inject them with `--dart-define`, and Settings → About
 /// shows them, so a screenshot in a bug report is enough to find the build.
 ///
 /// **Every read must stay in a const context.** `String.fromEnvironment` only
@@ -31,7 +31,10 @@ class BuildInfo {
 
   /// True when this binary carries no injected provenance — a `flutter run`, a
   /// hand-built APK, or a workflow that stopped passing the defines.
-  static bool get isLocal => channel == 'local' || tag.isEmpty;
+  static bool get isLocal => isLocalFor(tag: tag, channel: channel);
+
+  static bool isLocalFor({required String tag, required String channel}) =>
+      channel == 'local' || tag.isEmpty;
 
   /// What Settings → About shows, and what a bug report needs pasted into it.
   ///
@@ -49,5 +52,28 @@ class BuildInfo {
     if (tag.isEmpty || channel == 'local') return 'local build';
     if (channel == 'dev') return '$tag (dev build)';
     return tag;
+  }
+
+  /// What Settings → About shows on the Build row, at a glance.
+  ///
+  /// A release's [label] is the tag, which the Version row directly above
+  /// already shows — repeating it would read as two rows for one fact. What
+  /// that row can still add is the commit, so it shows the SHA (or falls back
+  /// to the version when the SHA was not injected). A dev build's label carries
+  /// the `(dev build)` marker its Version row lacks, so it is shown in full;
+  /// a local build has nothing but "local build" to say.
+  ///
+  /// Split out from the injected constants for the same reason as [labelFor]:
+  /// `flutter test` can never populate a `--dart-define`.
+  static String rowValueFor({
+    required String tag,
+    required String channel,
+    required String sha,
+    required String version,
+  }) {
+    if (!isLocalFor(tag: tag, channel: channel) && channel == 'release') {
+      return sha.isNotEmpty ? 'sha $sha' : version;
+    }
+    return labelFor(tag: tag, channel: channel);
   }
 }
