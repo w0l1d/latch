@@ -1,18 +1,58 @@
 name: Dependency Audit
 
+# Two independent, machine-derived verdicts every Monday:
+#
+#   osv_scan — known vulnerabilities in pubspec.lock, matched against the OSV
+#              database and uploaded to Security → Code scanning. Fails the run
+#              on a finding.
+#   report   — how far behind upstream the dependency set is, plus a Telegram
+#              summary. Runs even when the scan fails (`if: always()`), because
+#              a failed audit is exactly the week you want to hear about.
+#
+# History worth keeping: this workflow used to decide its status by grepping the
+# prose output of `dart pub audit`. That subcommand does not exist in the pinned
+# Dart SDK — the command failed, `|| true` swallowed the failure, and the grep
+# could only ever match a *successful* run. So for months it reported ✅ while
+# checking nothing. Two rules came out of that:
+#
+#   1. A step whose command cannot do its job must fail the step. No `|| true`
+#      around a command whose whole purpose is the thing that would fail.
+#   2. Status comes from a job result or a structured output, never from
+#      grepping human-readable text for a phrase only success would print.
+
 on:
   schedule:
     - cron: '0 8 * * 1' # Every Monday at 08:00 UTC
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
-  dependency_audit:
+  osv_scan:
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    # Pinned by commit SHA, like every other action in this repo: a tag can be
+    # moved, and this workflow runs on a schedule with no human in the loop.
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@32d3cd482bdadfb38b186c0ad1b031902d55d932 # v2.7.1
+    with:
+      # Only the root lockfile is committed; the two path-dependency packages
+      # are libraries and carry none.
+      scan-args: |-
+        --lockfile=pubspec.lock
+      fail-on-vuln: true
+
+  report:
+    needs: [osv_scan]
+    if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           channel: stable
           flutter-version: 3.44.2
@@ -21,58 +61,87 @@ jobs:
       - name: Pub get
         run: flutter pub get
 
+      # Exit code 0 in every normal case; a non-zero exit is a real failure and
+      # must not be hidden.
       - name: Check outdated packages
-        run: flutter pub outdated --no-color > outdated-raw.txt 2>&1 || true
-
-      - name: Audit for known vulnerabilities
-        run: dart pub audit > audit-raw.txt 2>&1 || true
+        run: flutter pub outdated --no-color > outdated.txt 2>&1
 
       - name: Build summary
         id: summary
+        env:
+          OSV_RESULT: ${{ needs.osv_scan.result }}
+          SECURITY_URL: ${{ github.server_url }}/${{ github.repository }}/security/code-scanning
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
+          case "$OSV_RESULT" in
+            success)
+              EMOJI="✅"
+              HEADLINE="No known vulnerabilities in pubspec.lock"
+              ;;
+            failure)
+              # The reusable workflow fails both on a finding and on its own
+              # error, so the message names both possibilities and links to the
+              # run, which says which one it was.
+              EMOJI="⚠️"
+              HEADLINE="Scan reported a problem — vulnerability or scanner failure. Check the run."
+              ;;
+            *)
+              EMOJI="❓"
+              HEADLINE="Scan did not run ($OSV_RESULT)."
+              ;;
+          esac
+
           {
             echo "## Dependency Audit — $(date -u '+%Y-%m-%d')"
             echo
-            echo "### Vulnerabilities (dart pub audit)"
-            echo '```'
-            cat audit-raw.txt
-            echo '```'
+            echo "### OSV scan (pubspec.lock)"
+            echo
+            echo "$HEADLINE"
+            echo
+            echo "[Open code scanning]($SECURITY_URL) · [Open this run]($RUN_URL)"
             echo
             echo "### Outdated packages"
+            echo
             echo '```'
-            head -c 2000 outdated-raw.txt
+            head -c 2000 outdated.txt
             echo '```'
           } > summary.md
 
-          if grep -qiE "found [1-9][0-9]* (known )?(security )?(vulnerabilit|advisor)" audit-raw.txt; then
-            echo "status=issues" >> "$GITHUB_OUTPUT"
-          else
-            echo "status=clean" >> "$GITHUB_OUTPUT"
-          fi
+          {
+            echo "osv_result=$OSV_RESULT"
+            echo "emoji=$EMOJI"
+            echo "headline=$HEADLINE"
+          } >> "$GITHUB_OUTPUT"
+          cat summary.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload audit artifacts
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: dependency-audit-report
           path: |
             summary.md
-            outdated-raw.txt
-            audit-raw.txt
+            outdated.txt
           retention-days: 30
 
       - name: Notify Telegram
-        if: always()
+        env:
+          OSV_RESULT: ${{ steps.summary.outputs.osv_result }}
+          EMOJI: ${{ steps.summary.outputs.emoji }}
+          HEADLINE: ${{ steps.summary.outputs.headline }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TELEGRAM_TOKEN: ${{ secrets.BOTFATHER_TELEGRAM_BOT_TOKEN }}
         run: |
-          STATUS="${{ steps.summary.outputs.status }}"
-          if [ "$STATUS" = "issues" ]; then EMOJI="⚠️"; else EMOJI="✅"; fi
+          REPORT=$(head -c 3000 summary.md)
+          printf -v MESSAGE '%s *Latch — Dependency Audit*\n\n%s\n\n```\n%s\n```\n\n🔗 %s' \
+            "$EMOJI" "$HEADLINE" "$REPORT" "$RUN_URL"
 
-          RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          REPORT=$(head -c 3500 summary.md)
-          printf -v MESSAGE '%s *Latch — Dependency Audit*\n\n```\n%s\n```\n\n🔗 [Full report](%s)' \
-            "$EMOJI" "$REPORT" "$RUN_URL"
-
-          curl -s -X POST \
-            -H "Content-Type: application/json" \
-            -d "{\"chat_id\": \"-1003694191301\", \"message_thread_id\": 53, \"text\": $(echo "$MESSAGE" | jq -Rs .), \"parse_mode\": \"Markdown\", \"disable_web_page_preview\": true}" \
-            "https://api.telegram.org/bot${{ secrets.BOTFATHER_TELEGRAM_BOT_TOKEN }}/sendMessage"
+          jq -n \
+            --arg chat_id "-1003694191301" \
+            --argjson thread_id 53 \
+            --arg text "$MESSAGE" \
+            '{chat_id: $chat_id, message_thread_id: $thread_id, text: $text, parse_mode: "Markdown", disable_web_page_preview: true}' \
+          | curl -sf -X POST \
+              -H "Content-Type: application/json" \
+              -d @- \
+              "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage"
