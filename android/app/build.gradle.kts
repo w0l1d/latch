@@ -125,6 +125,20 @@ android {
             } else {
                 signingConfigs.getByName("debug")
             }
+            // R8 on the JVM half of the app: strips unused Kotlin/Java from the
+            // plugins and the SAF bridge, and renames what remains. This is the
+            // half `--obfuscate` (Dart) cannot reach — the two together cover
+            // both sides of the engine.
+            //
+            // A release-only crash caused by a stripped reflective path is the
+            // failure mode this can introduce, so it ships with a device smoke
+            // test rather than an assumption: see the PR that enabled it.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }
