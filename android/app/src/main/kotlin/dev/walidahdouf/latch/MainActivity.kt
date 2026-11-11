@@ -1,4 +1,4 @@
-package com.latch.latch
+package dev.walidahdouf.latch
 
 import android.content.Intent
 import android.net.Uri

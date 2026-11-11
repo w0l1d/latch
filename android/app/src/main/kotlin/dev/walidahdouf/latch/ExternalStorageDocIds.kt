@@ -1,4 +1,4 @@
-package com.latch.latch
+package dev.walidahdouf.latch
 
 /**
  * Path ↔ document-id mapping for the `com.android.externalstorage.documents`

@@ -1,4 +1,4 @@
-package com.latch.latch
+package dev.walidahdouf.latch
 
 import org.junit.Assert.assertEquals
 import org.junit.Test

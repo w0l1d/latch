@@ -1,4 +1,4 @@
-package com.latch.latch
+package dev.walidahdouf.latch
 
 /**
  * The decision table that turns a picked document into a filesystem path —

@@ -9,7 +9,7 @@ name: Dev build
 #   - push to develop: every batch that lands gets an APK, unasked.
 #   - workflow_dispatch: any branch, on demand ("can you try this build").
 #
-# The APK installs as com.latch.latch.dev (see android/app/build.gradle.kts), so
+# The APK installs as dev.walidahdouf.latch.dev (see android/app/build.gradle.kts), so
 # it sits next to a release install instead of replacing it: no uninstall, no
 # wiped passphrase vault, and its SAF grants and prefs are its own.
 on:
@@ -152,7 +152,7 @@ jobs:
       # build type is debug-signed anyway, so it installs without ceremony.
       #
       # -PdevBuild=true is the only difference from a release build: it moves the
-      # applicationId to com.latch.latch.dev so this installs alongside one.
+      # applicationId to dev.walidahdouf.latch.dev so this installs alongside one.
       # --build-number is the run number, monotonic per workflow, so a newer dev
       # APK always upgrades an older one rather than being refused.
       #
@@ -177,7 +177,7 @@ jobs:
 
       # The applicationId suffix is the whole point of the side-by-side install
       # and it lives in Gradle, where nothing else would catch it going wrong —
-      # a dev APK that reports com.latch.latch would silently replace the
+      # a dev APK that reports dev.walidahdouf.latch would silently replace the
       # release the tester is comparing against.
       - name: Validate APK is a dev build
         env:
@@ -193,8 +193,8 @@ jobs:
           PKG=$(echo "$BADGING" | grep -oP "package: name='\K[^']+")
           APK_VERSION_NAME=$(echo "$BADGING" | grep -oP "versionName='\K[^']+")
 
-          if [ "$PKG" != "com.latch.latch.dev" ]; then
-            echo "::error::dev APK reports package '$PKG', expected com.latch.latch.dev — it would overwrite a release install"
+          if [ "$PKG" != "dev.walidahdouf.latch.dev" ]; then
+            echo "::error::dev APK reports package '$PKG', expected dev.walidahdouf.latch.dev — it would overwrite a release install"
             exit 1
           fi
           if [ "$APK_VERSION_NAME" != "$VERSION_NAME" ]; then
@@ -326,7 +326,7 @@ jobs:
           CAPTION+=$'\n<b>Version:</b> <code>'"$(esc "$VERSION_NAME")"$'</code>'
           CAPTION+=$'\n<b>Branch:</b> <code>'"$(esc "${GITHUB_REF_NAME}")"$'</code>'
           CAPTION+=$'\n<b>Commit:</b> <a href="'"$COMMIT_LINK"$'">'"$(esc "$SHORT_SHA")"$'</a> by '"$(esc "$AUTHOR")"
-          CAPTION+=$'\n<b>Installs as:</b> <code>com.latch.latch.dev</code> (alongside a release build)'
+          CAPTION+=$'\n<b>Installs as:</b> <code>dev.walidahdouf.latch.dev</code> (alongside a release build)'
           CAPTION+=$'\n\n📝 '"$(esc "$SUBJECT")"
 
           RESPONSE=$(curl -sS \

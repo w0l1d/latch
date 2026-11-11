@@ -70,7 +70,7 @@
 			<string>Owner</string>
 			<key>LSItemContentTypes</key>
 			<array>
-				<string>com.latch.latch.latchfile</string>
+				<string>dev.walidahdouf.latch.latchfile</string>
 			</array>
 		</dict>
 	</array>
@@ -78,7 +78,7 @@
 	<array>
 		<dict>
 			<key>UTTypeIdentifier</key>
-			<string>com.latch.latch.latchfile</string>
+			<string>dev.walidahdouf.latch.latchfile</string>
 			<key>UTTypeDescription</key>
 			<string>Latch encrypted file</string>
 			<key>UTTypeConformsTo</key>

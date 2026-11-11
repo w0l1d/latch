@@ -59,7 +59,7 @@ flutter run -d "iPhone 16"
 1. Open `ios/Runner.xcworkspace` in Xcode
 2. Select Runner target → Signing & Capabilities
 3. Set Team to your Apple Developer account
-4. Bundle ID: `com.latch.latch` (already set)
+4. Bundle ID: `dev.walidahdouf.latch` (already set)
 
 ## Architecture Notes
 - `file_picker` on iOS delegates to the OS `UIDocumentPickerViewController` — 

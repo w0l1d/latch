@@ -85,7 +85,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     PackageInfo.setMockInitialValues(
       appName: 'latch',
-      packageName: 'com.latch.latch',
+      packageName: 'dev.walidahdouf.latch',
       version: '1.0.0',
       buildNumber: '1',
       buildSignature: '',
