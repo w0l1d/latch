@@ -38,8 +38,10 @@ SHACKLE='M39,46.5a15,15 0 0 1 30,0'
 BODY='M42,46.5H66a12,12 0 0 1 12,12v10a12,12 0 0 1 -12,12H42a12,12 0 0 1 -12,-12v-10a12,12 0 0 1 12,-12z'
 KEYHOLE_C='M54,55.5a5,5 0 1 1 0,10a5,5 0 1 1 0,-10z'
 KEYHOLE_S='M54,62.5a2.3,2.3 0 0 1 2.3,2.3v6.2a2.3,2.3 0 0 1 -4.6,0v-6.2a2.3,2.3 0 0 1 2.3,-2.3z'
-# Same keyhole as one closed outline, for the monochrome mask (a real hole).
-KEYHOLE_HOLE='M51.7,64.94A5,5 0 1 1 56.3,64.94V70.5A2.3,2.3 0 0 1 51.7,70.5z'
+# The same keyhole as one closed outline, for the monochrome mask. Its circle and
+# stem are the ones above: stem sides end at y=71 and the 2.3 cap reaches 73.3,
+# matching the painted keyhole exactly.
+KEYHOLE_HOLE='M51.7,64.94A5,5 0 1 1 56.3,64.94V71A2.3,2.3 0 0 1 51.7,71z'
 
 # --- SVG composition ------------------------------------------------------
 # $1 = background markup, $2 = viewBox
@@ -130,21 +132,33 @@ rsvg-convert -w 512 -h 512 "$TMP/full.svg" -o "$TMP/play-512.png"
 ffmpeg -loglevel error -y -i "$TMP/play-512.png" -pix_fmt rgb24 assets/brand/play-icon-512.png
 
 # --- iOS icons ------------------------------------------------------------
-# Sizes come from ios/Runner/Assets.xcassets/AppIcon.appiconset/Contents.json.
-# iOS rejects an alpha channel, so every file is flattened to rgb24.
+# Sizes are read from the asset catalog, not hardcoded, so adding or renaming a
+# slot in Contents.json is picked up here. iOS rejects an alpha channel, so
+# every file is flattened to rgb24.
 ICONSET=ios/Runner/Assets.xcassets/AppIcon.appiconset
-for pair in \
-  Icon-App-20x20@1x.png:20    Icon-App-20x20@2x.png:40    Icon-App-20x20@3x.png:60 \
-  Icon-App-29x29@1x.png:29    Icon-App-29x29@2x.png:58    Icon-App-29x29@3x.png:87 \
-  Icon-App-40x40@1x.png:40    Icon-App-40x40@2x.png:80    Icon-App-40x40@3x.png:120 \
-  Icon-App-60x60@2x.png:120   Icon-App-60x60@3x.png:180 \
-  Icon-App-76x76@1x.png:76    Icon-App-76x76@2x.png:152 \
-  Icon-App-83.5x83.5@2x.png:167 \
-  Icon-App-1024x1024@1x.png:1024
-do
-  name="${pair%%:*}"; px="${pair##*:}"
+command -v python3 >/dev/null || { echo "python3 not found (needed to read Contents.json)" >&2; exit 1; }
+
+python3 - "$ICONSET/Contents.json" > "$TMP/ios-icons.txt" <<'PY'
+import json, sys
+with open(sys.argv[1]) as f:
+    images = json.load(f)["images"]
+sizes = {}
+for img in images:
+    name = img.get("filename")
+    if not name:
+        continue
+    px = round(float(img["size"].split("x")[0]) * float(img["scale"].rstrip("x")))
+    if sizes.setdefault(name, px) != px:
+        sys.exit(f"{name}: Contents.json asks for two different sizes")
+for name, px in sizes.items():
+    print(f"{name}:{px}")
+PY
+
+[ -s "$TMP/ios-icons.txt" ] || { echo "Contents.json listed no icon files" >&2; exit 1; }
+
+while IFS=: read -r name px; do
   rsvg-convert -w "$px" -h "$px" "$TMP/full.svg" -o "$TMP/$name"
   ffmpeg -loglevel error -y -i "$TMP/$name" -pix_fmt rgb24 "$ICONSET/$name"
-done
+done < "$TMP/ios-icons.txt"
 
 echo "Regenerated launcher icon: 2 vectors, 10 mipmaps, 15 iOS icons, 1 Play icon."
