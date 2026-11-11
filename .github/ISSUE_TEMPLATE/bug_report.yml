@@ -1,0 +1,65 @@
+name: Bug report
+description: Something in the app behaves incorrectly.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        > **Security issues do not belong here.** Crypto, key handling,
+        > temporary-file cleanup, or anything that could expose plaintext:
+        > use [private reporting](https://github.com/w0l1d/latch/security/advisories/new) instead.
+
+        > **Do not paste a real passphrase, the contents of your files, or a
+        > container you care about.** A synthetic file demonstrates the bug just as well.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+      placeholder: I encrypted a 40 MB video to an SD card and…
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open Latch
+        2. …
+    validations:
+      required: true
+
+  - type: input
+    id: build
+    attributes:
+      label: Build
+      description: >
+        Settings → About → tap the **Build** row. It copies the tag, versionCode,
+        SHA and package name on one line.
+      placeholder: Latch v1.0.18-2026.11.10.19 · versionCode 19 · sha abc1234 · com.latch.latch
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: Device and OS
+      placeholder: Pixel 9, Android 15 / iPhone 14, iOS 18.2
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Optional. Redact paths and file names you would rather not publish.
+
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Confirmation
+      options:
+        - label: I have not included a passphrase, decrypted content, or a file I need to keep private.
+          required: true
