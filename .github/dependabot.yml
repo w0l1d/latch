@@ -1,0 +1,103 @@
+# Dependabot — three ecosystems, weekly, into `develop`.
+#
+# `develop` is where work lands; `main` only ever receives merges from it, so a
+# Dependabot PR opened against the default branch would sit there unreviewed
+# while the dependency actually in development drifted.
+#
+# Minor and patch updates are grouped per ecosystem: a solo maintainer can
+# review one PR instead of nine, and the group still fails CI as a unit if any
+# member breaks something. Major bumps stay individual — they need a decision,
+# not a rubber stamp.
+#
+# Security advisories are handled separately by Dependabot security updates
+# (enabled at the repository level), which always open their own PR regardless
+# of these groups.
+version: 2
+
+updates:
+  - package-ecosystem: "pub"
+    directory: "/"
+    target-branch: "develop"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "build"
+      include: "scope"
+    groups:
+      pub-minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
+
+  # The path dependencies are their own packages with their own pubspec, and the
+  # root lockfile only pins what they resolve *for the app*. Their lint/dev
+  # dependencies are declared here, so they need their own directory entries.
+  - package-ecosystem: "pub"
+    directory: "/packages/myenc_core"
+    target-branch: "develop"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "build"
+      include: "scope"
+    groups:
+      pub-minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "pub"
+    directory: "/packages/myenc_adapters"
+    target-branch: "develop"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "build"
+      include: "scope"
+    groups:
+      pub-minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    target-branch: "develop"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
+    groups:
+      actions-minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "gradle"
+    directory: "/android"
+    target-branch: "develop"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "build"
+      include: "scope"
+    groups:
+      gradle-minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"

@@ -42,7 +42,7 @@ jobs:
       tag_name: ${{ steps.tag.outputs.tag_name }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
@@ -207,11 +207,11 @@ jobs:
         include: ${{ fromJSON(needs.version.outputs.abis) }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ needs.version.outputs.tag_name }}
 
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           channel: stable
           flutter-version: 3.44.2
@@ -228,7 +228,7 @@ jobs:
       # so the two concurrent jobs write separate caches instead of racing for
       # one name.
       - name: Cache Gradle
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
             ~/.gradle/caches
@@ -309,12 +309,26 @@ jobs:
           VERSION_NAME: ${{ needs.version.outputs.version_name }}
           BUILD_NUMBER: ${{ needs.version.outputs.build_number }}
           SHORT_SHA: ${{ needs.version.outputs.short_sha }}
+          SYMBOLS_DIR: build/symbols/${{ matrix.abi }}
         run: |
+          # --obfuscate renames Dart identifiers and --split-debug-info writes the
+          # mapping needed to read a stack trace back; those files are archived
+          # with the release below, so a trace from an old version stays readable
+          # months later. Losing them means every frame in a Play crash report is
+          # a meaningless identifier.
+          #
+          # gen_snapshot prints a "use --strip" warning about DWARF in the
+          # intermediate libapp.so. Ignore it: Flutter 3.44.2 has no such build
+          # flag, and AGP packages native libraries with debugSymbolLevel=none,
+          # so the shipped libapp.so carries no .debug_* sections (confirmed with
+          # llvm-readelf on a built APK — see docs/agents/builds-ci-and-provenance.md).
           flutter build apk --release --split-per-abi \
             --target-platform ${{ matrix.target_platform }} \
             --android-project-arg requireReleaseSigning=true \
             --build-name="$VERSION_NAME" \
             --build-number="$BUILD_NUMBER" \
+            --obfuscate \
+            --split-debug-info="$SYMBOLS_DIR" \
             --dart-define=LATCH_BUILD_TAG="$TAG_NAME" \
             --dart-define=LATCH_BUILD_SHA="$SHORT_SHA" \
             --dart-define=LATCH_BUILD_CHANNEL=release
@@ -345,6 +359,27 @@ jobs:
             exit 1
           fi
           echo "${{ matrix.abi }} APK version validated: $APK_VERSION_NAME ($APK_VERSION_CODE)"
+
+      # Google Play requires every native library to be 16 KB-page aligned, and a
+      # 16 KB-page device will refuse to install an APK that is not. No Dart or
+      # Kotlin here can decide this — it is a property of how the toolchain
+      # packs libapp.so and libsodium into the zip, so an NDK or AGP change can
+      # silently undo it with no other symptom. -P 16 makes zipalign check the
+      # 16 KB rule instead of the default 4 KB one.
+      - name: Verify 16 KB page alignment
+        run: |
+          ZIPALIGN=$(find "$ANDROID_HOME/build-tools" -name zipalign | sort -V | tail -1)
+          if [ -z "$ZIPALIGN" ]; then
+            echo "::error::zipalign not found under \$ANDROID_HOME/build-tools"
+            exit 1
+          fi
+
+          APK_PATH="build/app/outputs/flutter-apk/app-${{ matrix.abi }}-release.apk"
+          if ! "$ZIPALIGN" -c -P 16 -v 4 "$APK_PATH"; then
+            echo "::error::${{ matrix.abi }} APK is not 16 KB page aligned (see the zipalign output above)"
+            exit 1
+          fi
+          echo "${{ matrix.abi }} APK is 16 KB page aligned"
 
       # The Gradle guard proves a keystore was configured; this proves the file
       # on disk carries it. Pinning the fingerprint is a repository *variable*
@@ -379,22 +414,36 @@ jobs:
 
           echo "${{ matrix.abi }} APK signature verified"
 
-      - name: Stage APK
+      - name: Stage release assets
+        env:
+          TAG_NAME: ${{ needs.version.outputs.tag_name }}
+          SYMBOLS_DIR: build/symbols/${{ matrix.abi }}
         run: |
           mkdir -p dist
+          DIST="$PWD/dist"
           cp "build/app/outputs/flutter-apk/app-${{ matrix.abi }}-release.apk" \
-             "dist/latch-${{ needs.version.outputs.tag_name }}-${{ matrix.abi }}.apk"
+             "$DIST/latch-$TAG_NAME-${{ matrix.abi }}.apk"
 
-      # --clobber so a re-run of a single matrix leg replaces its own asset
-      # instead of failing on the one it uploaded last time.
-      - name: Attach APK to draft release
+          # An obfuscated build without its mapping cannot be read: every frame in
+          # a crash report is a renamed identifier. A missing symbols directory
+          # therefore has to fail here, not ship an APK nobody can debug.
+          if ! compgen -G "$SYMBOLS_DIR/*" > /dev/null; then
+            echo "::error::No debug symbols in $SYMBOLS_DIR — the obfuscated build cannot be symbolized"
+            exit 1
+          fi
+          (cd "$SYMBOLS_DIR" && zip -qr "$DIST/latch-$TAG_NAME-${{ matrix.abi }}-symbols.zip" .)
+          ls -l "$DIST"
+
+      # --clobber so a re-run of a single matrix leg replaces its own assets
+      # instead of failing on the ones it uploaded last time.
+      - name: Attach assets to draft release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload "${{ needs.version.outputs.tag_name }}" \
             --repo "$GITHUB_REPOSITORY" \
             --clobber \
-            "dist/latch-${{ needs.version.outputs.tag_name }}-${{ matrix.abi }}.apk"
+            dist/latch-*.apk dist/latch-*-symbols.zip
 
   # Publishes once, after every ABI has attached its APK: flip the draft public,
   # then drop the same files in Telegram. Split out from the builds so this
@@ -409,7 +458,7 @@ jobs:
       # Only for the `git log` in "Gather release context" below; the APKs come
       # off the draft release, not from a build here.
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ needs.version.outputs.tag_name }}
 

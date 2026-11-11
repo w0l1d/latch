@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/w0l1d/latch/security/advisories/new
+    about: Private reporting for crypto, key handling, or data-exposure issues. Never open a public issue for these.
