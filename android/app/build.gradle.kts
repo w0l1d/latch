@@ -117,6 +117,16 @@ android {
     }
 
     buildTypes {
+        // A debug APK is a different thing from the release it sits beside, and
+        // the version string is the one place a bug report can say so without
+        // opening the package name first. `flutter run` has no tag to name
+        // itself after, so without this it would report the bare pubspec
+        // placeholder (0.0.0) — indistinguishable from a broken release build in
+        // a screenshot. Dev builds need nothing here: dev_build.yml already
+        // puts `-dev.<sha>` in the version name it passes on the build line.
+        debug {
+            versionNameSuffix = "-debug"
+        }
         release {
             // The debug branch is unreachable when -PrequireReleaseSigning=true:
             // the check above has already failed the build by then.
